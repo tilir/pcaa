@@ -80,6 +80,9 @@ constexpr uint64_t kFirstInputAddress = 0x200;
 constexpr uint64_t kSecondInputAddress = 0x240;
 constexpr uint64_t kThirdInputAddress = 0x280;
 constexpr uint64_t kResultAddress = 0x300;
+constexpr uint64_t kBatchDescriptorAddress = 0x40;
+constexpr uint64_t kBatchResultAddress = 0x340;
+constexpr uint64_t kBatchSecondResultAddress = 0x360;
 constexpr uint64_t kTieFirstInputAddress = 0x380;
 constexpr uint64_t kTieSecondInputAddress = 0x3a0;
 constexpr uint64_t kTieResultAddress = 0x3c0;
@@ -147,6 +150,8 @@ void test_invalid_mmio(TestInitiator &initiator) {
   CHECK(transaction.get_response_status() == tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
 }  // namespace
+
+void test_batches(TestInitiator &initiator, TestMemory &memory);
 
 TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(2, 3) == 5);
@@ -277,6 +282,99 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   expect_error(initiator, memory, command);
   command.src0 = kFirstInputAddress;
   expect_done(initiator, memory, command);
+  test_batches(initiator, memory);
+}
+
+void test_batches(TestInitiator &initiator, TestMemory &memory) {
+  const std::array<int32_t, 3> first = {4, -3, 8};
+  const std::array<int32_t, 3> second = {-1, 2, -9};
+  const std::array<int32_t, 3> third = {5, 1, 2};
+  CHECK(memory.write(kFirstInputAddress, first.data(), first.size() * sizeof(first.front())));
+  CHECK(memory.write(kSecondInputAddress, second.data(), second.size() * sizeof(second.front())));
+  CHECK(memory.write(kThirdInputAddress, third.data(), third.size() * sizeof(third.front())));
+
+  int32_t minimum = 0;
+  accel_min_argmin_result_t argmin{};
+  std::array<accel_command_t, 2> children = {{
+      {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, 0, 3, 0, 0, 0, kFirstInputAddress, kSecondInputAddress, 0,
+       kBatchSecondResultAddress},
+      {ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, 0, 3, 0, 0, 0, kFirstInputAddress,
+       kSecondInputAddress, kThirdInputAddress, kResultAddress},
+  }};
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  const accel_command_t batch = {ACCEL_OPCODE_EXECUTE_BATCH,
+                                 0,
+                                 static_cast<uint32_t>(children.size()),
+                                 0,
+                                 0,
+                                 0,
+                                 kBatchDescriptorAddress,
+                                 0,
+                                 0,
+                                 kBatchResultAddress};
+  expect_done(initiator, memory, batch);
+  accel_batch_result_t batch_result{};
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  CHECK(batch_result.completed == children.size() && batch_result.failed_index == UINT32_MAX);
+  CHECK(memory.read(kBatchSecondResultAddress, &minimum, sizeof(minimum)) && minimum == -1);
+  CHECK(memory.read(kResultAddress, &argmin, sizeof(argmin)) && argmin.value == 0 &&
+        argmin.index == 1);
+
+  children[1].opcode = kUnsupportedOpcode;
+  minimum = 0;
+  argmin = {123, 123};
+  CHECK(memory.write(kResultAddress, &argmin, sizeof(argmin)));
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  expect_error(initiator, memory, batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  CHECK(batch_result.completed == 1 && batch_result.failed_index == 1);
+  CHECK(memory.read(kBatchSecondResultAddress, &minimum, sizeof(minimum)) && minimum == -1);
+  CHECK(memory.read(kResultAddress, &argmin, sizeof(argmin)) && argmin.value == 123);
+
+  children[1] = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
+                 0,
+                 3,
+                 0,
+                 0,
+                 0,
+                 kInvalidElementAddress,
+                 kSecondInputAddress,
+                 0,
+                 kResultAddress};
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  expect_error(initiator, memory, batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  CHECK(batch_result.completed == 1 && batch_result.failed_index == 1);
+
+  children[0].dst = kInvalidElementAddress;
+  children[1].opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN;
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  expect_error(initiator, memory, batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  CHECK(batch_result.completed == 0 && batch_result.failed_index == 0);
+
+  children[0] = batch;
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  expect_error(initiator, memory, batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  CHECK(batch_result.completed == 0 && batch_result.failed_index == 0);
+
+  accel_command_t invalid_batch = batch;
+  invalid_batch.n = 0;
+  expect_error(initiator, memory, invalid_batch);
+  invalid_batch.n = 1;
+  invalid_batch.src0 = kTruncatedDescriptorAddress;
+  expect_error(initiator, memory, invalid_batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  CHECK(batch_result.completed == 0 && batch_result.failed_index == 0);
+
+  children[0] = {
+      ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, 0, 3, 0, 0, 0, kFirstInputAddress, kSecondInputAddress, 0,
+      kBatchSecondResultAddress};
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(accel_command_t)));
+  invalid_batch = batch;
+  invalid_batch.n = 1;
+  expect_done(initiator, memory, invalid_batch);
 }
 
 int sc_main(int argc, char **argv) {

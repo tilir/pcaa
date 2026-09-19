@@ -48,6 +48,19 @@ target_include_directories(pcaa_pbqp
 )
 target_link_libraries(pcaa_pbqp PUBLIC pcaa_cost_math)
 
+add_library(pcaa_workload STATIC
+  workload/src/analyzer.cpp
+  workload/src/graph_generator.cpp
+)
+target_include_directories(pcaa_workload PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/workload/include)
+
+add_executable(pbqp_workload workload/src/pbqp_workload.cpp)
+target_link_libraries(pbqp_workload PRIVATE pcaa_workload)
+
+add_executable(workload_unit workload/tests/workload_unit.cpp)
+target_link_libraries(workload_unit PRIVATE GTest::gtest_main pcaa_workload)
+add_test(NAME workload_unit COMMAND workload_unit)
+
 set_source_files_properties(software/pbqp/pbqp_unit.c PROPERTIES LANGUAGE CXX)
 add_executable(pbqp_unit software/pbqp/pbqp_unit.c)
 target_link_libraries(pbqp_unit PRIVATE GTest::gtest_main pcaa_pbqp)
@@ -95,6 +108,7 @@ set(PCAA_FORMAT_SOURCES
   software/accel_driver.c
   software/accel_driver.h
   software/tests/basic.c
+  software/tests/batch.c
   software/tests/common.h
   software/tests/randomized.c
   software/tests/runtime.c
@@ -105,6 +119,12 @@ set(PCAA_FORMAT_SOURCES
   software/pbqp/pbqp.cpp
   software/pbqp/pbqp_accelerator.c
   software/pbqp/pbqp_accelerator.h
+  workload/include/pbqp_workload/analyzer.h
+  workload/include/pbqp_workload/graph_generator.h
+  workload/src/analyzer.cpp
+  workload/src/graph_generator.cpp
+  workload/src/pbqp_workload.cpp
+  workload/tests/workload_unit.cpp
 )
 
 if(CLANG_FORMAT AND INCLUDE_WHAT_YOU_USE AND IWYU_TOOL)
@@ -230,6 +250,7 @@ function(add_pbqp_baremetal_test test_name)
       software/accel_driver.c
       software/accel_driver.h
       software/tests/common.h
+      software/tests/pbqp_reference.h
       software/tests/linker.ld
       software/tests/start.S
       software/tests/runtime.c
@@ -245,6 +266,7 @@ endfunction()
 
 if(RISCV_GCC AND RISCV_GXX)
   add_baremetal_test(basic)
+  add_baremetal_test(batch)
   add_baremetal_test(randomized)
   add_pbqp_baremetal_test(pbqp_basic)
   add_pbqp_baremetal_test(pbqp_randomized)

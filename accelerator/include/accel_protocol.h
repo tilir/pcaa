@@ -26,6 +26,7 @@ extern "C" {
 #define ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN 2u
 #define ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN 3u
 #define ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN 4u
+#define ACCEL_OPCODE_EXECUTE_BATCH 5u
 
 #define ACCEL_INF (INT32_MAX / 4)
 
@@ -36,8 +37,11 @@ extern "C" {
  * physical addresses. src0, src1, src2, and dst are never host pointers.
  *
  * opcode selects the operation; flags, m, k, and reserved are retained for
- * future compatible commands. The current map/reduce commands use n as their
- * runtime vector length and interpret source elements as int32_t values.
+ * future compatible commands. The map/reduce commands use n as their runtime
+ * vector length and interpret source elements as int32_t values. For
+ * EXECUTE_BATCH, n is a non-zero child-descriptor count, src0 is the guest
+ * physical address of accel_command_t[n], dst is the guest physical address
+ * of accel_batch_result_t, and src1/src2 are unused.
  */
 typedef struct accel_command {
   uint32_t opcode;
@@ -57,8 +61,25 @@ typedef struct accel_min_argmin_result {
   uint32_t index;
 } accel_min_argmin_result_t;
 
+/*
+ * Completion state written by an ordered, fail-stop EXECUTE_BATCH submission.
+ * On success, completed equals the child count and failed_index is UINT32_MAX.
+ * On child i failure, completed and failed_index both equal i; earlier child
+ * outputs remain visible and later children do not execute.
+ */
+typedef struct accel_batch_result {
+  uint32_t completed;
+  uint32_t failed_index;
+} accel_batch_result_t;
+
+#if defined(__cplusplus)
+static_assert(sizeof(accel_command_t) == 56, "accelerator ABI changed");
+static_assert(sizeof(accel_batch_result_t) == 8, "accelerator ABI changed");
+#else
+_Static_assert(sizeof(accel_command_t) == 56, "accelerator ABI changed");
+_Static_assert(sizeof(accel_batch_result_t) == 8, "accelerator ABI changed");
+#endif
+
 #ifdef __cplusplus
 }  // extern "C"
-
-static_assert(sizeof(accel_command_t) == 56, "accelerator ABI changed");
 #endif

@@ -111,6 +111,26 @@ class CostKernel {
     return api_.min3_argmin(api_.context, first, second, third, result);
   }
 
+  int Min2Batch(const pbqp_min2_job_t *jobs, size_t count) const {
+    if (api_.min2_argmin_batch != nullptr)
+      return api_.min2_argmin_batch(api_.context, jobs, count);
+    for (size_t index = 0; index < count; ++index) {
+      if (Min2(jobs[index].a, jobs[index].b, jobs[index].result) != 0)
+        return -1;
+    }
+    return 0;
+  }
+
+  int Min3Batch(const pbqp_min3_job_t *jobs, size_t count) const {
+    if (api_.min3_argmin_batch != nullptr)
+      return api_.min3_argmin_batch(api_.context, jobs, count);
+    for (size_t index = 0; index < count; ++index) {
+      if (Min3(jobs[index].a, jobs[index].b, jobs[index].c, jobs[index].result) != 0)
+        return -1;
+    }
+    return 0;
+  }
+
  private:
   const pbqp_cost_kernel_t &api_;
 };
@@ -215,16 +235,20 @@ class Solver {
     pbqp_node_t &node = problem.nodes[node_index];
     pbqp_node_t &neighbor = problem.nodes[neighbor_index];
 
+    pbqp_min2_job_t jobs[PBQP_MAX_DOMAIN];
+    accel_min_argmin_result_t results[PBQP_MAX_DOMAIN];
     for (unsigned neighbor_value = 0; neighbor_value < neighbor.domain; ++neighbor_value) {
       const pbqp_vector_view_t unary = {node.unary, node.domain, 1};
       const pbqp_vector_view_t edge_cost = EdgeView(edge, node_index, neighbor_value, node.domain);
-      accel_min_argmin_result_t result;
       RecordView(&problem.statistics, unary);
       RecordView(&problem.statistics, edge_cost);
       RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, node.domain, 2);
-      if (kernel_.Min2(unary, edge_cost, &result) != 0) {
-        return PBQP_ARGUMENT_ERROR;
-      }
+      jobs[neighbor_value] = {unary, edge_cost, &results[neighbor_value]};
+    }
+    if (kernel_.Min2Batch(jobs, neighbor.domain) != 0)
+      return PBQP_ARGUMENT_ERROR;
+    for (unsigned neighbor_value = 0; neighbor_value < neighbor.domain; ++neighbor_value) {
+      const accel_min_argmin_result_t result = results[neighbor_value];
       if (result.index >= node.domain) {
         return PBQP_ARGUMENT_ERROR;
       }
@@ -263,6 +287,9 @@ class Solver {
     }
     pbqp_edge_t &fill_edge = problem.edges[fill_edge_index];
 
+    pbqp_min3_job_t jobs[PBQP_MAX_DOMAIN * PBQP_MAX_DOMAIN];
+    accel_min_argmin_result_t results[PBQP_MAX_DOMAIN * PBQP_MAX_DOMAIN];
+    unsigned job_count = 0;
     for (unsigned first_value = 0; first_value < first.domain; ++first_value) {
       for (unsigned second_value = 0; second_value < second.domain; ++second_value) {
         const pbqp_vector_view_t unary = {node.unary, node.domain, 1};
@@ -270,15 +297,21 @@ class Solver {
             EdgeView(first_edge, node_index, first_value, node.domain);
         const pbqp_vector_view_t second_cost =
             EdgeView(second_edge, node_index, second_value, node.domain);
-        accel_min_argmin_result_t result;
         RecordView(&problem.statistics, unary);
         RecordView(&problem.statistics, first_cost);
         RecordView(&problem.statistics, second_cost);
         RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, node.domain,
                         3);
-        if (kernel_.Min3(unary, first_cost, second_cost, &result) != 0) {
-          return PBQP_ARGUMENT_ERROR;
-        }
+        jobs[job_count] = {unary, first_cost, second_cost, &results[job_count]};
+        ++job_count;
+      }
+    }
+    if (kernel_.Min3Batch(jobs, job_count) != 0)
+      return PBQP_ARGUMENT_ERROR;
+    job_count = 0;
+    for (unsigned first_value = 0; first_value < first.domain; ++first_value) {
+      for (unsigned second_value = 0; second_value < second.domain; ++second_value) {
+        const accel_min_argmin_result_t result = results[job_count++];
         if (result.index >= node.domain) {
           return PBQP_ARGUMENT_ERROR;
         }
@@ -425,6 +458,22 @@ int SoftwareMin3(void *, pbqp_vector_view_t first, pbqp_vector_view_t second,
   return 0;
 }
 
+int SoftwareMin2Batch(void *context, const pbqp_min2_job_t *jobs, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    if (SoftwareMin2(context, jobs[index].a, jobs[index].b, jobs[index].result) != 0)
+      return -1;
+  }
+  return 0;
+}
+
+int SoftwareMin3Batch(void *context, const pbqp_min3_job_t *jobs, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    if (SoftwareMin3(context, jobs[index].a, jobs[index].b, jobs[index].c, jobs[index].result) != 0)
+      return -1;
+  }
+  return 0;
+}
+
 }  // namespace
 
 extern "C" {
@@ -532,6 +581,8 @@ void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *st
   kernel->context = statistics;
   kernel->min2_argmin = SoftwareMin2;
   kernel->min3_argmin = SoftwareMin3;
+  kernel->min2_argmin_batch = SoftwareMin2Batch;
+  kernel->min3_argmin_batch = SoftwareMin3Batch;
 }
 
 pbqp_status_t pbqp_solver_create(pbqp_solver_t *solver, pbqp_mode_t mode,

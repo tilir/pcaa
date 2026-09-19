@@ -4,7 +4,7 @@
 
 .equ TOHOST_EXIT_SHIFT, 1
 .equ TOHOST_EXIT_VALID, 1
-.equ STACK_SIZE, 4096
+.equ STACK_SIZE, 16384
 
 .section .text.init
 .globl _start

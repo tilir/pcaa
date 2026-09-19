@@ -44,6 +44,7 @@ int accel_submit(const accel_command_t *source) {
       (uint32_t)(command_address >> kPhysicalAddressLowBits);
   fence_read_write();
   k_registers[ACCEL_MMIO_DOORBELL / sizeof(uint32_t)] = kDoorbellSubmit;
+  fence_read_write();
   return 0;
 }
 
@@ -55,6 +56,20 @@ int accel_wait(void) {
 
   fence_read_write();
   return status == ACCEL_STATUS_DONE ? 0 : -1;
+}
+
+int accel_submit_batch(const accel_command_t *commands, size_t count,
+                       accel_batch_result_t *result) {
+  if (commands == NULL || result == NULL || count == 0 || count > UINT32_MAX) {
+    return -1;
+  }
+  const accel_command_t batch = {
+      .opcode = ACCEL_OPCODE_EXECUTE_BATCH,
+      .n = (uint32_t)count,
+      .src0 = (uintptr_t)commands,
+      .dst = (uintptr_t)result,
+  };
+  return accel_submit(&batch) || accel_wait() ? -1 : 0;
 }
 
 int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n) {

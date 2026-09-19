@@ -50,6 +50,13 @@ dst.index = first i whose sum equals dst.value
 
 This operation is used by the bundled PBQP workload when eliminating a node with two neighbours.
 
+### `EXECUTE_BATCH`
+
+Submits an ordered array of the four primitive commands above with one doorbell.
+Each child runs in array order. On success, the batch result reports the number
+completed; if a child fails, earlier results remain, later children do not run,
+and the result identifies the failed child. Batches cannot contain batches.
+
 ## Build and test
 
 SystemC 3.x, GoogleTest, and a RISC-V bare-metal compiler must be installed. Give CMake the source tree of the exact Spike build used to run the plugin:
@@ -58,13 +65,14 @@ SystemC 3.x, GoogleTest, and a RISC-V bare-metal compiler must be installed. Giv
 cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim
 cmake --build build
 ctest --test-dir build --output-on-failure
-cmake --build build --target basic_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
+cmake --build build --target basic_elf batch_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
 ```
 
 Run the deterministic and randomized bare-metal tests:
 
 ```sh
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/basic.elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/batch.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/randomized.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_basic.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_randomized.elf
@@ -73,3 +81,14 @@ spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 bui
 `basic.elf` checks known examples of every supported command. `randomized.elf` compares accelerator results with an independent software implementation for 100 rounds and lengths 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64. Its fixed seed is `0x51a7c0de`.
 
 The PBQP programs solve small cost graphs in both software and accelerator modes, then compare both reconstructed solutions with exhaustive enumeration. `pbqp_basic.elf` is deterministic; `pbqp_randomized.elf` uses a fixed seed.
+
+## Workload characterization
+
+`pbqp_workload` is a host tool for generating reproducible PBQP cost-kernel traces. It writes CSV
+without host addresses and reports logical operation and traffic distributions; it is not a timing
+benchmark. See the [characterization report](doc/workload-characterization.md) and run:
+
+```sh
+cmake --build build --target pbqp_workload
+build/pbqp_workload --trace build/pbqp-workload.csv
+```

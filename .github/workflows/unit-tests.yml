@@ -27,15 +27,37 @@ jobs:
           sudo apt-get install --yes --no-install-recommends \
             cmake \
             g++ \
+            gcc-riscv64-unknown-elf \
+            autoconf \
+            automake \
+            libboost-regex-dev \
+            libboost-system-dev \
+            libtool \
+            device-tree-compiler \
             libgtest-dev \
             libsystemc-dev \
             ninja-build
 
+      - name: Build Spike with extlib support
+        run: |
+          git clone --depth=1 https://github.com/riscv-software-src/riscv-isa-sim.git spike-source
+          mkdir spike-build
+          cd spike-build
+          ../spike-source/configure --prefix="$PWD/install"
+          make --jobs="$(nproc)"
+          make install
+
       - name: Configure and test Debug
         run: |
-          cmake -S . -B build-debug -G Ninja -DBUILD_TESTING=ON
+          cmake -S . -B build-debug -G Ninja -DBUILD_TESTING=ON -DSPIKE_SOURCE_DIR="$GITHUB_WORKSPACE/spike-source"
           cmake --build build-debug --parallel
           ctest --test-dir build-debug --output-on-failure
+          cmake --build build-debug --target basic_elf batch_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
+          spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/basic.elf
+          spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/batch.elf
+          spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/randomized.elf
+          spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/pbqp_basic.elf
+          spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/pbqp_randomized.elf
 
       - name: Configure and test Release
         run: |

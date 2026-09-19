@@ -97,6 +97,10 @@ bool Accelerator::write_i32(uint64_t address, int32_t value) {
 }
 
 bool Accelerator::is_valid_command(const accel_command_t &command) const {
+  if (command.opcode == ACCEL_OPCODE_EXECUTE_BATCH) {
+    return command.n != 0 && command.src0 != 0 && command.dst != 0;
+  }
+
   if (command.n == 0 || command.src0 == 0 || command.src1 == 0 || command.dst == 0) {
     return false;
   }
@@ -117,6 +121,33 @@ bool Accelerator::execute() {
   accel_command_t command{};
   if (descriptor_address_ == 0 || !memory_.read(descriptor_address_, &command, sizeof(command)) ||
       !is_valid_command(command)) {
+    return false;
+  }
+
+  return command.opcode == ACCEL_OPCODE_EXECUTE_BATCH ? execute_batch(command)
+                                                      : execute_command(command);
+}
+
+bool Accelerator::execute_batch(const accel_command_t &command) {
+  accel_batch_result_t result{0, UINT32_MAX};
+  for (uint32_t index = 0; index < command.n; ++index) {
+    accel_command_t child{};
+    const uint64_t address = command.src0 + uint64_t(index) * sizeof(child);
+    if (!memory_.read(address, &child, sizeof(child)) ||
+        child.opcode == ACCEL_OPCODE_EXECUTE_BATCH || !is_valid_command(child) ||
+        !execute_command(child)) {
+      result.completed = index;
+      result.failed_index = index;
+      memory_.write(command.dst, &result, sizeof(result));
+      return false;
+    }
+  }
+  result.completed = command.n;
+  return memory_.write(command.dst, &result, sizeof(result));
+}
+
+bool Accelerator::execute_command(const accel_command_t &command) {
+  if (!is_valid_command(command) || command.opcode == ACCEL_OPCODE_EXECUTE_BATCH) {
     return false;
   }
 

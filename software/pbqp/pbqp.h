@@ -42,6 +42,21 @@ typedef struct {
   size_t stride;
 } pbqp_vector_view_t;
 
+/* One already-scheduled two-input primitive reduction and its caller-owned output. */
+typedef struct {
+  pbqp_vector_view_t a;
+  pbqp_vector_view_t b;
+  accel_min_argmin_result_t *result;
+} pbqp_min2_job_t;
+
+/* One already-scheduled three-input primitive reduction and its caller-owned output. */
+typedef struct {
+  pbqp_vector_view_t a;
+  pbqp_vector_view_t b;
+  pbqp_vector_view_t c;
+  accel_min_argmin_result_t *result;
+} pbqp_min3_job_t;
+
 /* Workload counters collected by a solve, including explicit scratch packing. */
 typedef struct {
   unsigned nodes;
@@ -58,15 +73,24 @@ typedef struct {
   unsigned strided_views;
   unsigned scratch_packs;
   uint64_t scratch_bytes;
+  unsigned top_level_submissions;
+  unsigned batch_submissions;
+  unsigned batch_primitive_descriptors;
+  unsigned maximum_batch_size;
+  uint64_t batch_descriptor_bytes;
+  uint64_t batch_child_descriptor_bytes;
+  unsigned unique_packed_views;
 } pbqp_statistics_t;
 
-/* Pluggable execution of two- and three-input min/argmin cost primitives. */
+/* Pluggable execution of already-scheduled two- and three-input cost primitives. */
 typedef struct {
   void *context;
   int (*min2_argmin)(void *context, pbqp_vector_view_t a, pbqp_vector_view_t b,
                      accel_min_argmin_result_t *result);
   int (*min3_argmin)(void *context, pbqp_vector_view_t a, pbqp_vector_view_t b,
                      pbqp_vector_view_t c, accel_min_argmin_result_t *result);
+  int (*min2_argmin_batch)(void *context, const pbqp_min2_job_t *jobs, size_t count);
+  int (*min3_argmin_batch)(void *context, const pbqp_min3_job_t *jobs, size_t count);
 } pbqp_cost_kernel_t;
 
 /* A configured solver: the mode is descriptive, while kernel supplies its cost primitive. */

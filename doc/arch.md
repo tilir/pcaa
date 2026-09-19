@@ -2,7 +2,7 @@
 
 ## Architecture specification
 
-Revision 0.3
+Revision 0.4
 
 ## 1. Scope
 
@@ -24,6 +24,19 @@ The architectural boundary is deliberately independent of a particular CPU,
 bus protocol, simulator, or implementation technology. The current reference
 integration uses RISC-V MMIO and guest physical addresses, but the block ABI is
 defined by this document.
+
+For batch-capable operation, responsibility is divided as follows:
+
+```text
+algorithm-level scheduling  → software
+batch construction          → software/runtime
+batch iteration             → accelerator
+primitive execution         → accelerator
+```
+
+Software decides what work exists and in what order. Hardware may autonomously
+drain a finite ordered batch of already-scheduled primitive operations. The
+block does not infer dependencies, reorder work, or inspect PBQP topology.
 
 ## 2. Terminology
 
@@ -252,6 +265,22 @@ The result stored at `dst` has the same `accel_min_argmin_result` representation
 as section 8.3. `value` is the minimum of `value[i]`; `index` is its first
 occurrence. All three source addresses are required.
 
+### 8.5 `EXECUTE_BATCH`
+
+Opcode: `5`
+
+`n` is a non-zero count of child `accel_command_t` descriptors at guest physical
+address `src0`. `dst` points to `accel_batch_result_t`. The block fetches and
+executes child descriptors strictly in ascending array order using the same
+primitive semantics as standalone commands. Children may use only opcodes 1–4;
+nested batches are invalid.
+
+On success, `{ completed = n, failed_index = UINT32_MAX }` is stored and status
+is `DONE`. If child `i` cannot be read, is invalid, or fails, descriptors before
+it remain completed, descriptors after it are not executed, and
+`{ completed = i, failed_index = i }` is stored before status becomes `ERROR`.
+Batch execution is fail-stop and non-transactional.
+
 ## 9. Error behavior
 
 PCAA reports `ERROR` for a submission when any required descriptor, input, or
@@ -263,34 +292,12 @@ malformed cases are:
 * `n == 0`;
 * zero required source or destination address;
 * zero `src2` for opcodes `2` and `4`.
+* `EXECUTE_BATCH` with a nested batch child.
 
 An `ERROR` completion does not specify a result at `dst`. A subsequent valid
 submission is permitted and is independent of the preceding error.
 
-## 10. Internal datapath model
-
-The architectural computation is a runtime-length stream reduction. The
-logical vector length is unrelated to a future physical lane count.
-
-```text
-src0 ──┐
-src1 ──┼──► cost-add lanes ──► min reduction ──► result
-src2 ──┘
-```
-
-An implementation may process an input vector in strips:
-
-```text
-logical length: 10000
-physical lanes: 8
-strips: [0..7], [8..15], …
-```
-
-Strip size, lane count, reduction-tree shape, buffering, pipelining, and
-memory-level parallelism are microarchitectural choices. They must not change
-the results defined in sections 4 and 8.
-
-## 11. Timing and refinement
+## 10. Timing and refinement
 
 The initial model is a functional, untimed realization of this block. It
 preserves the same MMIO and descriptor contract as later implementations.
@@ -305,7 +312,7 @@ preserves the same MMIO and descriptor contract as later implementations.
 No timing refinement may alter command encoding, result values, tie breaking,
 status semantics, or guest-memory addressing.
 
-## 12. Extension space
+## 11. Extension space
 
 Future opcodes may use `flags`, `m`, `k`, and additional descriptor semantics
 to express vector operations, reductions, broadcast operations, matrix/table
@@ -317,7 +324,11 @@ projections, and normalization. Extensions retain the following invariants:
 * deterministic cost arithmetic where specified;
 * software ownership of graph topology and irregular control flow.
 
-## 13. Exclusions
+Structural batched descriptors, in which the block generates an inner
+iteration space, and stride-aware operand descriptors remain unresolved future
+choices. Neither is defined by this revision.
+
+## 12. Exclusions
 
 The baseline block does not define:
 

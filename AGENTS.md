@@ -52,15 +52,34 @@ Document public ABI structs directly where they are declared: state their purpos
 * `software`: bare-metal driver; callers use its API, not MMIO offsets.
 * `software/pbqp`: C ABI and C++17 implementation of fixed-capacity PBQP reductions.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
+* `workload`: host-only C++ graph generation and logical workload characterization.
 
 Host tests use GoogleTest. Keep SystemC tests behind the required `sc_main` entry point, which
 initializes and runs GoogleTest; bare-metal ELFs remain freestanding and do not use GoogleTest.
+
+Keep `doc/arch.md` confined to architectural block facts. Put workload methodology, trace schemas,
+and unresolved interface-analysis material in `doc/design.md` and factual corpus output in
+`doc/workload-characterization.md`. The workload generator is host-only and may use standard C++
+containers; never enlarge bare-metal PBQP limits merely to characterize workloads.
 
 ## Semantics to retain
 
 `ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
 
 PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
+
+`EXECUTE_BATCH` is an ordered, finite control operation, not a scheduler: the
+runtime constructs child primitive descriptors and the accelerator drains them
+in order. Do not add dependency discovery, reordering, graph awareness, or
+batching across PBQP reductions. Within one software-built batch, cache packed
+strided views by `(base, length, stride)` and keep their storage valid through
+completion. Keep statistics for primitive descriptors separate from top-level
+MMIO submissions.
+
+When changing freestanding PBQP working storage, calculate the complete call
+chain's stack use. The bare-metal startup reserve is 16 KiB and PBQP ELFs must
+be built and run under Spike before handoff; host-only CTest does not cover
+their stack or driver path.
 
 PBQP admits `ACCEL_INF` and finite costs only in the documented safe range
 `[PBQP_MIN_FINITE_COST, PBQP_MAX_FINITE_COST]`; reject other costs at graph construction so

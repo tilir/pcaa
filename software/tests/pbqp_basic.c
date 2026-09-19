@@ -22,8 +22,15 @@ enum {
   kExpectedAddArgminSubmissions = 2,
   kExpectedContiguousViews = 6,
   kExpectedStridedViews = 10,
-  kExpectedScratchPacks = 10,
-  kExpectedScratchBytes = 80,
+  kExpectedScratchPacks = 6,
+  kExpectedScratchBytes = 48,
+  kExpectedTopLevelSubmissions = 2,
+  kExpectedBatchSubmissions = 2,
+  kExpectedBatchPrimitiveDescriptors = 6,
+  kExpectedMaximumBatchSize = 4,
+  kExpectedBatchDescriptorBytes = 448,
+  kExpectedBatchChildDescriptorBytes = 336,
+  kExpectedUniquePackedViews = 6,
   kInvalidGuestAddress = 0x40000000UL,
 };
 
@@ -97,7 +104,14 @@ int main(void) {
       statistics->contiguous_views != kExpectedContiguousViews ||
       statistics->strided_views != kExpectedStridedViews ||
       statistics->scratch_packs != kExpectedScratchPacks ||
-      statistics->scratch_bytes != kExpectedScratchBytes)
+      statistics->scratch_bytes != kExpectedScratchBytes ||
+      statistics->top_level_submissions != kExpectedTopLevelSubmissions ||
+      statistics->batch_submissions != kExpectedBatchSubmissions ||
+      statistics->batch_primitive_descriptors != kExpectedBatchPrimitiveDescriptors ||
+      statistics->maximum_batch_size != kExpectedMaximumBatchSize ||
+      statistics->batch_descriptor_bytes != kExpectedBatchDescriptorBytes ||
+      statistics->batch_child_descriptor_bytes != kExpectedBatchChildDescriptorBytes ||
+      statistics->unique_packed_views != kExpectedUniquePackedViews)
     finish(kExitWorkloadStatisticsMismatch);
   finish(kExitSuccess);
 }
