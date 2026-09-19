@@ -79,6 +79,7 @@ if(SPIKE_SOURCE_DIR)
   )
   target_include_directories(pcaa_spike_device
     PRIVATE
+      ${SPIKE_SOURCE_DIR}
       ${SPIKE_SOURCE_DIR}/riscv
       ${SPIKE_SOURCE_DIR}/fesvr
       ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
