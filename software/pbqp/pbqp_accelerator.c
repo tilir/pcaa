@@ -21,8 +21,7 @@ static int accel_min2(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
   pbqp_accelerator_kernel_context_t *context = opaque;
   const int32_t *first = contiguous(context, a, context->scratch0);
   const int32_t *second = contiguous(context, b, context->scratch1);
-  *result = accel_min_add_argmin(first, second, a.length);
-  return 0;
+  return accel_min_add_argmin_checked(first, second, a.length, result);
 }
 
 static int accel_min3(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
@@ -31,8 +30,7 @@ static int accel_min3(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
   const int32_t *first = contiguous(context, a, context->scratch0);
   const int32_t *second = contiguous(context, b, context->scratch1);
   const int32_t *third = contiguous(context, c, context->scratch2);
-  *result = accel_min_add3_argmin(first, second, third, a.length);
-  return 0;
+  return accel_min_add3_argmin_checked(first, second, third, a.length, result);
 }
 
 void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,

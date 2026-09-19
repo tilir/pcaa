@@ -18,12 +18,16 @@ enum {
   PBQP_MAX_DOMAIN = 6,
   PBQP_MAX_EDGES = PBQP_MAX_NODES * (PBQP_MAX_NODES - 1) / 2,
   PBQP_VECTOR_HISTOGRAM_BINS = PBQP_MAX_DOMAIN + 1,
+  /* Keeps every finite sum of one complete fixed-capacity graph below ACCEL_INF. */
+  PBQP_MAX_FINITE_COST = (ACCEL_INF - 1) / (PBQP_MAX_NODES + PBQP_MAX_EDGES),
+  PBQP_MIN_FINITE_COST = -PBQP_MAX_FINITE_COST,
 };
 
 typedef enum {
   PBQP_OK = 0,
   PBQP_CAPACITY_ERROR = -1,
   PBQP_ARGUMENT_ERROR = -2,
+  PBQP_COST_RANGE_ERROR = -3,
 } pbqp_status_t;
 
 typedef enum {
@@ -90,7 +94,12 @@ typedef struct {
   int32_t cost[PBQP_MAX_DOMAIN * PBQP_MAX_DOMAIN];
 } pbqp_edge_t;
 
-/* Caller-owned fixed-capacity PBQP graph and its mutable reduction workspace. */
+/*
+ * Caller-owned fixed-capacity PBQP graph and mutable reduction workspace.
+ * Finite unary and edge costs must be in [PBQP_MIN_FINITE_COST,
+ * PBQP_MAX_FINITE_COST]; ACCEL_INF is also allowed. This preserves exact PBQP
+ * reductions despite the accelerator's saturating arithmetic.
+ */
 typedef struct {
   unsigned node_count;
   unsigned edge_count;

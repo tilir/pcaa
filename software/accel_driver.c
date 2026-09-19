@@ -14,7 +14,7 @@ static volatile uint32_t *const k_registers = (volatile uint32_t *)ACCEL_MMIO_BA
 static accel_command_t pending_command __attribute__((aligned(kDescriptorAlignment)));
 
 static inline void fence_read_write(void) {
-  __asm__ volatile("fence rw, rw" ::: "memory");
+  __asm__ volatile("fence iorw, iorw" ::: "memory");
 }
 
 static accel_command_t make_command(uint32_t opcode, const int32_t *src0, const int32_t *src1,
@@ -53,6 +53,7 @@ int accel_wait(void) {
     status = k_registers[ACCEL_MMIO_STATUS / sizeof(uint32_t)];
   } while (status == ACCEL_STATUS_IDLE || status == ACCEL_STATUS_BUSY);
 
+  fence_read_write();
   return status == ACCEL_STATUS_DONE ? 0 : -1;
 }
 
@@ -72,21 +73,31 @@ int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *d, siz
 
 accel_min_argmin_result_t accel_min_add_argmin(const int32_t *a, const int32_t *b, size_t n) {
   accel_min_argmin_result_t result = {ACCEL_INF, 0};
-  const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, a, b, NULL, &result, n);
-  if (accel_submit(&command) || accel_wait()) {
-    result.value = ACCEL_INF;
-  }
+  accel_min_add_argmin_checked(a, b, n, &result);
   return result;
 }
 
 accel_min_argmin_result_t accel_min_add3_argmin(const int32_t *a, const int32_t *b,
                                                 const int32_t *c, size_t n) {
   accel_min_argmin_result_t result = {ACCEL_INF, 0};
-  const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, a, b, c, &result, n);
-  if (accel_submit(&command) || accel_wait()) {
-    result.value = ACCEL_INF;
-  }
+  accel_min_add3_argmin_checked(a, b, c, n, &result);
   return result;
+}
+
+int accel_min_add_argmin_checked(const int32_t *a, const int32_t *b, size_t n,
+                                 accel_min_argmin_result_t *result) {
+  if (result == NULL)
+    return -1;
+  const accel_command_t command =
+      make_command(ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, a, b, NULL, result, n);
+  return accel_submit(&command) || accel_wait() ? -1 : 0;
+}
+
+int accel_min_add3_argmin_checked(const int32_t *a, const int32_t *b, const int32_t *c, size_t n,
+                                  accel_min_argmin_result_t *result) {
+  if (result == NULL)
+    return -1;
+  const accel_command_t command =
+      make_command(ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, a, b, c, result, n);
+  return accel_submit(&command) || accel_wait() ? -1 : 0;
 }

@@ -177,6 +177,11 @@ A host submits a command in this order:
 6. After `DONE`, make the result read visible according to host memory ordering
    rules and read `dst`.
 
+The driver uses I/O-inclusive fences around submission, status observation, and
+result consumption. A command whose guest-memory operand overlaps the block's
+own MMIO control region fails with `ERROR`; operands must refer to ordinary
+guest physical memory, not the PCAA control registers.
+
 The descriptor is owned by the host until doorbell submission and by PCAA
 until completion. The host must not modify the descriptor or referenced input
 and output regions while the command is outstanding. Overlap between source

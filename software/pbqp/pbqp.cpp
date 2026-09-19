@@ -9,6 +9,10 @@ namespace {
 
 enum ReductionKind { kReductionR0, kReductionR1, kReductionR2 };
 
+bool IsValidCost(int32_t cost) {
+  return cost == ACCEL_INF || (cost >= PBQP_MIN_FINITE_COST && cost <= PBQP_MAX_FINITE_COST);
+}
+
 class Graph {
  public:
   explicit Graph(pbqp_problem_t &state) : state_(state) {}
@@ -133,8 +137,9 @@ class Solver {
     }
 
     unsigned core_assignment[PBQP_MAX_NODES] = {};
+    bool has_assignment = false;
     solution->optimum = ACCEL_INF;
-    EnumerateActiveCore(state, 0, core_assignment, solution);
+    EnumerateActiveCore(state, 0, core_assignment, solution, &has_assignment);
     solution->optimum = accel_cost_add(state.objective_offset, solution->optimum);
     ReconstructSolution(state, solution);
     return PBQP_OK;
@@ -294,11 +299,13 @@ class Solver {
   }
 
   static void EnumerateActiveCore(const pbqp_problem_t &problem, unsigned node,
-                                  unsigned *assignment, pbqp_solution_t *solution) {
+                                  unsigned *assignment, pbqp_solution_t *solution,
+                                  bool *has_assignment) {
     if (node == problem.node_count) {
       const int32_t value = EvaluateActiveCore(problem, assignment);
-      if (value < solution->optimum) {
+      if (!*has_assignment || value < solution->optimum) {
         solution->optimum = value;
+        *has_assignment = true;
         for (unsigned index = 0; index < problem.node_count; ++index) {
           solution->assignment[index] = assignment[index];
         }
@@ -306,12 +313,12 @@ class Solver {
       return;
     }
     if (!problem.nodes[node].active) {
-      EnumerateActiveCore(problem, node + 1, assignment, solution);
+      EnumerateActiveCore(problem, node + 1, assignment, solution, has_assignment);
       return;
     }
     for (unsigned value = 0; value < problem.nodes[node].domain; ++value) {
       assignment[node] = value;
-      EnumerateActiveCore(problem, node + 1, assignment, solution);
+      EnumerateActiveCore(problem, node + 1, assignment, solution, has_assignment);
     }
   }
 
@@ -337,11 +344,12 @@ class Solver {
 };
 
 void Enumerate(const pbqp_problem_t &problem, unsigned node, unsigned *assignment,
-               pbqp_solution_t *solution) {
+               pbqp_solution_t *solution, bool *has_assignment) {
   if (node == problem.node_count) {
     const int32_t value = pbqp_evaluate(&problem, assignment);
-    if (value < solution->optimum) {
+    if (!*has_assignment || value < solution->optimum) {
       solution->optimum = value;
+      *has_assignment = true;
       for (unsigned index = 0; index < problem.node_count; ++index) {
         solution->assignment[index] = assignment[index];
       }
@@ -350,7 +358,7 @@ void Enumerate(const pbqp_problem_t &problem, unsigned node, unsigned *assignmen
   }
   for (unsigned value = 0; value < problem.nodes[node].domain; ++value) {
     assignment[node] = value;
-    Enumerate(problem, node + 1, assignment, solution);
+    Enumerate(problem, node + 1, assignment, solution, has_assignment);
   }
 }
 
@@ -403,6 +411,12 @@ pbqp_status_t pbqp_add_node(pbqp_problem_t *problem, unsigned domain, const int3
     return PBQP_CAPACITY_ERROR;
   }
 
+  for (unsigned index = 0; index < domain; ++index) {
+    if (!IsValidCost(unary[index])) {
+      return PBQP_COST_RANGE_ERROR;
+    }
+  }
+
   pbqp_node_t &node = problem->nodes[problem->node_count++];
   node.active = 1;
   node.domain = domain;
@@ -426,6 +440,16 @@ pbqp_status_t pbqp_add_edge(pbqp_problem_t *problem, unsigned first, unsigned se
     }
   }
 
+  const unsigned first_domain = problem->nodes[first].domain;
+  const unsigned second_domain = problem->nodes[second].domain;
+  for (unsigned first_value = 0; first_value < first_domain; ++first_value) {
+    for (unsigned second_value = 0; second_value < second_domain; ++second_value) {
+      if (!IsValidCost(costs[first_value * second_domain + second_value])) {
+        return PBQP_COST_RANGE_ERROR;
+      }
+    }
+  }
+
   for (unsigned index = 0; index < PBQP_MAX_EDGES; ++index) {
     pbqp_edge_t &edge = problem->edges[index];
     if (edge.active) {
@@ -434,8 +458,7 @@ pbqp_status_t pbqp_add_edge(pbqp_problem_t *problem, unsigned first, unsigned se
     edge.active = 1;
     edge.first = first;
     edge.second = second;
-    const unsigned second_domain = problem->nodes[second].domain;
-    for (unsigned first_value = 0; first_value < problem->nodes[first].domain; ++first_value) {
+    for (unsigned first_value = 0; first_value < first_domain; ++first_value) {
       for (unsigned second_value = 0; second_value < second_domain; ++second_value) {
         edge.cost[first_value * PBQP_MAX_DOMAIN + second_value] =
             costs[first_value * second_domain + second_value];
@@ -467,8 +490,9 @@ pbqp_status_t pbqp_bruteforce(const pbqp_problem_t *problem, pbqp_solution_t *so
     return PBQP_ARGUMENT_ERROR;
   }
   unsigned assignment[PBQP_MAX_NODES] = {};
+  bool has_assignment = false;
   solution->optimum = ACCEL_INF;
-  Enumerate(*problem, 0, assignment, solution);
+  Enumerate(*problem, 0, assignment, solution, &has_assignment);
   return PBQP_OK;
 }
 

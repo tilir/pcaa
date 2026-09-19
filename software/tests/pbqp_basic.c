@@ -6,8 +6,17 @@
 #include "common.h"
 #include "pbqp/pbqp.h"
 #include "pbqp/pbqp_accelerator.h"
+#include "pbqp_reference.h"
 
 enum {
+  kExitSuccess = 0,
+  kExitGraphOrOracleFailure = 1,
+  kExitSoftwareSolveFailure = 2,
+  kExitAcceleratorCallbackErrorNotReported = 3,
+  kExitAcceleratorSolveFailure = 4,
+  kExitOptimumMismatch = 5,
+  kExitAssignmentMismatch = 6,
+  kExitWorkloadStatisticsMismatch = 7,
   kExpectedR2Reductions = 1,
   kExpectedAdd3ArgminSubmissions = 4,
   kExpectedAddArgminSubmissions = 2,
@@ -15,6 +24,7 @@ enum {
   kExpectedStridedViews = 10,
   kExpectedScratchPacks = 10,
   kExpectedScratchBytes = 80,
+  kInvalidGuestAddress = 0x40000000UL,
 };
 
 static pbqp_problem_t software_problem;
@@ -44,30 +54,40 @@ int main(void) {
   pbqp_solver_t accelerator_solver;
   pbqp_accelerator_kernel_context_t accelerator_context;
 
-  if (build_problem(&original_problem) != PBQP_OK ||
-      pbqp_bruteforce(&original_problem, &oracle) != PBQP_OK)
-    finish(1);
+  if (build_problem(&original_problem) != PBQP_OK) {
+    finish(kExitGraphOrOracleFailure);
+  }
+  pbqp_reference_bruteforce(&original_problem, &oracle);
   software_problem = original_problem;
   pbqp_make_software_kernel(&software_kernel, &software_problem.statistics);
   if (pbqp_solver_create(&software_solver, PBQP_MODE_SOFTWARE, &software_kernel) != PBQP_OK ||
       pbqp_solver_solve(&software_solver, &software_problem, &software_solution) != PBQP_OK)
-    finish(2);
+    finish(kExitSoftwareSolveFailure);
 
   accelerator_problem = original_problem;
   accel_init();
   pbqp_make_accelerator_kernel(&accelerator_kernel, &accelerator_context,
                                &accelerator_problem.statistics);
+  const pbqp_vector_view_t invalid_view = {(const int32_t *)kInvalidGuestAddress, 1, 1};
+  const pbqp_vector_view_t valid_view = {original_problem.nodes[0].unary, 1, 1};
+  accel_min_argmin_result_t failed_result;
+  if (accelerator_kernel.min2_argmin(accelerator_kernel.context, invalid_view, valid_view,
+                                     &failed_result) == 0 ||
+      accelerator_kernel.min3_argmin(accelerator_kernel.context, valid_view, invalid_view,
+                                     valid_view, &failed_result) == 0) {
+    finish(kExitAcceleratorCallbackErrorNotReported);
+  }
   if (pbqp_solver_create(&accelerator_solver, PBQP_MODE_ACCELERATOR, &accelerator_kernel) !=
           PBQP_OK ||
       pbqp_solver_solve(&accelerator_solver, &accelerator_problem, &accelerator_solution) !=
           PBQP_OK)
-    finish(3);
+    finish(kExitAcceleratorSolveFailure);
 
   if (software_solution.optimum != oracle.optimum || accelerator_solution.optimum != oracle.optimum)
-    finish(4);
-  if (pbqp_evaluate(&original_problem, software_solution.assignment) != oracle.optimum ||
-      pbqp_evaluate(&original_problem, accelerator_solution.assignment) != oracle.optimum)
-    finish(5);
+    finish(kExitOptimumMismatch);
+  if (pbqp_reference_evaluate(&original_problem, software_solution.assignment) != oracle.optimum ||
+      pbqp_reference_evaluate(&original_problem, accelerator_solution.assignment) != oracle.optimum)
+    finish(kExitAssignmentMismatch);
   const pbqp_statistics_t *statistics = &accelerator_problem.statistics;
   if (statistics->r2_count != kExpectedR2Reductions ||
       statistics->primitive_submissions[ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN] !=
@@ -78,6 +98,6 @@ int main(void) {
       statistics->strided_views != kExpectedStridedViews ||
       statistics->scratch_packs != kExpectedScratchPacks ||
       statistics->scratch_bytes != kExpectedScratchBytes)
-    finish(6);
-  finish(0);
+    finish(kExitWorkloadStatisticsMismatch);
+  finish(kExitSuccess);
 }

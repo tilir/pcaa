@@ -52,7 +52,7 @@ This operation is used by the bundled PBQP workload when eliminating a node with
 
 ## Build and test
 
-SystemC 3.x and a RISC-V bare-metal compiler must be installed. Give CMake the source tree of the exact Spike build used to run the plugin:
+SystemC 3.x, GoogleTest, and a RISC-V bare-metal compiler must be installed. Give CMake the source tree of the exact Spike build used to run the plugin:
 
 ```sh
 cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim

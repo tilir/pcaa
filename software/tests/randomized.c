@@ -6,6 +6,7 @@
 #include "common.h"
 
 enum {
+  kExitSuccess = 0,
   kMaximumVectorLength = 64,
   kRandomTestRounds = 100,
   kRandomValueSpan = 401,
@@ -56,5 +57,5 @@ int main(void) {
     }
   }
 
-  finish(0);
+  finish(kExitSuccess);
 }

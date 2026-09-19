@@ -32,6 +32,10 @@ int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *c, siz
 accel_min_argmin_result_t accel_min_add_argmin(const int32_t *a, const int32_t *b, size_t n);
 accel_min_argmin_result_t accel_min_add3_argmin(const int32_t *a, const int32_t *b,
                                                 const int32_t *c, size_t n);
+int accel_min_add_argmin_checked(const int32_t *a, const int32_t *b, size_t n,
+                                 accel_min_argmin_result_t *result);
+int accel_min_add3_argmin_checked(const int32_t *a, const int32_t *b, const int32_t *c, size_t n,
+                                  accel_min_argmin_result_t *result);
 
 #ifdef __cplusplus
 }  // extern "C"

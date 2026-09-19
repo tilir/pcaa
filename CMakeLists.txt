@@ -18,6 +18,7 @@ include(CTest)
 
 find_path(SYSTEMC_INCLUDE_DIR systemc REQUIRED)
 find_library(SYSTEMC_LIBRARY systemc REQUIRED)
+find_package(GTest REQUIRED)
 
 add_library(pcaa_cost_math STATIC accelerator/src/cost_math.cpp)
 set_target_properties(pcaa_cost_math PROPERTIES
@@ -47,13 +48,13 @@ target_include_directories(pcaa_pbqp
 )
 target_link_libraries(pcaa_pbqp PUBLIC pcaa_cost_math)
 
+set_source_files_properties(software/pbqp/pbqp_unit.c PROPERTIES LANGUAGE CXX)
 add_executable(pbqp_unit software/pbqp/pbqp_unit.c)
-target_link_libraries(pbqp_unit PRIVATE pcaa_pbqp)
-set_target_properties(pbqp_unit PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries(pbqp_unit PRIVATE GTest::gtest_main pcaa_pbqp)
 add_test(NAME pbqp_unit COMMAND pbqp_unit)
 
 add_executable(systemc_unit accelerator/tests/systemc_unit.cpp)
-target_link_libraries(systemc_unit PRIVATE pcaa_core)
+target_link_libraries(systemc_unit PRIVATE GTest::gtest pcaa_core)
 add_test(NAME systemc_unit COMMAND systemc_unit)
 
 set(SPIKE_SOURCE_DIR "" CACHE PATH
@@ -99,6 +100,7 @@ set(PCAA_FORMAT_SOURCES
   software/tests/runtime.c
   software/tests/pbqp_basic.c
   software/tests/pbqp_randomized.c
+  software/tests/pbqp_reference.h
   software/pbqp/pbqp.h
   software/pbqp/pbqp.cpp
   software/pbqp/pbqp_accelerator.c
@@ -157,6 +159,7 @@ function(add_baremetal_test test_name)
       software/accel_driver.c
       software/accel_driver.h
       software/tests/common.h
+      software/tests/pbqp_reference.h
       software/tests/linker.ld
       software/tests/start.S
       software/tests/runtime.c

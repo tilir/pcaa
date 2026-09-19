@@ -6,8 +6,14 @@
 #include "common.h"
 #include "pbqp/pbqp.h"
 #include "pbqp/pbqp_accelerator.h"
+#include "pbqp_reference.h"
 
 enum {
+  kExitSuccess = 0,
+  kExitGraphBuildFailure = 1,
+  kExitSoftwareSolveFailure = 2,
+  kExitAcceleratorSolveFailure = 3,
+  kExitDifferentialMismatch = 4,
   kRounds = 24,
   kMinimumDomain = 2,
   kDomainSpan = 2,
@@ -83,15 +89,15 @@ int main(void) {
     pbqp_solver_t accelerator_solver;
     pbqp_accelerator_kernel_context_t accelerator_context;
 
-    if (build_problem(&original_problem) != PBQP_OK ||
-        pbqp_bruteforce(&original_problem, &oracle) != PBQP_OK) {
-      finish(1);
+    if (build_problem(&original_problem) != PBQP_OK) {
+      finish(kExitGraphBuildFailure);
     }
+    pbqp_reference_bruteforce(&original_problem, &oracle);
     software_problem = original_problem;
     pbqp_make_software_kernel(&software_kernel, &software_problem.statistics);
     if (pbqp_solver_create(&software_solver, PBQP_MODE_SOFTWARE, &software_kernel) != PBQP_OK ||
         pbqp_solver_solve(&software_solver, &software_problem, &software_solution) != PBQP_OK) {
-      finish(2);
+      finish(kExitSoftwareSolveFailure);
     }
     accelerator_problem = original_problem;
     pbqp_make_accelerator_kernel(&accelerator_kernel, &accelerator_context,
@@ -100,14 +106,16 @@ int main(void) {
             PBQP_OK ||
         pbqp_solver_solve(&accelerator_solver, &accelerator_problem, &accelerator_solution) !=
             PBQP_OK) {
-      finish(3);
+      finish(kExitAcceleratorSolveFailure);
     }
     if (software_solution.optimum != oracle.optimum ||
         accelerator_solution.optimum != oracle.optimum ||
-        pbqp_evaluate(&original_problem, software_solution.assignment) != oracle.optimum ||
-        pbqp_evaluate(&original_problem, accelerator_solution.assignment) != oracle.optimum) {
-      finish(4);
+        pbqp_reference_evaluate(&original_problem, software_solution.assignment) !=
+            oracle.optimum ||
+        pbqp_reference_evaluate(&original_problem, accelerator_solution.assignment) !=
+            oracle.optimum) {
+      finish(kExitDifferentialMismatch);
     }
   }
-  finish(0);
+  finish(kExitSuccess);
 }

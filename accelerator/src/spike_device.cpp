@@ -36,26 +36,45 @@
 /* Keeps all guest-memory access at the Spike boundary; Accelerator only sees this ABI. */
 class SpikeMemory final : public MemoryInterface {
  public:
-  explicit SpikeMemory(simif_t *simulator) : simulator_(simulator) {}
+  SpikeMemory(simif_t *simulator, reg_t control_base, reg_t control_size)
+      : simulator_(simulator), control_base_(control_base), control_size_(control_size) {}
 
   bool read(uint64_t address, void *destination, size_t size) override {
+    if (overlaps_control(address, size)) {
+      return false;
+    }
     return simulator_->mmio_load(address, size, static_cast<uint8_t *>(destination));
   }
 
   bool write(uint64_t address, const void *source, size_t size) override {
+    if (overlaps_control(address, size)) {
+      return false;
+    }
     return simulator_->mmio_store(address, size, static_cast<const uint8_t *>(source));
   }
 
  private:
+  bool overlaps_control(uint64_t address, size_t size) const {
+    if (size == 0) {
+      return false;
+    }
+    if (address >= control_base_) {
+      return address - control_base_ < control_size_;
+    }
+    return control_base_ - address < size;
+  }
+
   simif_t *simulator_;
+  reg_t control_base_;
+  reg_t control_size_;
 };
 
 class PcaaDevice final : public sc_core::sc_module, public abstract_device_t {
  public:
-  PcaaDevice(simif_t *simulator, reg_t size, sc_core::sc_module_name name)
+  PcaaDevice(simif_t *simulator, reg_t base, reg_t size, sc_core::sc_module_name name)
       : sc_core::sc_module(name),
         control_socket("control_socket"),
-        memory_(simulator),
+        memory_(simulator, base, size),
         accelerator_("pcaa_accelerator", memory_),
         size_(size) {
     control_socket.bind(accelerator_.target_socket);
@@ -127,8 +146,8 @@ pcaa_t *pcaa_parse_from_fdt(const void *, const sim_t *sim, reg_t *base,
   *base = configuration->base;
   // Spike's factory API uses const sim_t*, although the plugin is given the live simulator.
   auto *mutable_simulator = const_cast<sim_t *>(sim);
-  return new pcaa_t(static_cast<simif_t *>(mutable_simulator), configuration->size,
-                    sc_core::sc_module_name("pcaa_device"));
+  return new pcaa_t(static_cast<simif_t *>(mutable_simulator), configuration->base,
+                    configuration->size, sc_core::sc_module_name("pcaa_device"));
 }
 
 std::string pcaa_generate_dts(const sim_t *, const std::vector<std::string> &args) {

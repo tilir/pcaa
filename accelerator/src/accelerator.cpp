@@ -77,6 +77,9 @@ bool Accelerator::write_register(uint64_t address, uint32_t value) {
                             (static_cast<uint64_t>(value) << kPhysicalAddressLowBits);
       return true;
     case ACCEL_MMIO_DOORBELL:
+      if (status_ == ACCEL_STATUS_BUSY) {
+        return false;
+      }
       status_ = ACCEL_STATUS_BUSY;
       status_ = execute() ? ACCEL_STATUS_DONE : ACCEL_STATUS_ERROR;
       return true;

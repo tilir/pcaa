@@ -8,11 +8,10 @@
 #include "memory_interface.h"
 
 #include <array>
-#include <cassert>
 #include <cstring>
 #include <cstdint>
-#include <iostream>
 #include <map>
+#include <string>
 #include <vector>
 
 #include <sysc/communication/sc_port.h>
@@ -29,6 +28,10 @@
 #include <tlm_core/tlm_2/tlm_generic_payload/tlm_phase.h>
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/simple_target_socket.h>
+
+#include <gtest/gtest.h>
+
+#define CHECK(expression) EXPECT_TRUE(expression)
 
 class TestMemory final : public MemoryInterface {
  public:
@@ -97,12 +100,12 @@ void mmio(TestInitiator &initiator, uint64_t address, uint32_t *value, tlm::tlm_
   transaction.set_data_length(sizeof(*value));
   transaction.set_streaming_width(sizeof(*value));
   initiator.socket->b_transport(transaction, delay);
-  assert(transaction.get_response_status() == tlm::TLM_OK_RESPONSE);
+  CHECK(transaction.get_response_status() == tlm::TLM_OK_RESPONSE);
 }
 
 uint32_t submit(TestInitiator &initiator, TestMemory &memory, const accel_command_t &command,
                 uint64_t descriptor_address = kDescriptorAddress) {
-  assert(memory.write(descriptor_address, &command, sizeof(command)));
+  CHECK(memory.write(descriptor_address, &command, sizeof(command)));
 
   uint32_t register_value = static_cast<uint32_t>(descriptor_address);
   mmio(initiator, ACCEL_MMIO_DESC_ADDR_LO, &register_value, tlm::TLM_WRITE_COMMAND);
@@ -116,11 +119,11 @@ uint32_t submit(TestInitiator &initiator, TestMemory &memory, const accel_comman
 }
 
 void expect_done(TestInitiator &initiator, TestMemory &memory, const accel_command_t &command) {
-  assert(submit(initiator, memory, command) == ACCEL_STATUS_DONE);
+  CHECK(submit(initiator, memory, command) == ACCEL_STATUS_DONE);
 }
 
 void expect_error(TestInitiator &initiator, TestMemory &memory, const accel_command_t &command) {
-  assert(submit(initiator, memory, command) == ACCEL_STATUS_ERROR);
+  CHECK(submit(initiator, memory, command) == ACCEL_STATUS_ERROR);
 }
 
 void test_invalid_mmio(TestInitiator &initiator) {
@@ -133,7 +136,7 @@ void test_invalid_mmio(TestInitiator &initiator) {
   transaction.set_data_length(sizeof(value));
   transaction.set_streaming_width(sizeof(value));
   initiator.socket->b_transport(transaction, delay);
-  assert(transaction.get_response_status() == tlm::TLM_BURST_ERROR_RESPONSE);
+  CHECK(transaction.get_response_status() == tlm::TLM_BURST_ERROR_RESPONSE);
 
   uint32_t aligned_value = 0;
   transaction.set_address(ACCEL_MMIO_STATUS + kInvalidMmioOffset);
@@ -141,15 +144,15 @@ void test_invalid_mmio(TestInitiator &initiator) {
   transaction.set_data_length(sizeof(aligned_value));
   transaction.set_streaming_width(sizeof(aligned_value));
   initiator.socket->b_transport(transaction, delay);
-  assert(transaction.get_response_status() == tlm::TLM_ADDRESS_ERROR_RESPONSE);
+  CHECK(transaction.get_response_status() == tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
 }  // namespace
 
-int sc_main(int, char **) {
-  assert(accel_cost_add(2, 3) == 5);
-  assert(accel_cost_add(ACCEL_INF, -100) == ACCEL_INF);
-  assert(accel_cost_add(ACCEL_INF - 1, 2) == ACCEL_INF);
-  assert(accel_cost_add(INT32_MIN, -1) == INT32_MIN);
+TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
+  CHECK(accel_cost_add(2, 3) == 5);
+  CHECK(accel_cost_add(ACCEL_INF, -100) == ACCEL_INF);
+  CHECK(accel_cost_add(ACCEL_INF - 1, 2) == ACCEL_INF);
+  CHECK(accel_cost_add(INT32_MIN, -1) == INT32_MIN);
 
   TestMemory memory(kTestMemorySize);
   Accelerator accelerator("accelerator", memory);
@@ -161,9 +164,9 @@ int sc_main(int, char **) {
   const std::array<int32_t, 5> first = {ACCEL_INF, -4, 7, -4, 9};
   const std::array<int32_t, 5> second = {1, 2, -10, 2, ACCEL_INF};
   const std::array<int32_t, 5> third = {3, 4, 5, -1, 7};
-  assert(memory.write(kFirstInputAddress, first.data(), first.size() * sizeof(first.front())));
-  assert(memory.write(kSecondInputAddress, second.data(), second.size() * sizeof(second.front())));
-  assert(memory.write(kThirdInputAddress, third.data(), third.size() * sizeof(third.front())));
+  CHECK(memory.write(kFirstInputAddress, first.data(), first.size() * sizeof(first.front())));
+  CHECK(memory.write(kSecondInputAddress, second.data(), second.size() * sizeof(second.front())));
+  CHECK(memory.write(kThirdInputAddress, third.data(), third.size() * sizeof(third.front())));
 
   accel_command_t command{ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
                           0,
@@ -177,30 +180,30 @@ int sc_main(int, char **) {
                           kResultAddress};
   expect_done(initiator, memory, command);
   int32_t result = 0;
-  assert(memory.read(kResultAddress, &result, sizeof(result)) && result == ACCEL_INF);
+  CHECK(memory.read(kResultAddress, &result, sizeof(result)) && result == ACCEL_INF);
 
   command.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN;
   command.n = 5;
   command.src2 = kThirdInputAddress;
   expect_done(initiator, memory, command);
-  assert(memory.read(kResultAddress, &result, sizeof(result)) && result == -3);
+  CHECK(memory.read(kResultAddress, &result, sizeof(result)) && result == -3);
 
   command.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN;
   expect_done(initiator, memory, command);
   accel_min_argmin_result_t argmin_result{};
-  assert(memory.read(kResultAddress, &argmin_result, sizeof(argmin_result)));
-  assert(argmin_result.value == -3 && argmin_result.index == 3);
+  CHECK(memory.read(kResultAddress, &argmin_result, sizeof(argmin_result)));
+  CHECK(argmin_result.value == -3 && argmin_result.index == 3);
 
   command.opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN;
   command.src2 = 0;
   expect_done(initiator, memory, command);
-  assert(memory.read(kResultAddress, &argmin_result, sizeof(argmin_result)));
-  assert(argmin_result.value == -3 && argmin_result.index == 2);
+  CHECK(memory.read(kResultAddress, &argmin_result, sizeof(argmin_result)));
+  CHECK(argmin_result.value == -3 && argmin_result.index == 2);
 
   const std::array<int32_t, 3> tie_a = {-4, -4, 9};
   const std::array<int32_t, 3> tie_b = {0, 0, 0};
-  assert(memory.write(kTieFirstInputAddress, tie_a.data(), tie_a.size() * sizeof(tie_a.front())));
-  assert(memory.write(kTieSecondInputAddress, tie_b.data(), tie_b.size() * sizeof(tie_b.front())));
+  CHECK(memory.write(kTieFirstInputAddress, tie_a.data(), tie_a.size() * sizeof(tie_a.front())));
+  CHECK(memory.write(kTieSecondInputAddress, tie_b.data(), tie_b.size() * sizeof(tie_b.front())));
   command = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN,
              0,
              3,
@@ -212,14 +215,14 @@ int sc_main(int, char **) {
              0,
              kTieResultAddress};
   expect_done(initiator, memory, command);
-  assert(memory.read(kTieResultAddress, &argmin_result, sizeof(argmin_result)));
-  assert(argmin_result.value == -4 && argmin_result.index == 0);
+  CHECK(memory.read(kTieResultAddress, &argmin_result, sizeof(argmin_result)));
+  CHECK(argmin_result.value == -4 && argmin_result.index == 0);
 
   std::vector<int32_t> large_a(kLargeVectorLength, 10);
   std::vector<int32_t> large_b(kLargeVectorLength, 1);
   large_a.back() = -100;
-  assert(memory.write(kLargeFirstInputAddress, large_a.data(), large_a.size() * sizeof(int32_t)));
-  assert(memory.write(kLargeSecondInputAddress, large_b.data(), large_b.size() * sizeof(int32_t)));
+  CHECK(memory.write(kLargeFirstInputAddress, large_a.data(), large_a.size() * sizeof(int32_t)));
+  CHECK(memory.write(kLargeSecondInputAddress, large_b.data(), large_b.size() * sizeof(int32_t)));
   command = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN,
              0,
              static_cast<uint32_t>(kLargeVectorLength),
@@ -231,8 +234,8 @@ int sc_main(int, char **) {
              0,
              kLargeResultAddress};
   expect_done(initiator, memory, command);
-  assert(memory.read(kLargeResultAddress, &argmin_result, sizeof(argmin_result)));
-  assert(argmin_result.value == -99 && argmin_result.index == 255);
+  CHECK(memory.read(kLargeResultAddress, &argmin_result, sizeof(argmin_result)));
+  CHECK(argmin_result.value == -99 && argmin_result.index == 255);
 
   command.opcode = kUnsupportedOpcode;
   expect_error(initiator, memory, command);
@@ -256,7 +259,7 @@ int sc_main(int, char **) {
              kSecondInputAddress,
              0,
              kResultAddress};
-  assert(!memory.write(kTruncatedDescriptorAddress, &command, sizeof(command)));
+  CHECK(!memory.write(kTruncatedDescriptorAddress, &command, sizeof(command)));
   uint32_t register_value = kTruncatedDescriptorAddress;
   mmio(initiator, ACCEL_MMIO_DESC_ADDR_LO, &register_value, tlm::TLM_WRITE_COMMAND);
   register_value = 0;
@@ -265,7 +268,7 @@ int sc_main(int, char **) {
   mmio(initiator, ACCEL_MMIO_DOORBELL, &register_value, tlm::TLM_WRITE_COMMAND);
   register_value = 0;
   mmio(initiator, ACCEL_MMIO_STATUS, &register_value, tlm::TLM_READ_COMMAND);
-  assert(register_value == ACCEL_STATUS_ERROR);
+  CHECK(register_value == ACCEL_STATUS_ERROR);
 
   command.dst = kInvalidElementAddress;
   expect_error(initiator, memory, command);
@@ -274,7 +277,9 @@ int sc_main(int, char **) {
   expect_error(initiator, memory, command);
   command.src0 = kFirstInputAddress;
   expect_done(initiator, memory, command);
+}
 
-  std::cout << "SystemC accelerator unit tests passed\n";
-  return 0;
+int sc_main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

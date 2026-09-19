@@ -53,11 +53,21 @@ Document public ABI structs directly where they are declared: state their purpos
 * `software/pbqp`: C ABI and C++17 implementation of fixed-capacity PBQP reductions.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
 
+Host tests use GoogleTest. Keep SystemC tests behind the required `sc_main` entry point, which
+initializes and runs GoogleTest; bare-metal ELFs remain freestanding and do not use GoogleTest.
+
 ## Semantics to retain
 
 `ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
 
 PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
+
+PBQP admits `ACCEL_INF` and finite costs only in the documented safe range
+`[PBQP_MIN_FINITE_COST, PBQP_MAX_FINITE_COST]`; reject other costs at graph construction so
+saturating arithmetic cannot make mathematically equivalent reductions disagree. Bare-metal PBQP
+differential tests must use `software/tests/pbqp_reference.h`, not production cost math, as their
+exhaustive oracle. Error-valued accelerator submissions must propagate through cost-kernel callbacks;
+never treat `ACCEL_INF` as an error sentinel.
 
 ## Spike integration
 
@@ -75,6 +85,9 @@ Run from the repository root:
 cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim
 cmake --build build
 ctest --test-dir build --output-on-failure
+cmake -S . -B build-release -DSPIKE_SOURCE_DIR=../riscv-isa-sim -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+ctest --test-dir build-release --output-on-failure
 cmake --build build --target basic_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/basic.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/randomized.elf
