@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 PCAA contributors
+# Builds and runs host-side SystemC unit tests on GitHub Actions.
+
+name: Unit tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  systemc-unit-tests:
+    name: SystemC unit tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            cmake \
+            g++ \
+            libsystemc-dev \
+            ninja-build
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

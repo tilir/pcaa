@@ -1,0 +1,60 @@
+# Programmable Cost Algebra Accelerator
+
+PCAA is a small programmable accelerator for recurring operations on cost vectors and tables. It is intended for workloads such as PBQP and cost-function networks, where software manages the graph or problem structure while the accelerator performs regular arithmetic over contiguous data.
+
+The project currently runs bare-metal RISC-V programs under Spike. Programs submit work through a small driver library; inputs and results live in ordinary guest memory.
+
+The complete block contract is in the [architecture specification](doc/arch.md).
+
+## Supported commands
+
+All input elements are signed 32-bit costs. The command descriptor supplies the vector length at run time, so callers are not limited to a fixed vector width.
+
+### `MAP_ADD_REDUCE_MIN`
+
+Adds two vectors element by element and writes their smallest sum:
+
+```text
+dst[0] = min_i (src0[i] + src1[i])
+```
+
+For example, for `src0 = {4, -2, 8}` and `src1 = {1, 5, -10}`, the result is `-2`.
+
+### `MAP_ADD3_REDUCE_MIN`
+
+The three-input counterpart of the preceding command:
+
+```text
+dst[0] = min_i (src0[i] + src1[i] + src2[i])
+```
+
+### `MAP_ADD_REDUCE_MIN_ARGMIN`
+
+Computes the same two-input minimum and additionally returns where it occurred:
+
+```text
+dst.value = min_i (src0[i] + src1[i])
+dst.index = first i whose sum equals dst.value
+```
+
+If several elements have the same minimum, the first is selected. `ACCEL_INF` (`INT32_MAX / 4`) represents an unreachable cost: adding it to any value remains `ACCEL_INF`. Positive values that would exceed it also saturate to `ACCEL_INF`.
+
+## Build and test
+
+SystemC 3.x and a RISC-V bare-metal compiler must be installed. Give CMake the source tree of the exact Spike build used to run the plugin:
+
+```sh
+cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim
+cmake --build build
+ctest --test-dir build --output-on-failure
+cmake --build build --target basic_elf randomized_elf
+```
+
+Run the deterministic and randomized bare-metal tests:
+
+```sh
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/basic.elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/randomized.elf
+```
+
+`basic.elf` checks known examples of every supported command. `randomized.elf` compares accelerator results with an independent software implementation for 100 rounds and lengths 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64. Its fixed seed is `0x51a7c0de`.

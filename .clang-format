@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Formatting policy for C, C++, and SystemC sources in this repository.
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++17
+ColumnLimit: 100
+IndentWidth: 2
+ContinuationIndentWidth: 4
+PointerAlignment: Right
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+SortIncludes: Never
