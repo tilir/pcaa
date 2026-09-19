@@ -39,6 +39,17 @@ dst.index = first i whose sum equals dst.value
 
 If several elements have the same minimum, the first is selected. `ACCEL_INF` (`INT32_MAX / 4`) represents an unreachable cost: adding it to any value remains `ACCEL_INF`. Positive values that would exceed it also saturate to `ACCEL_INF`.
 
+### `MAP_ADD3_REDUCE_MIN_ARGMIN`
+
+Computes a three-input minimum and the first index at which it occurs:
+
+```text
+dst.value = min_i (src0[i] + src1[i] + src2[i])
+dst.index = first i whose sum equals dst.value
+```
+
+This operation is used by the bundled PBQP workload when eliminating a node with two neighbours.
+
 ## Build and test
 
 SystemC 3.x and a RISC-V bare-metal compiler must be installed. Give CMake the source tree of the exact Spike build used to run the plugin:
@@ -47,7 +58,7 @@ SystemC 3.x and a RISC-V bare-metal compiler must be installed. Give CMake the s
 cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim
 cmake --build build
 ctest --test-dir build --output-on-failure
-cmake --build build --target basic_elf randomized_elf
+cmake --build build --target basic_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
 ```
 
 Run the deterministic and randomized bare-metal tests:
@@ -55,6 +66,10 @@ Run the deterministic and randomized bare-metal tests:
 ```sh
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/basic.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/randomized.elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_basic.elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_randomized.elf
 ```
 
 `basic.elf` checks known examples of every supported command. `randomized.elf` compares accelerator results with an independent software implementation for 100 rounds and lengths 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64. Its fixed seed is `0x51a7c0de`.
+
+The PBQP programs solve small cost graphs in both software and accelerator modes, then compare both reconstructed solutions with exhaustive enumeration. `pbqp_basic.elf` is deterministic; `pbqp_randomized.elf` uses a fixed seed.

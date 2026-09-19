@@ -30,6 +30,8 @@ Prefer `#pragma once` for project headers. Retain `extern "C"` guards around eve
 
 Define short, obvious C++ methods (including constructors and simple forwarding accessors) in the class definition. Reserve `.cpp` files for non-trivial control flow, algorithms, and platform-specific implementation details; do not split out a one-line definition solely by convention.
 
+For fixed-size storage owned by C++ code, prefer `std::array` over a raw C array. Preserve raw arrays where they are part of a C ABI or where the freestanding RV64 C++ toolchain deliberately has no standard-library headers.
+
 Every source module and public header begins with an SPDX GPL-3.0-only identifier, copyright notice, and a brief statement of its purpose. Avoid empty infinite loops in C/C++: use an explicit architecture-appropriate wait or halt instruction and mark terminal helpers `noreturn` where applicable.
 
 ## Documentation and public interfaces
@@ -48,11 +50,14 @@ Document public ABI structs directly where they are declared: state their purpos
 * `accelerator/src/spike_device.cpp`: the sole Spike plugin and physical-memory adapter.
 * `accelerator/tests`: host/SystemC tests, no Spike.
 * `software`: bare-metal driver; callers use its API, not MMIO offsets.
+* `software/pbqp`: C ABI and C++17 implementation of fixed-capacity PBQP reductions.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
 
 ## Semantics to retain
 
-`ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  `MAP_ADD_REDUCE_MIN_ARGMIN` selects the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
+`ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
+
+PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
 
 ## Spike integration
 
@@ -70,9 +75,11 @@ Run from the repository root:
 cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim
 cmake --build build
 ctest --test-dir build --output-on-failure
-cmake --build build --target basic_elf randomized_elf
+cmake --build build --target basic_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/basic.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/randomized.elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_basic.elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_randomized.elf
 ```
 
 If changing an opcode, cover normal data, `n=1`, non-power-of-two lengths, negative values, `INF`, ties/argmin where applicable, and memory failure/error handling in the SystemC test. Keep bare-metal random lengths including 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64.

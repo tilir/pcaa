@@ -13,18 +13,19 @@ extern "C" {
 /* This header deliberately has no C++ or SystemC dependencies. */
 #define ACCEL_MMIO_DESC_ADDR_LO 0x00u
 #define ACCEL_MMIO_DESC_ADDR_HI 0x04u
-#define ACCEL_MMIO_DOORBELL     0x08u
-#define ACCEL_MMIO_STATUS       0x0cu
-#define ACCEL_MMIO_SIZE         0x1000u
+#define ACCEL_MMIO_DOORBELL 0x08u
+#define ACCEL_MMIO_STATUS 0x0cu
+#define ACCEL_MMIO_SIZE 0x1000u
 
-#define ACCEL_STATUS_IDLE  0u
-#define ACCEL_STATUS_BUSY  1u
-#define ACCEL_STATUS_DONE  2u
+#define ACCEL_STATUS_IDLE 0u
+#define ACCEL_STATUS_BUSY 1u
+#define ACCEL_STATUS_DONE 2u
 #define ACCEL_STATUS_ERROR 3u
 
-#define ACCEL_OPCODE_MAP_ADD_REDUCE_MIN        1u
-#define ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN       2u
+#define ACCEL_OPCODE_MAP_ADD_REDUCE_MIN 1u
+#define ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN 2u
 #define ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN 3u
+#define ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN 4u
 
 #define ACCEL_INF (INT32_MAX / 4)
 

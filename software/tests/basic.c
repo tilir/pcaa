@@ -19,9 +19,14 @@ int main(void) {
     finish(2);
   }
 
+  const accel_min_argmin_result_t add3_result = accel_min_add3_argmin(a, b, c, count);
+  if (add3_result.value != -3 || add3_result.index != 3) {
+    finish(3);
+  }
+
   const accel_min_argmin_result_t result = accel_min_add_argmin(a, b, count);
   if (result.value != -3 || result.index != 2) {
-    finish(3);
+    finish(4);
   }
   finish(0);
 }

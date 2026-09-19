@@ -23,7 +23,7 @@ static inline int32_t ref_add(int32_t left, int32_t right) {
   return sum < INT32_MIN ? INT32_MIN : (int32_t)sum;
 }
 
-static inline int32_t ref_min2(const int32_t* first, const int32_t* second, size_t count) {
+static inline int32_t ref_min2(const int32_t *first, const int32_t *second, size_t count) {
   int32_t minimum = ACCEL_INF;
   for (size_t index = 0; index < count; ++index) {
     const int32_t value = ref_add(first[index], second[index]);
@@ -34,8 +34,8 @@ static inline int32_t ref_min2(const int32_t* first, const int32_t* second, size
   return minimum;
 }
 
-static inline int32_t ref_min3(const int32_t* first, const int32_t* second,
-                               const int32_t* third, size_t count) {
+static inline int32_t ref_min3(const int32_t *first, const int32_t *second, const int32_t *third,
+                               size_t count) {
   int32_t minimum = ACCEL_INF;
   for (size_t index = 0; index < count; ++index) {
     const int32_t value = ref_add(ref_add(first[index], second[index]), third[index]);

@@ -39,6 +39,19 @@ target_include_directories(pcaa_core
 )
 target_link_libraries(pcaa_core PUBLIC pcaa_cost_math ${SYSTEMC_LIBRARY})
 
+add_library(pcaa_pbqp STATIC software/pbqp/pbqp.cpp)
+target_include_directories(pcaa_pbqp
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/software
+)
+target_link_libraries(pcaa_pbqp PUBLIC pcaa_cost_math)
+
+add_executable(pbqp_unit software/pbqp/pbqp_unit.c)
+target_link_libraries(pbqp_unit PRIVATE pcaa_pbqp)
+set_target_properties(pbqp_unit PROPERTIES LINKER_LANGUAGE CXX)
+add_test(NAME pbqp_unit COMMAND pbqp_unit)
+
 add_executable(systemc_unit accelerator/tests/systemc_unit.cpp)
 target_link_libraries(systemc_unit PRIVATE pcaa_core)
 add_test(NAME systemc_unit COMMAND systemc_unit)
@@ -53,6 +66,7 @@ if(SPIKE_SOURCE_DIR)
   target_include_directories(pcaa_spike_device
     PRIVATE
       ${SPIKE_SOURCE_DIR}/riscv
+      ${SPIKE_SOURCE_DIR}/fesvr
       ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
   )
   target_link_libraries(pcaa_spike_device PRIVATE pcaa_core)
@@ -62,6 +76,7 @@ endif()
 set(RISCV_PREFIX "riscv64-unknown-elf-" CACHE STRING
   "Prefix of the bare-metal RISC-V toolchain")
 find_program(RISCV_GCC NAMES ${RISCV_PREFIX}gcc)
+find_program(RISCV_GXX NAMES ${RISCV_PREFIX}g++)
 find_program(CLANG_FORMAT NAMES clang-format)
 find_program(INCLUDE_WHAT_YOU_USE NAMES include-what-you-use)
 find_program(IWYU_TOOL NAMES iwyu_tool.py iwyu_tool)
@@ -81,6 +96,13 @@ set(PCAA_FORMAT_SOURCES
   software/tests/basic.c
   software/tests/common.h
   software/tests/randomized.c
+  software/tests/runtime.c
+  software/tests/pbqp_basic.c
+  software/tests/pbqp_randomized.c
+  software/pbqp/pbqp.h
+  software/pbqp/pbqp.cpp
+  software/pbqp/pbqp_accelerator.c
+  software/pbqp/pbqp_accelerator.h
 )
 
 if(CLANG_FORMAT AND INCLUDE_WHAT_YOU_USE AND IWYU_TOOL)
@@ -117,12 +139,14 @@ function(add_baremetal_test test_name)
       -mcmodel=medany
       -std=c11
       -ffreestanding
+      -fno-builtin
       -nostdlib
       -nostartfiles
       -O2
       -I${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
       -I${CMAKE_CURRENT_SOURCE_DIR}/software
       ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/start.S
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/runtime.c
       ${CMAKE_CURRENT_SOURCE_DIR}/software/accel_driver.c
       ${test_source}
       -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/software/tests/linker.ld
@@ -135,15 +159,92 @@ function(add_baremetal_test test_name)
       software/tests/common.h
       software/tests/linker.ld
       software/tests/start.S
+      software/tests/runtime.c
+      software/pbqp/pbqp.cpp
+      software/pbqp/pbqp.h
+      software/pbqp/pbqp_accelerator.c
+      software/pbqp/pbqp_accelerator.h
       ${test_source}
     VERBATIM
   )
   add_custom_target(${test_name}_elf DEPENDS ${output_elf})
 endfunction()
 
-if(RISCV_GCC)
+function(add_pbqp_baremetal_test test_name)
+  set(output_elf ${CMAKE_CURRENT_BINARY_DIR}/${test_name}.elf)
+  set(object_dir ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${test_name}_elf.dir)
+  set(common_flags
+    -march=rv64imac
+    -mabi=lp64
+    -mcmodel=medany
+    -ffreestanding
+    -fno-builtin
+    -nostdlib
+    -nostartfiles
+    -O2
+    -I${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
+    -I${CMAKE_CURRENT_SOURCE_DIR}/software
+  )
+  set(c_objects
+    ${object_dir}/start.o
+    ${object_dir}/runtime.o
+    ${object_dir}/accel_driver.o
+    ${object_dir}/pbqp_accelerator.o
+    ${object_dir}/cost_math.o
+    ${object_dir}/${test_name}.o
+  )
+  set(pbqp_object ${object_dir}/pbqp.o)
+
+  add_custom_command(
+    OUTPUT ${output_elf}
+    BYPRODUCTS ${c_objects} ${pbqp_object}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${object_dir}
+    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/start.S -o ${object_dir}/start.o
+    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/runtime.c -o ${object_dir}/runtime.o
+    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/accel_driver.c -o ${object_dir}/accel_driver.o
+    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/pbqp/pbqp_accelerator.c
+      -o ${object_dir}/pbqp_accelerator.o
+    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/${test_name}.c -o ${object_dir}/${test_name}.o
+    COMMAND ${RISCV_GXX} ${common_flags} -std=c++17 -fno-exceptions -fno-rtti
+      -fno-threadsafe-statics -c ${CMAKE_CURRENT_SOURCE_DIR}/software/pbqp/pbqp.cpp
+      -o ${pbqp_object}
+    COMMAND ${RISCV_GXX} ${common_flags} -std=c++17 -fno-exceptions -fno-rtti
+      -fno-threadsafe-statics -c ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/src/cost_math.cpp
+      -o ${object_dir}/cost_math.o
+    COMMAND ${RISCV_GXX} -nostdlib -nostartfiles ${c_objects} ${pbqp_object}
+      -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/software/tests/linker.ld
+      -Wl,--build-id=none
+      -o ${output_elf}
+    DEPENDS
+      accelerator/include/accel_protocol.h
+      accelerator/include/cost_math.h
+      accelerator/src/cost_math.cpp
+      software/accel_driver.c
+      software/accel_driver.h
+      software/tests/common.h
+      software/tests/linker.ld
+      software/tests/start.S
+      software/tests/runtime.c
+      software/pbqp/pbqp.cpp
+      software/pbqp/pbqp.h
+      software/pbqp/pbqp_accelerator.c
+      software/pbqp/pbqp_accelerator.h
+      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/${test_name}.c
+    VERBATIM
+  )
+  add_custom_target(${test_name}_elf DEPENDS ${output_elf})
+endfunction()
+
+if(RISCV_GCC AND RISCV_GXX)
   add_baremetal_test(basic)
   add_baremetal_test(randomized)
+  add_pbqp_baremetal_test(pbqp_basic)
+  add_pbqp_baremetal_test(pbqp_randomized)
 else()
-  message(STATUS "Bare-metal test targets disabled: ${RISCV_PREFIX}gcc was not found")
+  message(STATUS "Bare-metal test targets disabled: ${RISCV_PREFIX}gcc and g++ are required")
 endif()

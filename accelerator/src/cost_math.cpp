@@ -5,8 +5,6 @@
 #include "cost_math.h"
 #include "accel_protocol.h"
 
-#include <limits>
-
 int32_t accel_cost_add(int32_t left, int32_t right) {
   if (left == ACCEL_INF || right == ACCEL_INF) {
     return ACCEL_INF;
@@ -16,8 +14,8 @@ int32_t accel_cost_add(int32_t left, int32_t right) {
   if (sum >= ACCEL_INF) {
     return ACCEL_INF;
   }
-  if (sum < std::numeric_limits<int32_t>::min()) {
-    return std::numeric_limits<int32_t>::min();
+  if (sum < INT32_MIN) {
+    return INT32_MIN;
   }
   return static_cast<int32_t>(sum);
 }

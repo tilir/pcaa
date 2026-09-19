@@ -25,11 +25,13 @@ extern "C" {
 #define ACCEL_MMIO_BASE 0x10002000UL
 #endif
 void accel_init(void);
-int accel_submit(const accel_command_t* command);
+int accel_submit(const accel_command_t *command);
 int accel_wait(void);
-int32_t accel_min_add(const int32_t* a, const int32_t* b, size_t n);
-int32_t accel_min_add3(const int32_t* a, const int32_t* b, const int32_t* c, size_t n);
-accel_min_argmin_result_t accel_min_add_argmin(const int32_t* a, const int32_t* b, size_t n);
+int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n);
+int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *c, size_t n);
+accel_min_argmin_result_t accel_min_add_argmin(const int32_t *a, const int32_t *b, size_t n);
+accel_min_argmin_result_t accel_min_add3_argmin(const int32_t *a, const int32_t *b,
+                                                const int32_t *c, size_t n);
 
 #ifdef __cplusplus
 }  // extern "C"

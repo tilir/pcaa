@@ -2,7 +2,7 @@
 
 ## Architecture specification
 
-Revision 0.2
+Revision 0.3
 
 ## 1. Scope
 
@@ -233,6 +233,20 @@ struct accel_min_argmin_result {
 
 `value` is the minimum of `value[i]`; `index` is its first occurrence.
 
+### 8.4 `MAP_ADD3_REDUCE_MIN_ARGMIN`
+
+Opcode: `4`
+
+For `0 <= i < n`:
+
+```text
+value[i] = cost_add(cost_add(src0[i], src1[i]), src2[i])
+```
+
+The result stored at `dst` has the same `accel_min_argmin_result` representation
+as section 8.3. `value` is the minimum of `value[i]`; `index` is its first
+occurrence. All three source addresses are required.
+
 ## 9. Error behavior
 
 PCAA reports `ERROR` for a submission when any required descriptor, input, or
@@ -243,7 +257,7 @@ malformed cases are:
 * unsupported opcode;
 * `n == 0`;
 * zero required source or destination address;
-* zero `src2` for opcode `2`.
+* zero `src2` for opcodes `2` and `4`.
 
 An `ERROR` completion does not specify a result at `dst`. A subsequent valid
 submission is permitted and is independent of the preceding error.
