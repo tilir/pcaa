@@ -5,6 +5,13 @@
 #include "pbqp.h"
 #include "cost_math.h"
 
+#if defined(__riscv)
+/* The freestanding RV64 toolchain has no <assert.h>; preserve assertion semantics. */
+#define assert(expression) ((expression) ? static_cast<void>(0) : __builtin_trap())
+#else
+#include <assert.h>
+#endif
+
 namespace {
 
 enum ReductionKind { kReductionR0, kReductionR1, kReductionR2 };
@@ -60,10 +67,14 @@ class Graph {
   }
 
   unsigned OtherNode(const pbqp_edge_t &edge, unsigned node) const {
+    assert(edge.first == node || edge.second == node);
     return edge.first == node ? edge.second : edge.first;
   }
 
   int AddFillEdge(unsigned first, unsigned second) {
+    assert(first < state_.node_count);
+    assert(second < state_.node_count);
+    assert(first != second);
     for (unsigned index = 0; index < PBQP_MAX_EDGES; ++index) {
       pbqp_edge_t &edge = state_.edges[index];
       if (edge.active) {
@@ -85,7 +96,10 @@ class Graph {
 
 class CostKernel {
  public:
-  explicit CostKernel(const pbqp_cost_kernel_t &api) : api_(api) {}
+  explicit CostKernel(const pbqp_cost_kernel_t &api) : api_(api) {
+    assert(api_.min2_argmin != nullptr);
+    assert(api_.min3_argmin != nullptr);
+  }
 
   int Min2(pbqp_vector_view_t first, pbqp_vector_view_t second,
            accel_min_argmin_result_t *result) const {
@@ -148,6 +162,9 @@ class Solver {
  private:
   static pbqp_vector_view_t EdgeView(const pbqp_edge_t &edge, unsigned node, unsigned other_value,
                                      unsigned length) {
+    assert(edge.first == node || edge.second == node);
+    assert(other_value < PBQP_MAX_DOMAIN);
+    assert(length <= PBQP_MAX_DOMAIN);
     if (node == edge.first) {
       return {edge.cost + other_value, length, PBQP_MAX_DOMAIN};
     }
@@ -208,6 +225,10 @@ class Solver {
       if (kernel_.Min2(unary, edge_cost, &result) != 0) {
         return PBQP_ARGUMENT_ERROR;
       }
+      if (result.index >= node.domain) {
+        return PBQP_ARGUMENT_ERROR;
+      }
+      assert(result.index < node.domain);
       neighbor.unary[neighbor_value] = accel_cost_add(neighbor.unary[neighbor_value], result.value);
       node.choice[neighbor_value] = result.index;
     }
@@ -258,6 +279,10 @@ class Solver {
         if (kernel_.Min3(unary, first_cost, second_cost, &result) != 0) {
           return PBQP_ARGUMENT_ERROR;
         }
+        if (result.index >= node.domain) {
+          return PBQP_ARGUMENT_ERROR;
+        }
+        assert(result.index < node.domain);
 
         node.choice[first_value * second.domain + second_value] = result.index;
         const unsigned fill_first_value =
@@ -329,10 +354,17 @@ class Solver {
       if (node.reduction_kind == kReductionR0) {
         solution->assignment[node_index] = node.choice[0];
       } else if (node.reduction_kind == kReductionR1) {
+        assert(node.first_neighbor >= 0);
+        assert(solution->assignment[node.first_neighbor] <
+               problem.nodes[node.first_neighbor].domain);
         solution->assignment[node_index] = node.choice[solution->assignment[node.first_neighbor]];
       } else {
+        assert(node.first_neighbor >= 0);
+        assert(node.second_neighbor >= 0);
         const unsigned first_value = solution->assignment[node.first_neighbor];
         const unsigned second_value = solution->assignment[node.second_neighbor];
+        assert(first_value < problem.nodes[node.first_neighbor].domain);
+        assert(second_value < problem.nodes[node.second_neighbor].domain);
         const unsigned choice_index =
             first_value * problem.nodes[node.second_neighbor].domain + second_value;
         solution->assignment[node_index] = node.choice[choice_index];
