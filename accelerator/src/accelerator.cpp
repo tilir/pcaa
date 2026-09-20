@@ -8,6 +8,7 @@
 #include "memory_interface.h"
 
 #include <cstring>
+#include <iostream>
 
 #include <tlm_core/tlm_2/tlm_generic_payload/tlm_gp.h>
 namespace {
@@ -24,7 +25,7 @@ bool Accelerator::is_valid_mmio_transaction(const tlm::tlm_generic_payload &tran
          transaction.get_address() <= ACCEL_MMIO_SIZE - sizeof(uint32_t);
 }
 
-void Accelerator::b_transport(tlm::tlm_generic_payload &transaction, sc_core::sc_time &) {
+void Accelerator::b_transport(tlm::tlm_generic_payload &transaction, sc_core::sc_time &delay) {
   if (!is_valid_mmio_transaction(transaction)) {
     transaction.set_response_status(tlm::TLM_BURST_ERROR_RESPONSE);
     return;
@@ -39,7 +40,7 @@ void Accelerator::b_transport(tlm::tlm_generic_payload &transaction, sc_core::sc
     std::memcpy(transaction.get_data_ptr(), &value, sizeof(value));
   } else if (transaction.is_write()) {
     std::memcpy(&value, transaction.get_data_ptr(), sizeof(value));
-    if (!write_register(transaction.get_address(), value)) {
+    if (!write_register(transaction.get_address(), value, &delay)) {
       transaction.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
       return;
     }
@@ -67,7 +68,7 @@ bool Accelerator::read_register(uint64_t address, uint32_t *value) const {
   }
 }
 
-bool Accelerator::write_register(uint64_t address, uint32_t value) {
+bool Accelerator::write_register(uint64_t address, uint32_t value, sc_core::sc_time *delay) {
   switch (address) {
     case ACCEL_MMIO_DESC_ADDR_LO:
       descriptor_address_ = (descriptor_address_ & kHigh32Mask) | value;
@@ -81,7 +82,11 @@ bool Accelerator::write_register(uint64_t address, uint32_t value) {
         return false;
       }
       status_ = ACCEL_STATUS_BUSY;
-      status_ = execute() ? ACCEL_STATUS_DONE : ACCEL_STATUS_ERROR;
+      if (verbose_) {
+        std::cerr << "pcaa: doorbell descriptor=0x" << std::hex << descriptor_address_ << std::dec
+                  << '\n';
+      }
+      status_ = execute(delay) ? ACCEL_STATUS_DONE : ACCEL_STATUS_ERROR;
       return true;
     default:
       return false;
@@ -117,25 +122,51 @@ bool Accelerator::is_valid_command(const accel_command_t &command) const {
   }
 }
 
-bool Accelerator::execute() {
+bool Accelerator::execute(sc_core::sc_time *delay) {
+  const uint64_t initial_cycles = timing_statistics_.total_service_cycles;
   accel_command_t command{};
   if (descriptor_address_ == 0 || !memory_.read(descriptor_address_, &command, sizeof(command)) ||
       !is_valid_command(command)) {
     return false;
   }
 
-  return command.opcode == ACCEL_OPCODE_EXECUTE_BATCH ? execute_batch(command)
-                                                      : execute_command(command);
+  const bool completed = command.opcode == ACCEL_OPCODE_EXECUTE_BATCH
+                             ? execute_batch(command, delay)
+                             : execute_command(command, delay);
+  if (delay != nullptr && timing_.cycle_period != sc_core::SC_ZERO_TIME) {
+    *delay += timing_.cycle_period * (timing_statistics_.total_service_cycles - initial_cycles);
+  }
+  return completed;
 }
 
-bool Accelerator::execute_batch(const accel_command_t &command) {
+bool Accelerator::execute_batch(const accel_command_t &command, sc_core::sc_time *delay) {
+  (void)delay;
+  if (timing_.mode != AccelTimingMode::kUntimed && timing_.descriptor_bytes_per_cycle != 0) {
+    const uint64_t descriptor_cycles = (sizeof(command) + timing_.descriptor_bytes_per_cycle - 1) /
+                                       timing_.descriptor_bytes_per_cycle;
+    timing_statistics_.descriptor_cycles += descriptor_cycles;
+    timing_statistics_.total_service_cycles += descriptor_cycles + timing_.batch_start_cycles;
+    const uint64_t result_cycles =
+        (sizeof(accel_batch_result_t) + timing_.memory_write_bytes_per_cycle - 1) /
+        timing_.memory_write_bytes_per_cycle;
+    timing_statistics_.result_write_cycles += result_cycles;
+    timing_statistics_.total_service_cycles += result_cycles;
+    ++timing_statistics_.batch_count;
+  }
   accel_batch_result_t result{0, UINT32_MAX};
+  if (verbose_) {
+    std::cerr << "pcaa: batch children=" << command.n << '\n';
+  }
   for (uint32_t index = 0; index < command.n; ++index) {
     accel_command_t child{};
     const uint64_t address = command.src0 + uint64_t(index) * sizeof(child);
+    if (verbose_) {
+      std::cerr << "pcaa: child=" << index << " descriptor=0x" << std::hex << address << std::dec
+                << '\n';
+    }
     if (!memory_.read(address, &child, sizeof(child)) ||
         child.opcode == ACCEL_OPCODE_EXECUTE_BATCH || !is_valid_command(child) ||
-        !execute_command(child)) {
+        !execute_command(child, delay)) {
       result.completed = index;
       result.failed_index = index;
       memory_.write(command.dst, &result, sizeof(result));
@@ -146,7 +177,8 @@ bool Accelerator::execute_batch(const accel_command_t &command) {
   return memory_.write(command.dst, &result, sizeof(result));
 }
 
-bool Accelerator::execute_command(const accel_command_t &command) {
+bool Accelerator::execute_command(const accel_command_t &command, sc_core::sc_time *delay) {
+  (void)delay;
   if (!is_valid_command(command) || command.opcode == ACCEL_OPCODE_EXECUTE_BATCH) {
     return false;
   }
@@ -178,7 +210,23 @@ bool Accelerator::execute_command(const accel_command_t &command) {
   if (command.opcode == ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN ||
       command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN) {
     accel_min_argmin_result_t result{minimum, argmin};
-    return memory_.write(command.dst, &result, sizeof(result));
+    const bool written = memory_.write(command.dst, &result, sizeof(result));
+    if (written && timing_.mode != AccelTimingMode::kUntimed) {
+      accel_accumulate_command_timing(command, timing_, &timing_statistics_);
+    }
+    if (verbose_) {
+      std::cerr << "pcaa: primitive opcode=" << command.opcode << " n=" << command.n
+                << " value=" << minimum << " argmin=" << argmin << '\n';
+    }
+    return written;
   }
-  return write_i32(command.dst, minimum);
+  const bool written = write_i32(command.dst, minimum);
+  if (written && timing_.mode != AccelTimingMode::kUntimed) {
+    accel_accumulate_command_timing(command, timing_, &timing_statistics_);
+  }
+  if (verbose_) {
+    std::cerr << "pcaa: primitive opcode=" << command.opcode << " n=" << command.n
+              << " value=" << minimum << '\n';
+  }
+  return written;
 }

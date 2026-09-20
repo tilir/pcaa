@@ -13,6 +13,7 @@
 namespace pcaa::workload {
 
 enum class ReductionKind { kR1, kR2 };
+enum class ReductionPolicy { kProductionIndex, kDegreePriority, kMinimumKernelWork };
 
 struct TraceRecord {
   ReductionKind kind;
@@ -35,6 +36,7 @@ struct TraceRecord {
 
 struct InstanceResult {
   GeneratorConfig config;
+  ReductionPolicy policy;
   int initial_edges;
   int final_edges;
   int r0_count;
@@ -63,10 +65,12 @@ struct Aggregate {
   std::vector<int> lengths;
 };
 
-InstanceResult Analyze(const GeneratorConfig &config);
+InstanceResult Analyze(const GeneratorConfig &config,
+                       ReductionPolicy policy = ReductionPolicy::kProductionIndex);
+std::string ToString(ReductionPolicy policy);
 void AddToAggregate(const InstanceResult &result, Aggregate *aggregate);
 std::string CsvHeader();
-std::string ToCsv(const GeneratorConfig &config, const TraceRecord &record);
+std::string ToCsv(const GeneratorConfig &config, ReductionPolicy policy, const TraceRecord &record);
 std::string FormatAggregate(const Aggregate &aggregate);
 
 }  // namespace pcaa::workload

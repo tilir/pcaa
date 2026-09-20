@@ -102,6 +102,9 @@ class PcaaDevice final : public sc_core::sc_module, public abstract_device_t {
     transaction.set_data_length(length);
     transaction.set_streaming_width(length);
     control_socket->b_transport(transaction, delay);
+    if (delay != sc_core::SC_ZERO_TIME) {
+      sc_core::sc_start(delay);
+    }
     return transaction.get_response_status() == tlm::TLM_OK_RESPONSE;
   }
 

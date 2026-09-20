@@ -29,6 +29,10 @@ target_include_directories(pcaa_cost_math
     ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
 )
 
+add_library(pcaa_timing STATIC accelerator/src/timing_model.cpp)
+set_target_properties(pcaa_timing PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(pcaa_timing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include ${SYSTEMC_INCLUDE_DIR})
+
 add_library(pcaa_core STATIC accelerator/src/accelerator.cpp)
 set_target_properties(pcaa_core PROPERTIES
   POSITION_INDEPENDENT_CODE ON
@@ -38,7 +42,7 @@ target_include_directories(pcaa_core
     ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
     ${SYSTEMC_INCLUDE_DIR}
 )
-target_link_libraries(pcaa_core PUBLIC pcaa_cost_math ${SYSTEMC_LIBRARY})
+target_link_libraries(pcaa_core PUBLIC pcaa_cost_math pcaa_timing ${SYSTEMC_LIBRARY})
 
 add_library(pcaa_pbqp STATIC software/pbqp/pbqp.cpp)
 target_include_directories(pcaa_pbqp
@@ -53,9 +57,67 @@ add_library(pcaa_workload STATIC
   workload/src/graph_generator.cpp
 )
 target_include_directories(pcaa_workload PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/workload/include)
+target_link_libraries(pcaa_workload PUBLIC pcaa_timing)
 
 add_executable(pbqp_workload workload/src/pbqp_workload.cpp)
 target_link_libraries(pbqp_workload PRIVATE pcaa_workload)
+
+add_executable(pcaa_graph_run_model tools/pbqp_run.cpp)
+target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_core pcaa_pbqp)
+
+add_executable(pcaa_graph_run tools/pbqp_run_launcher.cpp)
+add_dependencies(pcaa_graph_run pcaa_graph_run_model)
+
+add_executable(pcaa_graph_run_timed_model tools/pbqp_run.cpp)
+target_compile_definitions(pcaa_graph_run_timed_model PRIVATE PCAA_GRAPH_RUN_TIMED)
+target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_core pcaa_pbqp)
+
+add_executable(pcaa_graph_run_timed tools/pbqp_run_launcher.cpp)
+target_compile_definitions(pcaa_graph_run_timed PRIVATE
+  PCAA_GRAPH_RUN_MODEL_NAME="pcaa_graph_run_timed_model")
+add_dependencies(pcaa_graph_run_timed pcaa_graph_run_timed_model)
+
+function(add_graph_run_e2e_test name input expected_output)
+  add_test(NAME pcaa_graph_run_${name} COMMAND pcaa_graph_run --solver bare-metal
+    ${CMAKE_CURRENT_SOURCE_DIR}/examples/${input})
+  set_tests_properties(pcaa_graph_run_${name} PROPERTIES
+    PASS_REGULAR_EXPRESSION "${expected_output}"
+  )
+endfunction()
+
+add_graph_run_e2e_test(triangle triangle.pbqp "assignment 1 0 1")
+add_graph_run_e2e_test(path path.pbqp "assignment 0 0 1")
+add_graph_run_e2e_test(tie tie.pbqp "assignment 0 0")
+add_graph_run_e2e_test(unreachable unreachable.pbqp "assignment 1 0")
+add_graph_run_e2e_test(petersen petersen.pbqp "assignment 0 0 0 0 0 0 0 0 0 0")
+add_graph_run_e2e_test(chvatal chvatal.pbqp "assignment 0 0 0 0 0 0 0 0 0 0 0 0")
+add_graph_run_e2e_test(random_20 random-20.pbqp "solution exact")
+add_test(NAME pcaa_graph_run_local COMMAND pcaa_graph_run --solver local
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/random-20.pbqp)
+set_tests_properties(pcaa_graph_run_local PROPERTIES
+  PASS_REGULAR_EXPRESSION "solution local-optimum")
+add_test(NAME pcaa_graph_run_bare_capacity
+  COMMAND ${CMAKE_COMMAND}
+    -DRUNNER=$<TARGET_FILE:pcaa_graph_run>
+    -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/examples/wide-domain.pbqp
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_bare_capacity.cmake)
+add_test(NAME pcaa_graph_run_differential
+  COMMAND ${CMAKE_COMMAND}
+    -DRUNNER=$<TARGET_FILE:pcaa_graph_run>
+    -DINPUT_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}/examples
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_solver_differential.cmake)
+add_test(NAME pcaa_graph_run_timed COMMAND pcaa_graph_run_timed --solver bare-metal
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
+set_tests_properties(pcaa_graph_run_timed PROPERTIES
+  PASS_REGULAR_EXPRESSION "timing cycles=[1-9][0-9]*")
+add_test(NAME pcaa_graph_run_timed_software_core COMMAND pcaa_graph_run_timed --solver bare-metal
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/random-20.pbqp)
+set_tests_properties(pcaa_graph_run_timed_software_core PROPERTIES
+  PASS_REGULAR_EXPRESSION "timing note=no accelerator primitives were issued")
+add_test(NAME pcaa_graph_run_verbose COMMAND pcaa_graph_run --verbose --solver bare-metal
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
+set_tests_properties(pcaa_graph_run_verbose PROPERTIES
+  PASS_REGULAR_EXPRESSION "pcaa: doorbell descriptor=")
 
 add_executable(workload_unit workload/tests/workload_unit.cpp)
 target_link_libraries(workload_unit PRIVATE GTest::gtest_main pcaa_workload)
@@ -101,7 +163,9 @@ set(PCAA_FORMAT_SOURCES
   accelerator/include/accelerator.h
   accelerator/include/cost_math.h
   accelerator/include/memory_interface.h
+  accelerator/include/timing_model.h
   accelerator/src/accelerator.cpp
+  accelerator/src/timing_model.cpp
   accelerator/src/cost_math.cpp
   accelerator/src/spike_device.cpp
   accelerator/src/systemc_plugin_entry.cpp
@@ -126,6 +190,8 @@ set(PCAA_FORMAT_SOURCES
   workload/src/graph_generator.cpp
   workload/src/pbqp_workload.cpp
   workload/tests/workload_unit.cpp
+  tools/pbqp_run.cpp
+  tools/pbqp_run_launcher.cpp
 )
 
 if(CLANG_FORMAT AND INCLUDE_WHAT_YOU_USE AND IWYU_TOOL)
@@ -134,6 +200,7 @@ if(CLANG_FORMAT AND INCLUDE_WHAT_YOU_USE AND IWYU_TOOL)
     COMMAND ${IWYU_TOOL} -p ${CMAKE_CURRENT_BINARY_DIR}
     DEPENDS
       pcaa_cost_math
+      pcaa_timing
       pcaa_core
       systemc_unit
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

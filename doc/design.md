@@ -36,3 +36,18 @@ without changing the ABI: stride-aware operands retain the row count and remove
 `scratch_bytes`; implemented software batches use one command per R1/R2 and
 reuse packed views; structural batches remain analytical. Logical map elements
 and device operand bytes remain unchanged by these transformations.
+
+The tool also replays traces through the configured L1 model. It prints raw
+descriptor/control, read, compute, and write demand separately from exposed
+streaming service cycles, plus a controlled lane-only sweep. The checked-in
+interpretation and parameter values are in `doc/l1-performance-model.md`.
+
+## Interactive timing runner
+
+`pcaa_graph_run` is intentionally untimed, so graph-format experiments keep a
+fast functional path. `pcaa_graph_run_timed` is the separate interactive L1
+view: it uses streaming overlap, four lanes, the default byte rates from
+`AccelTimingConfig`, and a nominal 1 ns cycle period. Its output keeps total
+service cycles separate from descriptor, operand-read, compute, and
+result-write components. This runner reports an estimate; it does not change
+the PBQP descriptor ABI or the software solver policy.

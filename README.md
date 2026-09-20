@@ -1,65 +1,103 @@
 # Programmable Cost Algebra Accelerator
 
-PCAA is a small programmable accelerator for recurring operations on cost vectors and tables. It is intended for workloads such as PBQP and cost-function networks, where software manages the graph or problem structure while the accelerator performs regular arithmetic over contiguous data.
+PCAA is a compact, programmable accelerator model for the regular cost-vector
+work inside graph optimizers such as PBQP. Software keeps ownership of the
+graph and its decisions; PCAA carries out the dense min-plus reductions. The
+repository is useful both as a runnable SystemC model and as a starting point
+for exploring how batching, scheduling and lane width change that workload.
 
-The project currently runs bare-metal RISC-V programs under Spike. Programs submit work through a small driver library; inputs and results live in ordinary guest memory.
+The complete block contract and command semantics are in
+[the architecture specification](doc/arch.md). The L1 modeled-cycle study is
+in [the performance-model report](doc/l1-performance-model.md).
 
-The complete block contract is in the [architecture specification](doc/arch.md).
+## Build and run a graph
 
-## Supported commands
+The quickest path needs CMake, a C++17 compiler, SystemC 3.x, and GoogleTest:
 
-All input elements are signed 32-bit costs. The command descriptor supplies the vector length at run time, so callers are not limited to a fixed vector width.
-
-### `MAP_ADD_REDUCE_MIN`
-
-Adds two vectors element by element and writes their smallest sum:
-
-```text
-dst[0] = min_i (src0[i] + src1[i])
+```sh
+cmake -S . -B build
+cmake --build build --target pcaa_graph_run
+build/pcaa_graph_run --solver bare-metal examples/triangle.pbqp
 ```
 
-For example, for `src0 = {4, -2, 8}` and `src1 = {1, 5, -10}`, the result is `-2`.
+The command loads the graph, solves it through the SystemC PCAA model, and
+prints an optimum and one corresponding assignment. No RISC-V toolchain or
+Spike installation is needed for this host-side path.
 
-### `MAP_ADD3_REDUCE_MIN`
+`pcaa_graph_run` is deliberately untimed, for the quickest functional check.
+For the L1 estimate, build and run its separate counterpart:
 
-The three-input counterpart of the preceding command:
-
-```text
-dst[0] = min_i (src0[i] + src1[i] + src2[i])
+```sh
+cmake --build build --target pcaa_graph_run_timed
+build/pcaa_graph_run_timed --solver bare-metal examples/triangle.pbqp
 ```
 
-### `MAP_ADD_REDUCE_MIN_ARGMIN`
+It reports total modeled service cycles and descriptor, operand, compute, and
+result-write components using its fixed four-lane streaming configuration.
+Zero device cycles are valid when the graph is an irreducible PBQP core: that
+core is solved in software and produces no PCAA primitive submissions.
 
-Computes the same two-input minimum and additionally returns where it occurred:
+Choose the solver mode explicitly:
+
+- `--solver bare-metal` uses the exact fixed-capacity solver shared with the
+  RV64 tests. It accepts at most 64 vertices, 6 choices per vertex, and 2,016
+  edges; a larger graph is rejected with a diagnostic.
+- `--solver local` supports arbitrary vertex counts and up to 65,536 choices
+  per vertex (subject to host memory). It produces a deterministic local
+  optimum through the same PCAA model and labels it `local-optimum`.
+
+Input is a small line-oriented PBQP format. Blank lines and `#` comments are
+allowed. Declare the node count, then each node and each edge. Node costs have
+one value per choice; edge costs are row-major. `INF` denotes an unreachable
+cost.
 
 ```text
-dst.value = min_i (src0[i] + src1[i])
-dst.index = first i whose sum equals dst.value
+nodes 3
+node 2 2 -1
+node 2 0 3
+node 2 1 -2
+edge 0 1 0 4 -3 2
+edge 0 2 2 -1 5 0
+edge 1 2 1 3 -2 4
 ```
 
-If several elements have the same minimum, the first is selected. `ACCEL_INF` (`INT32_MAX / 4`) represents an unreachable cost: adding it to any value remains `ACCEL_INF`. Positive values that would exceed it also saturate to `ACCEL_INF`.
+A *choice* is one possible assignment for a vertex (its PBQP domain). The
+limits above belong to the solver implementations, not the accelerator. Costs
+may be finite PCAA costs or `INF`.
 
-### `MAP_ADD3_REDUCE_MIN_ARGMIN`
+## Examples
 
-Computes a three-input minimum and the first index at which it occurs:
+[`examples`](examples) contains ready-to-run inputs:
 
-```text
-dst.value = min_i (src0[i] + src1[i] + src2[i])
-dst.index = first i whose sum equals dst.value
+- `triangle.pbqp` — a three-node, fully connected graph;
+- `path.pbqp` — a small path with asymmetric choice costs;
+- `tie.pbqp` — equal optima, showing deterministic tie breaking;
+- `unreachable.pbqp` — uses the human-readable `INF` literal.
+- `petersen.pbqp` and `chvatal.pbqp` — standard named graph topologies.
+- `random-20.pbqp` — a deterministic 20-vertex pseudo-random input for the
+  batched bare-metal path or local-mode comparison.
+- `wide-domain.pbqp` — a seven-choice input for trying the local mode and the
+  bare-metal capacity diagnostic.
+
+For example:
+
+```sh
+build/pcaa_graph_run --solver bare-metal examples/tie.pbqp
+build/pcaa_graph_run --solver local examples/random-20.pbqp
 ```
 
-This operation is used by the bundled PBQP workload when eliminating a node with two neighbours.
+Add `--verbose` to follow the model as it handles the graph. The trace is
+written to stderr and shows doorbells, batch walking, child descriptors, and
+primitive min/argmin results:
 
-### `EXECUTE_BATCH`
+```sh
+build/pcaa_graph_run --verbose --solver bare-metal examples/triangle.pbqp
+```
 
-Submits an ordered array of the four primitive commands above with one doorbell.
-Each child runs in array order. On success, the batch result reports the number
-completed; if a child fails, earlier results remain, later children do not run,
-and the result identifies the failed child. Batches cannot contain batches.
+## Build and verify the complete integration
 
-## Build and test
-
-SystemC 3.x, GoogleTest, and a RISC-V bare-metal compiler must be installed. Give CMake the source tree of the exact Spike build used to run the plugin:
+For Spike-backed bare-metal tests, install a RISC-V bare-metal toolchain and
+give CMake the source tree matching the Spike executable:
 
 ```sh
 cmake -S . -B build -DSPIKE_SOURCE_DIR=../riscv-isa-sim
@@ -68,7 +106,7 @@ ctest --test-dir build --output-on-failure
 cmake --build build --target basic_elf batch_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
 ```
 
-Run the deterministic and randomized bare-metal tests:
+Run the generated RISC-V checks with:
 
 ```sh
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/basic.elf
@@ -78,17 +116,31 @@ spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 bui
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_randomized.elf
 ```
 
-`basic.elf` checks known examples of every supported command. `randomized.elf` compares accelerator results with an independent software implementation for 100 rounds and lengths 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64. Its fixed seed is `0x51a7c0de`.
-
-The PBQP programs solve small cost graphs in both software and accelerator modes, then compare both reconstructed solutions with exhaustive enumeration. `pbqp_basic.elf` is deterministic; `pbqp_randomized.elf` uses a fixed seed.
-
-## Workload characterization
-
-`pbqp_workload` is a host tool for generating reproducible PBQP cost-kernel traces. It writes CSV
-without host addresses and reports logical operation and traffic distributions; it is not a timing
-benchmark. See the [characterization report](doc/workload-characterization.md) and run:
+To regenerate workload traces and the L1 analysis inputs:
 
 ```sh
 cmake --build build --target pbqp_workload
 build/pbqp_workload --trace build/pbqp-workload.csv
 ```
+
+## Build artifacts
+
+The build directory contains these generated artifacts:
+
+- `pcaa_graph_run` — host utility that runs a user-supplied PBQP file through
+  the untimed SystemC accelerator model.
+- `pcaa_graph_run_model` — implementation launched by `pcaa_graph_run`; it
+  exists so the user-facing runner can suppress SystemC's startup banner.
+- `pcaa_graph_run_timed` and `pcaa_graph_run_timed_model` — launcher and
+  implementation of the L1 timing-reporting graph runner.
+- `pbqp_workload` — host workload-trace and L1 replay generator.
+- `systemc_unit`, `pbqp_unit`, `workload_unit` — host unit-test executables.
+- `libpcaa_core.a`, `libpcaa_timing.a`, `libpcaa_cost_math.a`,
+  `libpcaa_pbqp.a`, `libpcaa_workload.a` — reusable static libraries for the
+  model, timing estimator, cost arithmetic, PBQP solver, and workload tool.
+- `libpcaa_spike_device.so` — Spike external-device plugin, produced only when
+  `SPIKE_SOURCE_DIR` is configured.
+- `basic.elf`, `batch.elf`, `randomized.elf`, `pbqp_basic.elf`, and
+  `pbqp_randomized.elf` — freestanding RV64 verification programs, produced by
+  their corresponding `*_elf` build targets when the RISC-V toolchain is
+  available.

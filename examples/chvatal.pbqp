@@ -1,0 +1,39 @@
+# The 12-vertex, 4-regular Chvatal graph. Edge penalties prefer equal choices.
+nodes 12
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+# Edge list derived from the standard 1-based Chvatal adjacency list.
+edge 0 1 0 1 1 0
+edge 0 2 0 1 1 0
+edge 0 3 0 1 1 0
+edge 0 4 0 1 1 0
+edge 1 7 0 1 1 0
+edge 1 10 0 1 1 0
+edge 1 11 0 1 1 0
+edge 2 6 0 1 1 0
+edge 2 9 0 1 1 0
+edge 2 11 0 1 1 0
+edge 3 8 0 1 1 0
+edge 3 9 0 1 1 0
+edge 3 11 0 1 1 0
+edge 4 5 0 1 1 0
+edge 4 8 0 1 1 0
+edge 4 10 0 1 1 0
+edge 5 6 0 1 1 0
+edge 5 7 0 1 1 0
+edge 5 11 0 1 1 0
+edge 6 8 0 1 1 0
+edge 6 10 0 1 1 0
+edge 7 8 0 1 1 0
+edge 7 9 0 1 1 0
+edge 9 10 0 1 1 0

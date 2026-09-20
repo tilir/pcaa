@@ -1,0 +1,28 @@
+# Petersen graph. Every node has two equal unary choices; edge penalties prefer equal choices.
+nodes 10
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+node 2 0 0
+# Outer cycle, spokes, then the inner star.
+edge 0 1 0 1 1 0
+edge 1 2 0 1 1 0
+edge 2 3 0 1 1 0
+edge 3 4 0 1 1 0
+edge 4 0 0 1 1 0
+edge 0 5 0 1 1 0
+edge 1 6 0 1 1 0
+edge 2 7 0 1 1 0
+edge 3 8 0 1 1 0
+edge 4 9 0 1 1 0
+edge 5 7 0 1 1 0
+edge 7 9 0 1 1 0
+edge 9 6 0 1 1 0
+edge 6 8 0 1 1 0
+edge 8 5 0 1 1 0

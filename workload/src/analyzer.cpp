@@ -5,6 +5,7 @@
 #include "pbqp_workload/analyzer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <sstream>
 #include <utility>
@@ -28,12 +29,53 @@ int CountEdges(const Graph &graph) {
 
 std::vector<int> Neighbors(const Graph &graph, int node) {
   std::vector<int> neighbors;
-  for (int other = 0; other < static_cast<int>(graph.domains.size()); ++other) {
-    if (graph.edges[node][other]) {
-      neighbors.push_back(other);
+  for (const EdgeSlot &slot : graph.edge_slots) {
+    if (!slot.active) {
+      continue;
+    }
+    if (slot.first == node) {
+      neighbors.push_back(slot.second);
+    } else if (slot.second == node) {
+      neighbors.push_back(slot.first);
     }
   }
   return neighbors;
+}
+
+int FindEdgeSlot(const Graph &graph, int first, int second) {
+  for (size_t index = 0; index < graph.edge_slots.size(); ++index) {
+    const EdgeSlot &slot = graph.edge_slots[index];
+    if (slot.active && ((slot.first == first && slot.second == second) ||
+                        (slot.first == second && slot.second == first))) {
+      return static_cast<int>(index);
+    }
+  }
+  return -1;
+}
+
+void RemoveEdge(Graph *graph, int first, int second) {
+  const int index = FindEdgeSlot(*graph, first, second);
+  if (index >= 0) {
+    graph->edge_slots[static_cast<size_t>(index)].active = false;
+  }
+  graph->edges[first][second] = false;
+  graph->edges[second][first] = false;
+  graph->edge_first[first][second] = -1;
+  graph->edge_first[second][first] = -1;
+}
+
+void AddFillEdge(Graph *graph, int first, int second) {
+  for (EdgeSlot &slot : graph->edge_slots) {
+    if (!slot.active) {
+      slot = {first, second, true};
+      graph->edges[first][second] = true;
+      graph->edges[second][first] = true;
+      graph->edge_first[first][second] = first;
+      graph->edge_first[second][first] = first;
+      return;
+    }
+  }
+  graph->edge_slots.push_back({first, second, true});
 }
 
 TraceRecord MakeR1(int x, int y, bool edge_is_strided) {
@@ -86,11 +128,47 @@ double Median(std::vector<int> values) {
   return values.size() % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2.0;
 }
 
+int SelectNode(const Graph &graph, const std::vector<bool> &active, const std::vector<int> &degree,
+               ReductionPolicy policy) {
+  int selected = -1;
+  uint64_t best_work = 0;
+  int best_degree = 0;
+  for (int node = 0; node < static_cast<int>(graph.domains.size()); ++node) {
+    if (!active[node] || degree[node] > 2) {
+      continue;
+    }
+    if (policy == ReductionPolicy::kProductionIndex) {
+      return node;
+    }
+    if (policy == ReductionPolicy::kDegreePriority) {
+      if (selected < 0 || degree[node] < degree[selected]) {
+        selected = node;
+      }
+      continue;
+    }
+    const std::vector<int> neighbors = Neighbors(graph, node);
+    uint64_t work = graph.domains[node];
+    if (degree[node] == 1) {
+      work *= graph.domains[neighbors[0]];
+    } else if (degree[node] == 2) {
+      work *= static_cast<uint64_t>(graph.domains[neighbors[0]]) * graph.domains[neighbors[1]];
+    }
+    if (selected < 0 || work < best_work ||
+        (work == best_work &&
+         (degree[node] < best_degree || (degree[node] == best_degree && node < selected)))) {
+      selected = node;
+      best_work = work;
+      best_degree = degree[node];
+    }
+  }
+  return selected;
+}
+
 }  // namespace
 
-InstanceResult Analyze(const GeneratorConfig &config) {
+InstanceResult Analyze(const GeneratorConfig &config, ReductionPolicy policy) {
   Graph graph = GenerateGraph(config);
-  InstanceResult result{config, CountEdges(graph), 0, 0, 0, 0, 0, {}};
+  InstanceResult result{config, policy, CountEdges(graph), 0, 0, 0, 0, 0, {}};
   std::vector<bool> active(graph.domains.size(), true);
   std::vector<int> degree(graph.domains.size(), 0);
   for (int node = 0; node < static_cast<int>(graph.domains.size()); ++node) {
@@ -98,17 +176,10 @@ InstanceResult Analyze(const GeneratorConfig &config) {
   }
 
   while (true) {
-    int node = -1;
-    std::vector<int> node_neighbors;
-    for (int candidate = 0; candidate < static_cast<int>(graph.domains.size()); ++candidate) {
-      if (!active[candidate] || degree[candidate] > 2)
-        continue;
-      node = candidate;
-      node_neighbors = Neighbors(graph, candidate);
-      break;
-    }
+    const int node = SelectNode(graph, active, degree, policy);
     if (node < 0)
       break;
+    const std::vector<int> node_neighbors = Neighbors(graph, node);
     if (node_neighbors.empty()) {
       ++result.r0_count;
     } else if (node_neighbors.size() == 1) {
@@ -128,10 +199,7 @@ InstanceResult Analyze(const GeneratorConfig &config) {
                   : 0;
         }
       }
-      graph.edges[node][neighbor] = false;
-      graph.edges[neighbor][node] = false;
-      graph.edge_first[node][neighbor] = -1;
-      graph.edge_first[neighbor][node] = -1;
+      RemoveEdge(&graph, node, neighbor);
       --degree[neighbor];
     } else {
       ++result.r2_count;
@@ -157,21 +225,12 @@ InstanceResult Analyze(const GeneratorConfig &config) {
           }
         }
       }
-      graph.edges[node][first] = false;
-      graph.edges[first][node] = false;
-      graph.edges[node][second] = false;
-      graph.edges[second][node] = false;
-      graph.edge_first[node][first] = -1;
-      graph.edge_first[first][node] = -1;
-      graph.edge_first[node][second] = -1;
-      graph.edge_first[second][node] = -1;
+      RemoveEdge(&graph, node, first);
+      RemoveEdge(&graph, node, second);
       --degree[first];
       --degree[second];
       if (!graph.edges[first][second]) {
-        graph.edges[first][second] = true;
-        graph.edges[second][first] = true;
-        graph.edge_first[first][second] = first;
-        graph.edge_first[second][first] = first;
+        AddFillEdge(&graph, first, second);
         ++degree[first];
         ++degree[second];
       }
@@ -182,6 +241,18 @@ InstanceResult Analyze(const GeneratorConfig &config) {
   result.final_edges = CountEdges(graph);
   for (bool is_active : active) result.irreducible_nodes += is_active;
   return result;
+}
+
+std::string ToString(ReductionPolicy policy) {
+  switch (policy) {
+    case ReductionPolicy::kProductionIndex:
+      return "production_index";
+    case ReductionPolicy::kDegreePriority:
+      return "degree_priority";
+    case ReductionPolicy::kMinimumKernelWork:
+      return "minimum_kernel_work";
+  }
+  return "unknown";
 }
 
 void AddToAggregate(const InstanceResult &result, Aggregate *aggregate) {
@@ -207,16 +278,19 @@ void AddToAggregate(const InstanceResult &result, Aggregate *aggregate) {
 }
 
 std::string CsvHeader() {
-  return "family,profile,nodes,seed,reduction,opcode,x_domain,y_domain,z_domain,operand_count,"
+  return "family,profile,nodes,seed,policy,reduction,opcode,x_domain,y_domain,z_domain,operand_"
+         "count,"
          "contiguous_operands,strided_operands,logical_elements,logical_read_bytes,"
          "argmin_write_bytes,minimum_only_write_bytes,scratch_packs,scratch_bytes,"
          "batch_start,batch_size,batch_scratch_bytes\n";
 }
 
-std::string ToCsv(const GeneratorConfig &config, const TraceRecord &record) {
+std::string ToCsv(const GeneratorConfig &config, ReductionPolicy policy,
+                  const TraceRecord &record) {
   std::ostringstream output;
   output << ToString(config.family) << ',' << ToString(config.profile) << ',' << config.nodes << ','
-         << config.seed << ',' << (record.kind == ReductionKind::kR1 ? "R1" : "R2") << ','
+         << config.seed << ',' << ToString(policy) << ','
+         << (record.kind == ReductionKind::kR1 ? "R1" : "R2") << ','
          << (record.kind == ReductionKind::kR1 ? "MAP_ADD_REDUCE_MIN_ARGMIN"
                                                : "MAP_ADD3_REDUCE_MIN_ARGMIN")
          << ',' << record.x_domain << ',' << record.y_domain << ',' << record.z_domain << ','

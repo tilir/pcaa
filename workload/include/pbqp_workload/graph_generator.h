@@ -19,10 +19,17 @@ struct GeneratorConfig {
   unsigned seed;
 };
 
+struct EdgeSlot {
+  int first = -1;
+  int second = -1;
+  bool active = false;
+};
+
 struct Graph {
   std::vector<int> domains;
   std::vector<std::vector<bool>> edges;
   std::vector<std::vector<int>> edge_first;
+  std::vector<EdgeSlot> edge_slots;
 };
 
 Graph GenerateGraph(const GeneratorConfig &config);

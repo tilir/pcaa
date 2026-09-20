@@ -1,0 +1,5 @@
+# ACCEL_INF means an unreachable cost. Finite alternatives remain selectable.
+nodes 2
+node 2 INF 3
+node 2 0 1
+edge 0 1 0 2 5 INF

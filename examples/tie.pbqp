@@ -1,0 +1,5 @@
+# Equal optima demonstrate deterministic first-choice tie breaking.
+nodes 2
+node 3 0 0 0
+node 2 0 0
+edge 0 1 0 0 0 0 0 0

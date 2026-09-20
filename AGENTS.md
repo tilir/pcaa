@@ -53,6 +53,8 @@ Document public ABI structs directly where they are declared: state their purpos
 * `software/pbqp`: C ABI and C++17 implementation of fixed-capacity PBQP reductions.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
 * `workload`: host-only C++ graph generation and logical workload characterization.
+* `tools/pbqp_run.cpp`: host-side PBQP text-format runner through the SystemC model.
+* `examples`: user-facing PBQP text inputs for the host runner.
 
 Host tests use GoogleTest. Keep SystemC tests behind the required `sc_main` entry point, which
 initializes and runs GoogleTest; bare-metal ELFs remain freestanding and do not use GoogleTest.
@@ -62,11 +64,33 @@ and unresolved interface-analysis material in `doc/design.md` and factual corpus
 `doc/workload-characterization.md`. The workload generator is host-only and may use standard C++
 containers; never enlarge bare-metal PBQP limits merely to characterize workloads.
 
+`pcaa_graph_run` is the supported hands-on host entry point. Preserve its
+line-oriented `nodes`/`node`/`edge` format and its `INF` literal unless a
+versioned user-facing format migration is explicitly requested. It must submit
+through the SystemC target socket rather than bypassing the accelerator. It
+requires an explicit `--solver bare-metal|local` choice: bare-metal rejects
+graphs outside the fixed C API, while local labels its deterministic
+model-backed local optimum as such and never presents it as exact. The local
+mode's 65,536-choice practical domain limit is determined by the runner's
+reusable guest-memory staging area, not the PCAA protocol.
+
+`pcaa_graph_run` is intentionally untimed. Keep L1 reporting in the separate
+`pcaa_graph_run_timed` executable, whose fixed four-lane streaming configuration
+must report total, descriptor, operand-read, compute, and result-write cycles.
+An irreducible PBQP core submits no PCAA primitives; the timed runner must say
+explicitly that its zero device cycles reflect software-core solving.
+
 ## Semantics to retain
 
 `ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
 
 PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
+
+The fixed bare-metal PBQP C API supports 64 nodes and all simple edges between
+them. Its graph state is statically allocated by the current ELFs; the solver's
+largest transient R2 frame is below 4 KiB and the startup reserve is 1 MiB.
+Do not raise this capacity without recalculating static-storage and stack use,
+then re-running all PBQP ELFs under Spike.
 
 `EXECUTE_BATCH` is an ordered, finite control operation, not a scheduler: the
 runtime constructs child primitive descriptors and the accelerator drains them
@@ -77,7 +101,7 @@ completion. Keep statistics for primitive descriptors separate from top-level
 MMIO submissions.
 
 When changing freestanding PBQP working storage, calculate the complete call
-chain's stack use. The bare-metal startup reserve is 16 KiB and PBQP ELFs must
+chain's stack use. The bare-metal startup reserve is 1 MiB and PBQP ELFs must
 be built and run under Spike before handoff; host-only CTest does not cover
 their stack or driver path.
 
@@ -93,6 +117,13 @@ never treat `ACCEL_INF` as an error sentinel.
 The current supported Spike tree has `--extlib` plus `--device` and `REGISTER_DEVICE` in `riscv/abstract_device.h`. The plugin receives `sim_t` from the factory and makes physical transactions using `sim_t::mmio_load` and `mmio_store`. Do not use `addr_to_mem`: it exposes a host pointer and violates the abstraction. Keep plugin options as `pcaa,<base>,<size>` and keep `ACCEL_MMIO_BASE` aligned with the documented default.
 
 At L0 no meaningful SystemC time is advanced. Do not introduce global or hidden event loops. When timing is added, annotated delay and `sc_start()` advancement should be localized to Spike glue; the descriptor ABI and software driver must stay unchanged.
+
+At L1, timing is an explicit configurable architectural estimate, not a
+cycle-accurate implementation. Keep descriptor, operand-read, compute, and
+result-write cycles separate; preserve an untimed mode for correctness tests.
+Lanes affect only the timing calculation. Keep PBQP reduction policies and
+batch construction in software, and report software packing independently of
+device service cycles.
 
 `accelerator/src/systemc_plugin_entry.cpp` supplies libsystemc's mandatory `sc_main` symbol for the Spike shared library. Spike owns the process and never invokes it. Host SystemC tests define their own `sc_main` and must explicitly call `sc_start(SC_ZERO_TIME)` to exercise kernel startup; do not link the plugin entry source into those tests.
 

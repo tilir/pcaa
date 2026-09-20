@@ -2,7 +2,7 @@
 
 ## Architecture specification
 
-Revision 0.4
+Revision 0.5
 
 ## 1. Scope
 
@@ -37,6 +37,8 @@ primitive execution         → accelerator
 Software decides what work exists and in what order. Hardware may autonomously
 drain a finite ordered batch of already-scheduled primitive operations. The
 block does not infer dependencies, reorder work, or inspect PBQP topology.
+Reduction policy is deliberately software-selectable; it may change the
+observable workload but never changes the PCAA descriptor ABI.
 
 ## 2. Terminology
 
@@ -297,7 +299,19 @@ malformed cases are:
 An `ERROR` completion does not specify a result at `dst`. A subsequent valid
 submission is permitted and is independent of the preceding error.
 
-## 10. Timing and refinement
+## 10. L1 timing model
+
+The L1 reference model optionally annotates modeled service time in TLM using a
+nominal cycle period. It has untimed, sequential, and idealized streaming
+overlap modes. Configurable lanes affect only the timing estimate: a logical
+length `n` uses `ceil(n / lanes)` chunks. Descriptor fetch, operand reads,
+compute, and result writes are separate modeled categories.
+
+The timing model does not define a clock frequency, physical pipeline, queues,
+or a scheduling policy. Its formulas and experiment parameters are documented
+in `doc/l1-performance-model.md`.
+
+## 11. Timing and refinement
 
 The initial model is a functional, untimed realization of this block. It
 preserves the same MMIO and descriptor contract as later implementations.
@@ -312,7 +326,7 @@ preserves the same MMIO and descriptor contract as later implementations.
 No timing refinement may alter command encoding, result values, tie breaking,
 status semantics, or guest-memory addressing.
 
-## 11. Extension space
+## 12. Extension space
 
 Future opcodes may use `flags`, `m`, `k`, and additional descriptor semantics
 to express vector operations, reductions, broadcast operations, matrix/table
@@ -328,7 +342,7 @@ Structural batched descriptors, in which the block generates an inner
 iteration space, and stride-aware operand descriptors remain unresolved future
 choices. Neither is defined by this revision.
 
-## 12. Exclusions
+## 13. Exclusions
 
 The baseline block does not define:
 

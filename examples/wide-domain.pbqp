@@ -1,0 +1,5 @@
+# Seven choices are valid for the host format but exceed the bare-metal API.
+nodes 2
+node 7 0 1 2 3 4 5 6
+node 1 0
+edge 0 1 0 0 0 0 0 0 0

@@ -6,6 +6,7 @@
 #include "accel_protocol.h"
 #include "cost_math.h"
 #include "memory_interface.h"
+#include "timing_model.h"
 
 #include <array>
 #include <cstring>
@@ -160,7 +161,19 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(INT32_MIN, -1) == INT32_MIN);
 
   TestMemory memory(kTestMemorySize);
-  Accelerator accelerator("accelerator", memory);
+  AccelTimingConfig timing;
+  timing.mode = AccelTimingMode::kL1Sequential;
+  timing.lanes = 4;
+  timing.descriptor_bytes_per_cycle = sizeof(accel_command_t);
+  timing.memory_read_bytes_per_cycle = 16;
+  timing.memory_write_bytes_per_cycle = 8;
+  timing.batch_start_cycles = 2;
+  timing.primitive_start_cycles = 1;
+  timing.map_pipeline_latency = 1;
+  timing.add3_map_extra_latency = 1;
+  timing.reduction_tree_latency = 1;
+  timing.result_latency = 1;
+  Accelerator accelerator("accelerator", memory, timing);
   TestInitiator initiator("initiator");
   initiator.socket.bind(accelerator.target_socket);
   sc_core::sc_start(sc_core::SC_ZERO_TIME);
@@ -283,6 +296,49 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   command.src0 = kFirstInputAddress;
   expect_done(initiator, memory, command);
   test_batches(initiator, memory);
+  EXPECT_GT(accelerator.timing_statistics().primitive_count, 0);
+  EXPECT_EQ(accelerator.timing_statistics().batch_count, 7);
+  EXPECT_GT(accelerator.timing_statistics().descriptor_cycles, 0);
+  EXPECT_GT(accelerator.timing_statistics().total_service_cycles, 0);
+}
+
+TEST(TimingModel, CalculatesSequentialAndStreamingCommandCycles) {
+  AccelTimingConfig config;
+  config.mode = AccelTimingMode::kL1Sequential;
+  config.lanes = 4;
+  config.descriptor_bytes_per_cycle = sizeof(accel_command_t);
+  config.memory_read_bytes_per_cycle = 16;
+  config.memory_write_bytes_per_cycle = 8;
+  config.primitive_start_cycles = 1;
+  config.map_pipeline_latency = 2;
+  config.add3_map_extra_latency = 5;
+  config.reduction_tree_latency = 3;
+  config.result_latency = 4;
+
+  accel_command_t command{};
+  command.opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN;
+  command.n = 3;
+  AccelCommandTiming timing = accel_estimate_command_cycles(command, config);
+  EXPECT_EQ(timing.descriptor_cycles, 1);
+  EXPECT_EQ(timing.operand_read_cycles, 2);
+  EXPECT_EQ(timing.compute_cycles, 11);
+  EXPECT_EQ(timing.result_write_cycles, 1);
+  EXPECT_EQ(timing.total_cycles, 15);
+
+  command.n = 4;
+  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 15);
+  command.n = 5;
+  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 17);
+
+  command.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN;
+  command.n = 4;
+  timing = accel_estimate_command_cycles(command, config);
+  EXPECT_EQ(timing.operand_read_cycles, 3);
+  EXPECT_EQ(timing.compute_cycles, 16);
+  EXPECT_EQ(timing.total_cycles, 21);
+
+  config.mode = AccelTimingMode::kL1Streaming;
+  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 18);
 }
 
 void test_batches(TestInitiator &initiator, TestMemory &memory) {

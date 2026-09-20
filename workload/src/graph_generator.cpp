@@ -19,6 +19,13 @@ void AddEdge(Graph *graph, int first, int second) {
   graph->edges[second][first] = true;
   graph->edge_first[first][second] = first;
   graph->edge_first[second][first] = first;
+  for (EdgeSlot &slot : graph->edge_slots) {
+    if (!slot.active) {
+      slot = {first, second, true};
+      return;
+    }
+  }
+  graph->edge_slots.push_back({first, second, true});
 }
 
 int DomainFor(DomainProfile profile, std::mt19937 *random) {
