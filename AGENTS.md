@@ -24,6 +24,10 @@ Use `int` by default for local counters, status codes, loop variables, and ordin
 
 `.clang-format` is authoritative for C, C++, and SystemC source. Keep new code compatible with C++17, use 2-space indentation, keep lines within 100 columns where practical, and avoid dense multi-statement lines. In each C/C++ file, include project headers first, then standard-library headers, then external-library headers; every header must remain self-sufficient. Do not hand-format around the configuration: run `cmake --build build --target format` after editing C/C++ sources. The target runs both `clang-format` and Include-What-You-Use against the CMake compilation database; it requires `clang-format`, `include-what-you-use`, and `iwyu_tool`.
 
+Keep CMake ownership local: a subsystem's `CMakeLists.txt` defines its targets and appends
+its format and bare-metal inputs through the project collection helpers. Top-level and
+shared CMake modules consume those collections; do not restore centralized long source lists.
+
 Replace a numeric literal with a named constant when it expresses a protocol value, ABI width, address, capacity, algorithm parameter, test configuration, or other durable concept. Leave literals that are self-evident at the point of use, such as zero initialization, array indices, or simple arithmetic, in place.
 
 Prefer `#pragma once` for project headers. Retain `extern "C"` guards around every stable C API when the header may be included from C++.
@@ -70,9 +74,13 @@ versioned user-facing format migration is explicitly requested. It must submit
 through the SystemC target socket rather than bypassing the accelerator. It
 requires an explicit `--solver bare-metal|local` choice: bare-metal rejects
 graphs outside the fixed C API, while local labels its deterministic
-model-backed local optimum as such and never presents it as exact. The local
-mode's 65,536-choice practical domain limit is determined by the runner's
-reusable guest-memory staging area, not the PCAA protocol.
+model-backed local optimum as such and never presents it as exact. Strategy is
+orthogonal to mode: the shared `REDUCE_ONLY`, `HEURISTIC_RN`, and
+`EXACT_BRANCH_REDUCE` strategies may be selected in either mode when the graph
+fits the fixed C API; `LOCAL_SEARCH` is local-only and must be explicit.
+The runner default is `HEURISTIC_RN`.
+The local mode's 65,536-choice practical domain limit is determined by the
+runner's reusable guest-memory staging area, not the PCAA protocol.
 
 `pcaa_graph_run` is intentionally untimed. Keep L1 reporting in the separate
 `pcaa_graph_run_timed` executable, whose fixed four-lane streaming configuration
@@ -85,6 +93,13 @@ explicitly that its zero device cycles reflect software-core solving.
 `ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
 
 PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
+
+PBQP strategies are explicit: `REDUCE_ONLY`, `HEURISTIC_RN`, and
+`EXACT_BRANCH_REDUCE` share the same freestanding solver core and CostKernel.
+RN scoring projects each incident matrix against its neighbor unary through the
+kernel; its software-only score accumulation must remain distinct from shared
+conditioning/commit, which applies the selected matrix slice exactly once.
+Never add a PBQP-specific accelerator opcode for RN.
 
 The fixed bare-metal PBQP C API supports 64 nodes and all simple edges between
 them. Its graph state is statically allocated by the current ELFs; the solver's
@@ -143,6 +158,8 @@ spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 bui
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/randomized.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_basic.elf
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_randomized.elf
+cmake --build build --target pbqp_rn_elf
+spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_rn.elf
 ```
 
 If changing an opcode, cover normal data, `n=1`, non-power-of-two lengths, negative values, `INF`, ties/argmin where applicable, and memory failure/error handling in the SystemC test. Keep bare-metal random lengths including 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64.

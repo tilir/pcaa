@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 PCAA contributors
-# Builds the host accelerator model, Spike plugin, and bare-metal test ELFs.
+# Configures the PCAA project and delegates target groups to CMake modules.
 
 cmake_minimum_required(VERSION 3.20)
 
-project(pcaa LANGUAGES C CXX)
+project(pcaa VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -16,328 +16,24 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
 
-find_path(SYSTEMC_INCLUDE_DIR systemc REQUIRED)
-find_library(SYSTEMC_LIBRARY systemc REQUIRED)
-find_package(GTest REQUIRED)
-
-add_library(pcaa_cost_math STATIC accelerator/src/cost_math.cpp)
-set_target_properties(pcaa_cost_math PROPERTIES
-  POSITION_INDEPENDENT_CODE ON
-)
-target_include_directories(pcaa_cost_math
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-)
-
-add_library(pcaa_timing STATIC accelerator/src/timing_model.cpp)
-set_target_properties(pcaa_timing PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(pcaa_timing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include ${SYSTEMC_INCLUDE_DIR})
-
-add_library(pcaa_core STATIC accelerator/src/accelerator.cpp)
-set_target_properties(pcaa_core PROPERTIES
-  POSITION_INDEPENDENT_CODE ON
-)
-target_include_directories(pcaa_core
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-    ${SYSTEMC_INCLUDE_DIR}
-)
-target_link_libraries(pcaa_core PUBLIC pcaa_cost_math pcaa_timing ${SYSTEMC_LIBRARY})
-
-add_library(pcaa_pbqp STATIC software/pbqp/pbqp.cpp)
-target_include_directories(pcaa_pbqp
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/software
-)
-target_link_libraries(pcaa_pbqp PUBLIC pcaa_cost_math)
-
-add_library(pcaa_workload STATIC
-  workload/src/analyzer.cpp
-  workload/src/graph_generator.cpp
-)
-target_include_directories(pcaa_workload PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/workload/include)
-target_link_libraries(pcaa_workload PUBLIC pcaa_timing)
-
-add_executable(pbqp_workload workload/src/pbqp_workload.cpp)
-target_link_libraries(pbqp_workload PRIVATE pcaa_workload)
-
-add_executable(pcaa_graph_run_model tools/pbqp_run.cpp)
-target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_core pcaa_pbqp)
-
-add_executable(pcaa_graph_run tools/pbqp_run_launcher.cpp)
-add_dependencies(pcaa_graph_run pcaa_graph_run_model)
-
-add_executable(pcaa_graph_run_timed_model tools/pbqp_run.cpp)
-target_compile_definitions(pcaa_graph_run_timed_model PRIVATE PCAA_GRAPH_RUN_TIMED)
-target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_core pcaa_pbqp)
-
-add_executable(pcaa_graph_run_timed tools/pbqp_run_launcher.cpp)
-target_compile_definitions(pcaa_graph_run_timed PRIVATE
-  PCAA_GRAPH_RUN_MODEL_NAME="pcaa_graph_run_timed_model")
-add_dependencies(pcaa_graph_run_timed pcaa_graph_run_timed_model)
-
-function(add_graph_run_e2e_test name input expected_output)
-  add_test(NAME pcaa_graph_run_${name} COMMAND pcaa_graph_run --solver bare-metal
-    ${CMAKE_CURRENT_SOURCE_DIR}/examples/${input})
-  set_tests_properties(pcaa_graph_run_${name} PROPERTIES
-    PASS_REGULAR_EXPRESSION "${expected_output}"
-  )
+function(pcaa_add_format_sources)
+  set_property(GLOBAL APPEND PROPERTY PCAA_FORMAT_SOURCES ${ARGN})
 endfunction()
 
-add_graph_run_e2e_test(triangle triangle.pbqp "assignment 1 0 1")
-add_graph_run_e2e_test(path path.pbqp "assignment 0 0 1")
-add_graph_run_e2e_test(tie tie.pbqp "assignment 0 0")
-add_graph_run_e2e_test(unreachable unreachable.pbqp "assignment 1 0")
-add_graph_run_e2e_test(petersen petersen.pbqp "assignment 0 0 0 0 0 0 0 0 0 0")
-add_graph_run_e2e_test(chvatal chvatal.pbqp "assignment 0 0 0 0 0 0 0 0 0 0 0 0")
-add_graph_run_e2e_test(random_20 random-20.pbqp "solution exact")
-add_test(NAME pcaa_graph_run_local COMMAND pcaa_graph_run --solver local
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/random-20.pbqp)
-set_tests_properties(pcaa_graph_run_local PROPERTIES
-  PASS_REGULAR_EXPRESSION "solution local-optimum")
-add_test(NAME pcaa_graph_run_bare_capacity
-  COMMAND ${CMAKE_COMMAND}
-    -DRUNNER=$<TARGET_FILE:pcaa_graph_run>
-    -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/examples/wide-domain.pbqp
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_bare_capacity.cmake)
-add_test(NAME pcaa_graph_run_differential
-  COMMAND ${CMAKE_COMMAND}
-    -DRUNNER=$<TARGET_FILE:pcaa_graph_run>
-    -DINPUT_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}/examples
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_solver_differential.cmake)
-add_test(NAME pcaa_graph_run_timed COMMAND pcaa_graph_run_timed --solver bare-metal
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
-set_tests_properties(pcaa_graph_run_timed PROPERTIES
-  PASS_REGULAR_EXPRESSION "timing cycles=[1-9][0-9]*")
-add_test(NAME pcaa_graph_run_timed_software_core COMMAND pcaa_graph_run_timed --solver bare-metal
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/random-20.pbqp)
-set_tests_properties(pcaa_graph_run_timed_software_core PROPERTIES
-  PASS_REGULAR_EXPRESSION "timing note=no accelerator primitives were issued")
-add_test(NAME pcaa_graph_run_verbose COMMAND pcaa_graph_run --verbose --solver bare-metal
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
-set_tests_properties(pcaa_graph_run_verbose PROPERTIES
-  PASS_REGULAR_EXPRESSION "pcaa: doorbell descriptor=")
-
-add_executable(workload_unit workload/tests/workload_unit.cpp)
-target_link_libraries(workload_unit PRIVATE GTest::gtest_main pcaa_workload)
-add_test(NAME workload_unit COMMAND workload_unit)
-
-set_source_files_properties(software/pbqp/pbqp_unit.c PROPERTIES LANGUAGE CXX)
-add_executable(pbqp_unit software/pbqp/pbqp_unit.c)
-target_link_libraries(pbqp_unit PRIVATE GTest::gtest_main pcaa_pbqp)
-add_test(NAME pbqp_unit COMMAND pbqp_unit)
-
-add_executable(systemc_unit accelerator/tests/systemc_unit.cpp)
-target_link_libraries(systemc_unit PRIVATE GTest::gtest pcaa_core)
-add_test(NAME systemc_unit COMMAND systemc_unit)
-
-set(SPIKE_SOURCE_DIR "" CACHE PATH
-  "Path to the riscv-isa-sim source tree; enables the Spike plugin target")
-if(SPIKE_SOURCE_DIR)
-  add_library(pcaa_spike_device SHARED
-    accelerator/src/spike_device.cpp
-    accelerator/src/systemc_plugin_entry.cpp
-  )
-  target_include_directories(pcaa_spike_device
-    PRIVATE
-      ${SPIKE_SOURCE_DIR}
-      ${SPIKE_SOURCE_DIR}/riscv
-      ${SPIKE_SOURCE_DIR}/fesvr
-      ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-  )
-  target_link_libraries(pcaa_spike_device PRIVATE pcaa_core)
-  set_target_properties(pcaa_spike_device PROPERTIES OUTPUT_NAME pcaa_spike_device)
-endif()
-
-set(RISCV_PREFIX "riscv64-unknown-elf-" CACHE STRING
-  "Prefix of the bare-metal RISC-V toolchain")
-find_program(RISCV_GCC NAMES ${RISCV_PREFIX}gcc)
-find_program(RISCV_GXX NAMES ${RISCV_PREFIX}g++)
-find_program(CLANG_FORMAT NAMES clang-format)
-find_program(INCLUDE_WHAT_YOU_USE NAMES include-what-you-use)
-find_program(IWYU_TOOL NAMES iwyu_tool.py iwyu_tool)
-
-set(PCAA_FORMAT_SOURCES
-  accelerator/include/accel_protocol.h
-  accelerator/include/accelerator.h
-  accelerator/include/cost_math.h
-  accelerator/include/memory_interface.h
-  accelerator/include/timing_model.h
-  accelerator/src/accelerator.cpp
-  accelerator/src/timing_model.cpp
-  accelerator/src/cost_math.cpp
-  accelerator/src/spike_device.cpp
-  accelerator/src/systemc_plugin_entry.cpp
-  accelerator/tests/systemc_unit.cpp
-  software/accel_driver.c
-  software/accel_driver.h
-  software/tests/basic.c
-  software/tests/batch.c
-  software/tests/common.h
-  software/tests/randomized.c
-  software/tests/runtime.c
-  software/tests/pbqp_basic.c
-  software/tests/pbqp_randomized.c
-  software/tests/pbqp_reference.h
-  software/pbqp/pbqp.h
-  software/pbqp/pbqp.cpp
-  software/pbqp/pbqp_accelerator.c
-  software/pbqp/pbqp_accelerator.h
-  workload/include/pbqp_workload/analyzer.h
-  workload/include/pbqp_workload/graph_generator.h
-  workload/src/analyzer.cpp
-  workload/src/graph_generator.cpp
-  workload/src/pbqp_workload.cpp
-  workload/tests/workload_unit.cpp
-  tools/pbqp_run.cpp
-  tools/pbqp_run_launcher.cpp
-)
-
-if(CLANG_FORMAT AND INCLUDE_WHAT_YOU_USE AND IWYU_TOOL)
-  add_custom_target(format
-    COMMAND ${CLANG_FORMAT} -i ${PCAA_FORMAT_SOURCES}
-    COMMAND ${IWYU_TOOL} -p ${CMAKE_CURRENT_BINARY_DIR}
-    DEPENDS
-      pcaa_cost_math
-      pcaa_timing
-      pcaa_core
-      systemc_unit
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Formatting PCAA sources and checking include hygiene"
-    VERBATIM
-  )
-else()
-  add_custom_target(format
-    COMMAND ${CMAKE_COMMAND} -E echo
-      "clang-format, include-what-you-use, and iwyu_tool are required for format"
-    COMMAND ${CMAKE_COMMAND} -E false
-    COMMENT "Formatting PCAA sources and checking include hygiene"
-    VERBATIM
-  )
-endif()
-
-function(add_baremetal_test test_name)
-  set(output_elf ${CMAKE_CURRENT_BINARY_DIR}/${test_name}.elf)
-  set(test_source ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/${test_name}.c)
-
-  add_custom_command(
-    OUTPUT ${output_elf}
-    COMMAND ${RISCV_GCC}
-      -march=rv64imac
-      -mabi=lp64
-      -mcmodel=medany
-      -std=c11
-      -ffreestanding
-      -fno-builtin
-      -nostdlib
-      -nostartfiles
-      -O2
-      -I${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-      -I${CMAKE_CURRENT_SOURCE_DIR}/software
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/start.S
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/runtime.c
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/accel_driver.c
-      ${test_source}
-      -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/software/tests/linker.ld
-      -Wl,--build-id=none
-      -o ${output_elf}
-    DEPENDS
-      accelerator/include/accel_protocol.h
-      software/accel_driver.c
-      software/accel_driver.h
-      software/tests/common.h
-      software/tests/pbqp_reference.h
-      software/tests/linker.ld
-      software/tests/start.S
-      software/tests/runtime.c
-      software/pbqp/pbqp.cpp
-      software/pbqp/pbqp.h
-      software/pbqp/pbqp_accelerator.c
-      software/pbqp/pbqp_accelerator.h
-      ${test_source}
-    VERBATIM
-  )
-  add_custom_target(${test_name}_elf DEPENDS ${output_elf})
+function(pcaa_add_baremetal_sources)
+  set_property(GLOBAL APPEND PROPERTY PCAA_BAREMETAL_SOURCES ${ARGN})
 endfunction()
 
-function(add_pbqp_baremetal_test test_name)
-  set(output_elf ${CMAKE_CURRENT_BINARY_DIR}/${test_name}.elf)
-  set(object_dir ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${test_name}_elf.dir)
-  set(common_flags
-    -march=rv64imac
-    -mabi=lp64
-    -mcmodel=medany
-    -ffreestanding
-    -fno-builtin
-    -nostdlib
-    -nostartfiles
-    -O2
-    -I${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-    -I${CMAKE_CURRENT_SOURCE_DIR}/software
-  )
-  set(c_objects
-    ${object_dir}/start.o
-    ${object_dir}/runtime.o
-    ${object_dir}/accel_driver.o
-    ${object_dir}/pbqp_accelerator.o
-    ${object_dir}/cost_math.o
-    ${object_dir}/${test_name}.o
-  )
-  set(pbqp_object ${object_dir}/pbqp.o)
-
-  add_custom_command(
-    OUTPUT ${output_elf}
-    BYPRODUCTS ${c_objects} ${pbqp_object}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${object_dir}
-    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/start.S -o ${object_dir}/start.o
-    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/runtime.c -o ${object_dir}/runtime.o
-    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/accel_driver.c -o ${object_dir}/accel_driver.o
-    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/pbqp/pbqp_accelerator.c
-      -o ${object_dir}/pbqp_accelerator.o
-    COMMAND ${RISCV_GCC} ${common_flags} -std=c11 -c
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/${test_name}.c -o ${object_dir}/${test_name}.o
-    COMMAND ${RISCV_GXX} ${common_flags} -std=c++17 -fno-exceptions -fno-rtti
-      -fno-threadsafe-statics -c ${CMAKE_CURRENT_SOURCE_DIR}/software/pbqp/pbqp.cpp
-      -o ${pbqp_object}
-    COMMAND ${RISCV_GXX} ${common_flags} -std=c++17 -fno-exceptions -fno-rtti
-      -fno-threadsafe-statics -c ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/src/cost_math.cpp
-      -o ${object_dir}/cost_math.o
-    COMMAND ${RISCV_GXX} -nostdlib -nostartfiles ${c_objects} ${pbqp_object}
-      -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/software/tests/linker.ld
-      -Wl,--build-id=none
-      -o ${output_elf}
-    DEPENDS
-      accelerator/include/accel_protocol.h
-      accelerator/include/cost_math.h
-      accelerator/src/cost_math.cpp
-      software/accel_driver.c
-      software/accel_driver.h
-      software/tests/common.h
-      software/tests/pbqp_reference.h
-      software/tests/linker.ld
-      software/tests/start.S
-      software/tests/runtime.c
-      software/pbqp/pbqp.cpp
-      software/pbqp/pbqp.h
-      software/pbqp/pbqp_accelerator.c
-      software/pbqp/pbqp_accelerator.h
-      ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/${test_name}.c
-    VERBATIM
-  )
-  add_custom_target(${test_name}_elf DEPENDS ${output_elf})
+function(pcaa_add_baremetal_headers)
+  set_property(GLOBAL APPEND PROPERTY PCAA_BAREMETAL_HEADERS ${ARGN})
 endfunction()
 
-if(RISCV_GCC AND RISCV_GXX)
-  add_baremetal_test(basic)
-  add_baremetal_test(batch)
-  add_baremetal_test(randomized)
-  add_pbqp_baremetal_test(pbqp_basic)
-  add_pbqp_baremetal_test(pbqp_randomized)
-else()
-  message(STATUS "Bare-metal test targets disabled: ${RISCV_PREFIX}gcc and g++ are required")
-endif()
+include(cmake/Dependencies.cmake)
+add_subdirectory(accelerator)
+add_subdirectory(software)
+add_subdirectory(workload)
+add_subdirectory(tools)
+include(cmake/Tests.cmake)
+include(cmake/Spike.cmake)
+include(cmake/BareMetal.cmake)
+include(cmake/Formatting.cmake)

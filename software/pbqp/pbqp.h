@@ -28,12 +28,35 @@ typedef enum {
   PBQP_CAPACITY_ERROR = -1,
   PBQP_ARGUMENT_ERROR = -2,
   PBQP_COST_RANGE_ERROR = -3,
+  PBQP_IRREDUCIBLE = -4,
+  PBQP_SEARCH_LIMIT = -5,
 } pbqp_status_t;
 
 typedef enum {
   PBQP_MODE_SOFTWARE,
   PBQP_MODE_ACCELERATOR,
 } pbqp_mode_t;
+
+/* Named graph-solving algorithms sharing the same cost-kernel interface. */
+typedef enum {
+  PBQP_STRATEGY_REDUCE_ONLY,
+  PBQP_STRATEGY_HEURISTIC_RN,
+  PBQP_STRATEGY_EXACT_BRANCH_REDUCE,
+  PBQP_STRATEGY_LOCAL_SEARCH,
+} pbqp_solver_strategy_t;
+
+/* Deterministic selection rules for an irreducible node handled by RN. */
+typedef enum {
+  PBQP_RN_MIN_DEGREE,
+  PBQP_RN_MAX_DEGREE,
+  PBQP_RN_MIN_WORK,
+} pbqp_rn_policy_t;
+
+typedef struct {
+  pbqp_solver_strategy_t strategy;
+  pbqp_rn_policy_t rn_policy;
+  unsigned maximum_search_nodes;
+} pbqp_solver_config_t;
 
 /* A logical cost vector; stride is measured in int32_t elements. */
 typedef struct {
@@ -64,6 +87,33 @@ typedef struct {
   unsigned r0_count;
   unsigned r1_count;
   unsigned r2_count;
+  unsigned rn_count;
+  unsigned rn_degree_min;
+  unsigned rn_degree_max;
+  uint64_t rn_degree_total;
+  unsigned rn_degree_histogram[PBQP_MAX_NODES + 1];
+  unsigned rn_projection_count;
+  unsigned rn_projection_primitives;
+  uint64_t rn_projection_map_elements;
+  uint64_t rn_projection_operand_bytes;
+  uint64_t rn_projection_result_bytes;
+  uint64_t rn_score_accumulation_elements;
+  uint64_t rn_commit_elements;
+  uint64_t rn_commit_bytes;
+  unsigned r0_after_rn;
+  unsigned r1_after_rn;
+  unsigned r2_after_rn;
+  unsigned first_rn_active_nodes;
+  unsigned first_rn_active_edges;
+  unsigned maximum_irreducible_core_nodes;
+  unsigned maximum_irreducible_core_edges;
+  unsigned rn_episodes;
+  unsigned rn_nodes[PBQP_MAX_NODES];
+  unsigned rn_choices[PBQP_MAX_NODES];
+  uint64_t search_nodes_visited;
+  uint64_t search_branches_created;
+  unsigned search_maximum_depth;
+  unsigned search_limit_hits;
   unsigned primitive_submissions[5];
   unsigned vector_length_histogram[PBQP_VECTOR_HISTOGRAM_BINS];
   uint64_t logical_map_elements;
@@ -97,6 +147,7 @@ typedef struct {
 typedef struct {
   pbqp_mode_t mode;
   pbqp_cost_kernel_t kernel;
+  pbqp_solver_config_t config;
 } pbqp_solver_t;
 
 /* Fixed-capacity node state, including unary costs and elimination reconstruction data. */
@@ -148,8 +199,12 @@ pbqp_status_t pbqp_add_edge(pbqp_problem_t *problem, unsigned first, unsigned se
 int32_t pbqp_evaluate(const pbqp_problem_t *problem, const unsigned *assignment);
 pbqp_status_t pbqp_bruteforce(const pbqp_problem_t *problem, pbqp_solution_t *solution);
 void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *statistics);
+pbqp_solver_config_t pbqp_solver_default_config(void);
 pbqp_status_t pbqp_solver_create(pbqp_solver_t *solver, pbqp_mode_t mode,
                                  const pbqp_cost_kernel_t *kernel);
+pbqp_status_t pbqp_solver_create_with_config(pbqp_solver_t *solver, pbqp_mode_t mode,
+                                             const pbqp_cost_kernel_t *kernel,
+                                             const pbqp_solver_config_t *config);
 pbqp_status_t pbqp_solver_solve(pbqp_solver_t *solver, pbqp_problem_t *problem,
                                 pbqp_solution_t *solution);
 

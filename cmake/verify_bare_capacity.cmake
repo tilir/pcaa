@@ -13,7 +13,7 @@ if(result EQUAL 0)
   message(FATAL_ERROR "bare-metal mode accepted an oversized graph")
 endif()
 
-string(FIND "${output}${errors}" "graph does not fit the bare-metal solver" diagnostic)
+string(FIND "${output}${errors}" "graph does not fit the shared PBQP solver" diagnostic)
 if(diagnostic EQUAL -1)
   message(FATAL_ERROR "bare-metal mode did not report its capacity diagnostic")
 endif()

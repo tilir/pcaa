@@ -141,3 +141,49 @@ TEST(PbqpSolver, ReductionsAndReconstruction) {
   check_cost_range();
   check_all_infinite_core();
 }
+
+TEST(PbqpSolver, ReduceOnlyAndHeuristicRn) {
+  pbqp_problem_t original;
+  pbqp_problem_t reduced;
+  pbqp_solution_t solution;
+  pbqp_cost_kernel_t kernel;
+  pbqp_solver_t solver;
+  pbqp_solver_config_t config = pbqp_solver_default_config();
+
+  build_irreducible_core(&original);
+  reduced = original;
+  pbqp_make_software_kernel(&kernel, &reduced.statistics);
+  config.strategy = PBQP_STRATEGY_REDUCE_ONLY;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_IRREDUCIBLE);
+
+  for (pbqp_rn_policy_t policy = PBQP_RN_MIN_DEGREE; policy <= PBQP_RN_MIN_WORK;
+       policy = static_cast<pbqp_rn_policy_t>(policy + 1)) {
+    reduced = original;
+    pbqp_make_software_kernel(&kernel, &reduced.statistics);
+    config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
+    config.rn_policy = policy;
+    CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+    CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_OK);
+    CHECK(pbqp_evaluate(&original, solution.assignment) == solution.optimum);
+    CHECK(reduced.statistics.rn_count != 0);
+    CHECK(reduced.statistics.rn_projection_count != 0);
+    CHECK(reduced.statistics.rn_projection_primitives != 0);
+    CHECK(reduced.statistics.rn_commit_elements != 0);
+  }
+}
+
+TEST(PbqpSolver, ExactSearchLimit) {
+  pbqp_problem_t problem;
+  pbqp_solution_t solution;
+  pbqp_cost_kernel_t kernel;
+  pbqp_solver_t solver;
+  pbqp_solver_config_t config = pbqp_solver_default_config();
+
+  build_irreducible_core(&problem);
+  config.maximum_search_nodes = 1;
+  pbqp_make_software_kernel(&kernel, &problem.statistics);
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &problem, &solution) == PBQP_SEARCH_LIMIT);
+  CHECK(problem.statistics.search_limit_hits == 1);
+}

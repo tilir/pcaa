@@ -34,6 +34,8 @@ jobs:
             libboost-system-dev \
             libtool \
             device-tree-compiler \
+            clang-format \
+            iwyu \
             libgtest-dev \
             libsystemc-dev \
             ninja-build
@@ -50,14 +52,17 @@ jobs:
       - name: Configure and test Debug
         run: |
           cmake -S . -B build-debug -G Ninja -DBUILD_TESTING=ON -DSPIKE_SOURCE_DIR="$GITHUB_WORKSPACE/spike-source"
+          cmake --build build-debug --target format
           cmake --build build-debug --parallel
           ctest --test-dir build-debug --output-on-failure
-          cmake --build build-debug --target basic_elf batch_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf
+          cmake --build build-debug --target rn_characterization
+          cmake --build build-debug --target basic_elf batch_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf pbqp_rn_elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/basic.elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/batch.elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/randomized.elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/pbqp_basic.elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/pbqp_randomized.elf
+          spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/pbqp_rn.elf
 
       - name: Configure and test Release
         run: |

@@ -71,6 +71,34 @@ struct RunnerSolution {
 
 enum class SolverMode { kBareMetal, kLocal };
 
+void print_usage(std::ostream &output) {
+  output << "Usage: pcaa_graph_run [OPTIONS] GRAPH.pbqp\n\n"
+            "Run a PBQP graph through the PCAA SystemC model.\n\n"
+            "Options:\n"
+            "  --solver bare-metal|local  Select bounded shared or host-local execution.\n"
+            "  --strategy reduce-only|heuristic-rn|exact-branch-reduce|local-search\n"
+            "                              Select the solving algorithm (default: heuristic-rn).\n"
+            "  --rn-policy min-degree|max-degree|min-work\n"
+            "                              Select RN node choice (default: min-degree).\n"
+            "  --verbose                   Trace model activity to standard error.\n"
+            "  --help                      Show this help text.\n"
+            "  --version                   Show the runner version.\n";
+}
+
+const char *strategy_name(pbqp_solver_strategy_t strategy) {
+  switch (strategy) {
+    case PBQP_STRATEGY_REDUCE_ONLY:
+      return "REDUCE_ONLY";
+    case PBQP_STRATEGY_HEURISTIC_RN:
+      return "HEURISTIC_RN";
+    case PBQP_STRATEGY_EXACT_BRANCH_REDUCE:
+      return "EXACT_BRANCH_REDUCE";
+    case PBQP_STRATEGY_LOCAL_SEARCH:
+      return "LOCAL_SEARCH";
+  }
+  return "UNKNOWN";
+}
+
 class GuestMemory final : public MemoryInterface {
  public:
   GuestMemory() : bytes_(kGuestMemoryBytes) {}
@@ -488,10 +516,18 @@ int sc_main(int argc, char **argv) {
   bool verbose = false;
   SolverMode solver_mode = SolverMode::kLocal;
   bool saw_solver_mode = false;
+  bool saw_strategy = false;
+  pbqp_solver_config_t solver_config = pbqp_solver_default_config();
   const char *path = nullptr;
   for (int index = 1; index < argc; ++index) {
     const std::string argument = argv[index];
-    if (argument == "--verbose" && !verbose) {
+    if (argument == "--help") {
+      print_usage(std::cout);
+      return 0;
+    } else if (argument == "--version") {
+      std::cout << "pcaa_graph_run " << PCAA_VERSION << '\n';
+      return 0;
+    } else if (argument == "--verbose" && !verbose) {
       verbose = true;
     } else if (argument == "--solver" && !saw_solver_mode && index + 1 < argc) {
       const std::string mode = argv[++index];
@@ -504,16 +540,50 @@ int sc_main(int argc, char **argv) {
         return 2;
       }
       saw_solver_mode = true;
+    } else if (argument == "--strategy" && index + 1 < argc) {
+      const std::string strategy = argv[++index];
+      if (strategy == "reduce-only") {
+        solver_config.strategy = PBQP_STRATEGY_REDUCE_ONLY;
+      } else if (strategy == "heuristic-rn") {
+        solver_config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
+      } else if (strategy == "exact-branch-reduce") {
+        solver_config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+      } else if (strategy == "local-search") {
+        solver_config.strategy = PBQP_STRATEGY_LOCAL_SEARCH;
+      } else {
+        std::cerr << "unknown solver strategy: " << strategy << '\n';
+        return 2;
+      }
+      saw_strategy = true;
+    } else if (argument == "--rn-policy" && index + 1 < argc) {
+      const std::string policy = argv[++index];
+      if (policy == "min-degree") {
+        solver_config.rn_policy = PBQP_RN_MIN_DEGREE;
+      } else if (policy == "max-degree") {
+        solver_config.rn_policy = PBQP_RN_MAX_DEGREE;
+      } else if (policy == "min-work") {
+        solver_config.rn_policy = PBQP_RN_MIN_WORK;
+      } else {
+        std::cerr << "unknown RN policy: " << policy << '\n';
+        return 2;
+      }
     } else if (path == nullptr) {
       path = argv[index];
     } else {
-      std::cerr << "usage: pcaa_graph_run [--verbose] --solver bare-metal|local GRAPH.pbqp\n";
+      std::cerr << "usage: pcaa_graph_run [--verbose] --solver bare-metal|local "
+                   "[--strategy reduce-only|heuristic-rn|exact-branch-reduce|local-search] "
+                   "[--rn-policy min-degree|max-degree|min-work] GRAPH.pbqp\n";
       return 2;
     }
   }
   if (!saw_solver_mode || path == nullptr) {
-    std::cerr << "usage: pcaa_graph_run [--verbose] --solver bare-metal|local GRAPH.pbqp\n";
+    std::cerr << "usage: pcaa_graph_run [--verbose] --solver bare-metal|local "
+                 "[--strategy reduce-only|heuristic-rn|exact-branch-reduce|local-search] "
+                 "[--rn-policy min-degree|max-degree|min-work] GRAPH.pbqp\n";
     return 2;
+  }
+  if (!saw_strategy) {
+    solver_config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
   }
   // SystemC 3 emits this banner on kernel startup unless explicitly disabled.
   setenv("SYSTEMC_DISABLE_COPYRIGHT_MESSAGE", "1", 0);
@@ -527,31 +597,81 @@ int sc_main(int argc, char **argv) {
   model.make_kernel(&kernel);
   RunnerSolution solution;
   pbqp_problem_t fixed_problem;
-  if (solver_mode == SolverMode::kBareMetal) {
+  const pbqp_statistics_t *statistics = nullptr;
+  const bool uses_shared_solver = solver_config.strategy != PBQP_STRATEGY_LOCAL_SEARCH;
+  if (uses_shared_solver) {
     if (!build_fixed_problem(input, &fixed_problem)) {
-      std::cerr << "graph does not fit the bare-metal solver (64 vertices, 6 choices per vertex, "
-                   "2016 edges)\n";
+      std::cerr << "graph does not fit the shared PBQP solver (64 vertices, 6 choices per vertex, "
+                   "2016 edges); use --solver local --strategy local-search\n";
       return 2;
     }
+    const pbqp_problem_t original_problem = fixed_problem;
     pbqp_solver_t solver;
     pbqp_solution_t fixed_solution;
-    if (pbqp_solver_create(&solver, PBQP_MODE_ACCELERATOR, &kernel) != PBQP_OK ||
-        pbqp_solver_solve(&solver, &fixed_problem, &fixed_solution) != PBQP_OK) {
+    if (pbqp_solver_create_with_config(&solver, PBQP_MODE_ACCELERATOR, &kernel, &solver_config) !=
+        PBQP_OK) {
+      std::cerr << "PCAA model could not solve the graph\n";
+      return 1;
+    }
+    const pbqp_status_t status = pbqp_solver_solve(&solver, &fixed_problem, &fixed_solution);
+    if (status == PBQP_IRREDUCIBLE) {
+      std::cout << "status IRREDUCIBLE\nstrategy " << strategy_name(solver_config.strategy) << '\n';
+      return 0;
+    }
+    if (status != PBQP_OK) {
       std::cerr << "PCAA model could not solve the graph\n";
       return 1;
     }
     solution.optimum = fixed_solution.optimum;
     solution.assignment.assign(fixed_solution.assignment,
                                fixed_solution.assignment + input.nodes.size());
-    solution.exact = true;
+    const int32_t evaluated = pbqp_evaluate(&original_problem, fixed_solution.assignment);
+    if (evaluated != fixed_solution.optimum) {
+      std::cerr << "PBQP solver returned an objective inconsistent with its assignment\n";
+      return 1;
+    }
+    solution.exact = solver_config.strategy == PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+    statistics = &fixed_problem.statistics;
   } else {
+    if (solver_mode == SolverMode::kBareMetal) {
+      std::cerr << "local-search is available only with --solver local\n";
+      return 2;
+    }
     solution = solve_large_problem(input, kernel);
   }
   std::cout << "optimum " << solution.optimum << "\nassignment";
   for (unsigned value : solution.assignment) {
     std::cout << ' ' << value;
   }
-  std::cout << "\nsolution " << (solution.exact ? "exact" : "local-optimum") << '\n';
+  const char *solution_kind = solution.exact ? "exact" : "local-optimum";
+  if (uses_shared_solver && !solution.exact) {
+    solution_kind = "heuristic";
+  }
+  std::cout << "\nsolution " << solution_kind << '\n';
+  std::cout << "strategy " << strategy_name(solver_config.strategy) << '\n';
+  if (verbose && statistics != nullptr) {
+    std::cerr << "pcaa: reductions R0=" << statistics->r0_count << " R1=" << statistics->r1_count
+              << " R2=" << statistics->r2_count << " RN=" << statistics->rn_count
+              << " projections=" << statistics->rn_projection_count
+              << " projection_primitives=" << statistics->rn_projection_primitives
+              << " commits=" << statistics->rn_commit_elements << '\n';
+    std::cerr << "pcaa: RN core first=" << statistics->first_rn_active_nodes << " nodes/"
+              << statistics->first_rn_active_edges
+              << " edges max=" << statistics->maximum_irreducible_core_nodes << " nodes/"
+              << statistics->maximum_irreducible_core_edges
+              << " edges episodes=" << statistics->rn_episodes
+              << " degree=" << statistics->rn_degree_min << ".." << statistics->rn_degree_max
+              << " after-RN R0=" << statistics->r0_after_rn << " R1=" << statistics->r1_after_rn
+              << " R2=" << statistics->r2_after_rn << '\n';
+    std::cerr << "pcaa: RN traffic projection-read=" << statistics->rn_projection_operand_bytes
+              << " projection-write=" << statistics->rn_projection_result_bytes
+              << " score-accumulation=" << statistics->rn_score_accumulation_elements
+              << " commit-bytes=" << statistics->rn_commit_bytes << '\n';
+    std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited
+              << " branches=" << statistics->search_branches_created
+              << " max-depth=" << statistics->search_maximum_depth
+              << " limit-hits=" << statistics->search_limit_hits << '\n';
+  }
 #if defined(PCAA_GRAPH_RUN_TIMED)
   const AccelTimingStatistics &timing = model.timing_statistics();
   std::cout << "timing cycles=" << timing.total_service_cycles

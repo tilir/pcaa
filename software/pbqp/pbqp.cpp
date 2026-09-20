@@ -14,7 +14,7 @@
 
 namespace {
 
-enum ReductionKind { kReductionR0, kReductionR1, kReductionR2 };
+enum ReductionKind { kReductionR0, kReductionR1, kReductionR2, kReductionRN };
 
 bool IsValidCost(int32_t cost) {
   return cost == ACCEL_INF || (cost >= PBQP_MIN_FINITE_COST && cost <= PBQP_MAX_FINITE_COST);
@@ -49,7 +49,7 @@ class Graph {
       if (!edge.active || (edge.first != node && edge.second != node)) {
         continue;
       }
-      if (count < 2) {
+      if (edge_indices != nullptr && count < 2) {
         edge_indices[count] = static_cast<int>(index);
       }
       ++count;
@@ -64,6 +64,60 @@ class Graph {
       }
     }
     return -1;
+  }
+
+  unsigned ActiveNodeCount() const {
+    unsigned count = 0;
+    for (unsigned node = 0; node < state_.node_count; ++node) {
+      count += state_.nodes[node].active != 0;
+    }
+    return count;
+  }
+
+  unsigned ActiveEdgeCount() const {
+    unsigned count = 0;
+    for (unsigned index = 0; index < PBQP_MAX_EDGES; ++index) {
+      count += state_.edges[index].active != 0;
+    }
+    return count;
+  }
+
+  int SelectRnNode(pbqp_rn_policy_t policy) const {
+    int selected = -1;
+    unsigned selected_degree = 0;
+    uint64_t selected_work = 0;
+    for (unsigned node = 0; node < state_.node_count; ++node) {
+      if (!state_.nodes[node].active) {
+        continue;
+      }
+      const unsigned degree = NeighborCount(node, nullptr);
+      uint64_t work = 0;
+      if (policy == PBQP_RN_MIN_WORK) {
+        for (unsigned index = 0; index < PBQP_MAX_EDGES; ++index) {
+          const pbqp_edge_t &edge = state_.edges[index];
+          if (edge.active && (edge.first == node || edge.second == node)) {
+            work += state_.nodes[OtherNode(edge, node)].domain;
+          }
+        }
+        work *= state_.nodes[node].domain;
+      }
+      if (selected < 0 ||
+          (policy == PBQP_RN_MIN_DEGREE &&
+           (degree < selected_degree ||
+            (degree == selected_degree && node < unsigned(selected)))) ||
+          (policy == PBQP_RN_MAX_DEGREE &&
+           (degree > selected_degree ||
+            (degree == selected_degree && node < unsigned(selected)))) ||
+          (policy == PBQP_RN_MIN_WORK &&
+           (work < selected_work || (work == selected_work &&
+                                     (degree < selected_degree || (degree == selected_degree &&
+                                                                   node < unsigned(selected))))))) {
+        selected = static_cast<int>(node);
+        selected_degree = degree;
+        selected_work = work;
+      }
+    }
+    return selected;
   }
 
   unsigned OtherNode(const pbqp_edge_t &edge, unsigned node) const {
@@ -137,7 +191,8 @@ class CostKernel {
 
 class Solver {
  public:
-  explicit Solver(const pbqp_cost_kernel_t &kernel) : kernel_(kernel) {}
+  Solver(const pbqp_cost_kernel_t &kernel, const pbqp_solver_config_t &config)
+      : kernel_(kernel), config_(config) {}
 
   pbqp_status_t Solve(pbqp_problem_t *problem, pbqp_solution_t *solution) const {
     if (problem == nullptr || solution == nullptr) {
@@ -149,10 +204,32 @@ class Solver {
     state.statistics.nodes = state.node_count;
     state.statistics.initial_edges = state.edge_count;
 
+    bool after_rn = false;
     while (true) {
       int edge_indices[2];
       const int node = graph.FindReducibleNode(edge_indices);
       if (node < 0) {
+        if (graph.ActiveNodeCount() == 0) {
+          solution->optimum = state.objective_offset;
+          ReconstructSolution(state, solution);
+          return PBQP_OK;
+        }
+        if (config_.strategy == PBQP_STRATEGY_REDUCE_ONLY) {
+          return PBQP_IRREDUCIBLE;
+        }
+        if (config_.strategy == PBQP_STRATEGY_HEURISTIC_RN) {
+          RecordIrreducibleCore(graph);
+          const int rn_node = graph.SelectRnNode(config_.rn_policy);
+          if (rn_node < 0) {
+            return PBQP_IRREDUCIBLE;
+          }
+          const pbqp_status_t status = ReduceRN(graph, static_cast<unsigned>(rn_node));
+          if (status != PBQP_OK) {
+            return status;
+          }
+          after_rn = true;
+          continue;
+        }
         break;
       }
 
@@ -160,20 +237,34 @@ class Solver {
       pbqp_status_t status = PBQP_OK;
       if (degree == 0) {
         status = ReduceR0(graph, static_cast<unsigned>(node));
+        if (after_rn)
+          ++state.statistics.r0_after_rn;
       } else if (degree == 1) {
         status = ReduceR1(graph, static_cast<unsigned>(node), edge_indices[0]);
+        if (after_rn)
+          ++state.statistics.r1_after_rn;
       } else {
         status = ReduceR2(graph, static_cast<unsigned>(node), edge_indices[0], edge_indices[1]);
+        if (after_rn)
+          ++state.statistics.r2_after_rn;
       }
       if (status != PBQP_OK) {
         return status;
       }
     }
 
+    if (config_.strategy != PBQP_STRATEGY_EXACT_BRANCH_REDUCE) {
+      return PBQP_ARGUMENT_ERROR;
+    }
     unsigned core_assignment[PBQP_MAX_NODES] = {};
     bool has_assignment = false;
+    bool search_limit_hit = false;
     solution->optimum = ACCEL_INF;
-    EnumerateActiveCore(state, 0, core_assignment, solution, &has_assignment);
+    EnumerateActiveCore(state, 0, core_assignment, solution, &has_assignment, &search_limit_hit);
+    if (search_limit_hit) {
+      ++state.statistics.search_limit_hits;
+      return PBQP_SEARCH_LIMIT;
+    }
     solution->optimum = accel_cost_add(state.objective_offset, solution->optimum);
     ReconstructSolution(state, solution);
     return PBQP_OK;
@@ -191,6 +282,17 @@ class Solver {
     return {edge.cost + other_value * PBQP_MAX_DOMAIN, length, 1};
   }
 
+  static pbqp_vector_view_t ConditionedEdgeView(const pbqp_edge_t &edge, unsigned node,
+                                                unsigned node_value, unsigned neighbor_length) {
+    assert(edge.first == node || edge.second == node);
+    assert(node_value < PBQP_MAX_DOMAIN);
+    assert(neighbor_length <= PBQP_MAX_DOMAIN);
+    if (node == edge.first) {
+      return {edge.cost + node_value * PBQP_MAX_DOMAIN, neighbor_length, 1};
+    }
+    return {edge.cost + node_value, neighbor_length, PBQP_MAX_DOMAIN};
+  }
+
   static void RecordView(pbqp_statistics_t *statistics, pbqp_vector_view_t view) {
     if (view.stride == 1) {
       ++statistics->contiguous_views;
@@ -206,6 +308,119 @@ class Solver {
     statistics->logical_map_elements += length;
     statistics->logical_bytes_read += static_cast<uint64_t>(length) * input_count * sizeof(int32_t);
     statistics->logical_bytes_written += sizeof(accel_min_argmin_result_t);
+  }
+
+  void RecordIrreducibleCore(Graph &graph) const {
+    pbqp_statistics_t &statistics = graph.State().statistics;
+    const unsigned nodes = graph.ActiveNodeCount();
+    const unsigned edges = graph.ActiveEdgeCount();
+    if (statistics.rn_count == 0) {
+      statistics.first_rn_active_nodes = nodes;
+      statistics.first_rn_active_edges = edges;
+    }
+    if (nodes > statistics.maximum_irreducible_core_nodes) {
+      statistics.maximum_irreducible_core_nodes = nodes;
+    }
+    if (edges > statistics.maximum_irreducible_core_edges) {
+      statistics.maximum_irreducible_core_edges = edges;
+    }
+    ++statistics.rn_episodes;
+  }
+
+  pbqp_status_t ConditionNode(Graph &graph, unsigned node_index, unsigned choice,
+                              ReductionKind kind) const {
+    pbqp_problem_t &problem = graph.State();
+    pbqp_node_t &node = problem.nodes[node_index];
+    if (!node.active || choice >= node.domain) {
+      return PBQP_ARGUMENT_ERROR;
+    }
+    problem.objective_offset = accel_cost_add(problem.objective_offset, node.unary[choice]);
+    for (unsigned edge_index = 0; edge_index < PBQP_MAX_EDGES; ++edge_index) {
+      pbqp_edge_t &edge = problem.edges[edge_index];
+      if (!edge.active || (edge.first != node_index && edge.second != node_index)) {
+        continue;
+      }
+      const unsigned neighbor_index = graph.OtherNode(edge, node_index);
+      pbqp_node_t &neighbor = problem.nodes[neighbor_index];
+      const pbqp_vector_view_t slice =
+          ConditionedEdgeView(edge, node_index, choice, neighbor.domain);
+      for (unsigned value = 0; value < neighbor.domain; ++value) {
+        neighbor.unary[value] =
+            accel_cost_add(neighbor.unary[value], slice.base[value * slice.stride]);
+      }
+      problem.statistics.rn_commit_elements += neighbor.domain;
+      problem.statistics.rn_commit_bytes += 2 * neighbor.domain * sizeof(int32_t);
+      edge.active = 0;
+      --problem.edge_count;
+    }
+    node.choice[0] = choice;
+    node.reduction_kind = kind;
+    node.active = 0;
+    problem.elimination_order[problem.elimination_count++] = node_index;
+    return PBQP_OK;
+  }
+
+  pbqp_status_t ReduceRN(Graph &graph, unsigned node_index) const {
+    pbqp_problem_t &problem = graph.State();
+    pbqp_node_t &node = problem.nodes[node_index];
+    int32_t scores[PBQP_MAX_DOMAIN];
+    for (unsigned value = 0; value < node.domain; ++value) {
+      scores[value] = node.unary[value];
+    }
+
+    const unsigned degree = graph.NeighborCount(node_index, nullptr);
+    ++problem.statistics.rn_count;
+    problem.statistics.rn_degree_total += degree;
+    if (problem.statistics.rn_count == 1 || degree < problem.statistics.rn_degree_min) {
+      problem.statistics.rn_degree_min = degree;
+    }
+    if (degree > problem.statistics.rn_degree_max) {
+      problem.statistics.rn_degree_max = degree;
+    }
+    ++problem.statistics.rn_degree_histogram[degree];
+
+    for (unsigned edge_index = 0; edge_index < PBQP_MAX_EDGES; ++edge_index) {
+      const pbqp_edge_t &edge = problem.edges[edge_index];
+      if (!edge.active || (edge.first != node_index && edge.second != node_index)) {
+        continue;
+      }
+      const unsigned neighbor_index = graph.OtherNode(edge, node_index);
+      const pbqp_node_t &neighbor = problem.nodes[neighbor_index];
+      pbqp_min2_job_t jobs[PBQP_MAX_DOMAIN];
+      accel_min_argmin_result_t results[PBQP_MAX_DOMAIN];
+      for (unsigned value = 0; value < node.domain; ++value) {
+        const pbqp_vector_view_t matrix_slice = EdgeView(edge, node_index, value, neighbor.domain);
+        const pbqp_vector_view_t unary = {neighbor.unary, neighbor.domain, 1};
+        jobs[value] = {matrix_slice, unary, &results[value]};
+        RecordView(&problem.statistics, matrix_slice);
+        RecordView(&problem.statistics, unary);
+        RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN,
+                        neighbor.domain, 2);
+        ++problem.statistics.rn_projection_primitives;
+        problem.statistics.rn_projection_map_elements += neighbor.domain;
+        problem.statistics.rn_projection_operand_bytes += 2 * neighbor.domain * sizeof(int32_t);
+        problem.statistics.rn_projection_result_bytes += sizeof(accel_min_argmin_result_t);
+      }
+      ++problem.statistics.rn_projection_count;
+      if (kernel_.Min2Batch(jobs, node.domain) != 0) {
+        return PBQP_ARGUMENT_ERROR;
+      }
+      for (unsigned value = 0; value < node.domain; ++value) {
+        scores[value] = accel_cost_add(scores[value], results[value].value);
+      }
+      problem.statistics.rn_score_accumulation_elements += node.domain;
+    }
+
+    unsigned choice = 0;
+    for (unsigned value = 1; value < node.domain; ++value) {
+      if (scores[value] < scores[choice]) {
+        choice = value;
+      }
+    }
+    const unsigned rn_index = problem.statistics.rn_count - 1;
+    problem.statistics.rn_nodes[rn_index] = node_index;
+    problem.statistics.rn_choices[rn_index] = choice;
+    return ConditionNode(graph, node_index, choice, kReductionRN);
   }
 
   pbqp_status_t ReduceR0(Graph &graph, unsigned node_index) const {
@@ -356,9 +571,18 @@ class Solver {
     return total;
   }
 
-  static void EnumerateActiveCore(const pbqp_problem_t &problem, unsigned node,
-                                  unsigned *assignment, pbqp_solution_t *solution,
-                                  bool *has_assignment) {
+  void EnumerateActiveCore(pbqp_problem_t &problem, unsigned node, unsigned *assignment,
+                           pbqp_solution_t *solution, bool *has_assignment,
+                           bool *search_limit_hit) const {
+    if (config_.maximum_search_nodes != 0 &&
+        problem.statistics.search_nodes_visited == config_.maximum_search_nodes) {
+      *search_limit_hit = true;
+      return;
+    }
+    ++problem.statistics.search_nodes_visited;
+    if (node > problem.statistics.search_maximum_depth) {
+      problem.statistics.search_maximum_depth = node;
+    }
     if (node == problem.node_count) {
       const int32_t value = EvaluateActiveCore(problem, assignment);
       if (!*has_assignment || value < solution->optimum) {
@@ -371,12 +595,18 @@ class Solver {
       return;
     }
     if (!problem.nodes[node].active) {
-      EnumerateActiveCore(problem, node + 1, assignment, solution, has_assignment);
+      EnumerateActiveCore(problem, node + 1, assignment, solution, has_assignment,
+                          search_limit_hit);
       return;
     }
     for (unsigned value = 0; value < problem.nodes[node].domain; ++value) {
+      ++problem.statistics.search_branches_created;
       assignment[node] = value;
-      EnumerateActiveCore(problem, node + 1, assignment, solution, has_assignment);
+      EnumerateActiveCore(problem, node + 1, assignment, solution, has_assignment,
+                          search_limit_hit);
+      if (*search_limit_hit) {
+        return;
+      }
     }
   }
 
@@ -384,7 +614,7 @@ class Solver {
     for (unsigned position = problem.elimination_count; position > 0; --position) {
       const unsigned node_index = problem.elimination_order[position - 1];
       const pbqp_node_t &node = problem.nodes[node_index];
-      if (node.reduction_kind == kReductionR0) {
+      if (node.reduction_kind == kReductionR0 || node.reduction_kind == kReductionRN) {
         solution->assignment[node_index] = node.choice[0];
       } else if (node.reduction_kind == kReductionR1) {
         assert(node.first_neighbor >= 0);
@@ -406,6 +636,7 @@ class Solver {
   }
 
   const CostKernel kernel_;
+  const pbqp_solver_config_t config_;
 };
 
 void Enumerate(const pbqp_problem_t &problem, unsigned node, unsigned *assignment,
@@ -585,14 +816,26 @@ void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *st
   kernel->min3_argmin_batch = SoftwareMin3Batch;
 }
 
+pbqp_solver_config_t pbqp_solver_default_config(void) {
+  return {PBQP_STRATEGY_EXACT_BRANCH_REDUCE, PBQP_RN_MIN_DEGREE, 0};
+}
+
 pbqp_status_t pbqp_solver_create(pbqp_solver_t *solver, pbqp_mode_t mode,
                                  const pbqp_cost_kernel_t *kernel) {
+  const pbqp_solver_config_t config = pbqp_solver_default_config();
+  return pbqp_solver_create_with_config(solver, mode, kernel, &config);
+}
+
+pbqp_status_t pbqp_solver_create_with_config(pbqp_solver_t *solver, pbqp_mode_t mode,
+                                             const pbqp_cost_kernel_t *kernel,
+                                             const pbqp_solver_config_t *config) {
   if (solver == nullptr || kernel == nullptr || kernel->min2_argmin == nullptr ||
-      kernel->min3_argmin == nullptr) {
+      kernel->min3_argmin == nullptr || config == nullptr) {
     return PBQP_ARGUMENT_ERROR;
   }
   solver->mode = mode;
   solver->kernel = *kernel;
+  solver->config = *config;
   return PBQP_OK;
 }
 
@@ -601,7 +844,7 @@ pbqp_status_t pbqp_solver_solve(pbqp_solver_t *solver, pbqp_problem_t *problem,
   if (solver == nullptr) {
     return PBQP_ARGUMENT_ERROR;
   }
-  return Solver(solver->kernel).Solve(problem, solution);
+  return Solver(solver->kernel, solver->config).Solve(problem, solution);
 }
 
 }  // extern "C"
