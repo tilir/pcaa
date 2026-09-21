@@ -17,7 +17,7 @@ static inline int32_t pbqp_reference_evaluate(const pbqp_problem_t *problem,
     const pbqp_edge_t *edge = &problem->edges[index];
     if (edge->active) {
       total = ref_add(
-          total, edge->cost[assignment[edge->first] * PBQP_MAX_DOMAIN + assignment[edge->second]]);
+          total, edge->cost[assignment[edge->first] * edge->stride + assignment[edge->second]]);
     }
   }
   return total;

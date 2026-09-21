@@ -28,11 +28,33 @@ add_custom_target(solver_characterization
     --runner $<TARGET_FILE:pcaa_graph_run>
     --generator $<TARGET_FILE:pbqp_graph_generate>
     --output ${PROJECT_BINARY_DIR}/solver-characterization.csv
+    --summary ${PROJECT_BINARY_DIR}/solver-characterization-summary.md
   DEPENDS pcaa_graph_run pbqp_graph_generate
   BYPRODUCTS ${PROJECT_BINARY_DIR}/solver-characterization.csv
+             ${PROJECT_BINARY_DIR}/solver-characterization-summary.md
   COMMENT "Characterizing deterministic synthetic solver workloads through the CLI")
 
 add_custom_target(rn_characterization DEPENDS solver_characterization)
+
+add_custom_target(hw_sw_characterization
+  COMMAND ${CMAKE_COMMAND} -E env
+    PCAA_RUNNER=$<TARGET_FILE:pcaa_graph_run>
+    PCAA_GENERATOR=$<TARGET_FILE:pbqp_graph_generate>
+    ${RUBY_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/hw_sw_characterize.rb
+    ${PROJECT_BINARY_DIR}/hw-sw-epochs.csv
+  DEPENDS pcaa_graph_run pbqp_graph_generate
+  BYPRODUCTS ${PROJECT_BINARY_DIR}/hw-sw-epochs.csv
+  COMMENT "Characterizing hypothetical HW/SW execution epochs through solver traces")
+
+add_custom_target(scaling_characterization
+  COMMAND ${RUBY_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/scaling_characterize.rb
+    --runner $<TARGET_FILE:pcaa_graph_run>
+    --generator $<TARGET_FILE:pbqp_graph_generate>
+    --resume
+    ${PROJECT_BINARY_DIR}/scaling-runs.csv
+  DEPENDS pcaa_graph_run pbqp_graph_generate
+  BYPRODUCTS ${PROJECT_BINARY_DIR}/scaling-runs.csv
+  COMMENT "Recording supported PBQP scaling points and capacity limits")
 
 pcaa_add_format_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run.cpp

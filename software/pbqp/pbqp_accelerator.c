@@ -81,8 +81,7 @@ static int accel_min2_value(void *opaque, pbqp_vector_view_t a, pbqp_vector_view
   const int32_t *second = contiguous(context, b, context->scratch1);
   if (first == NULL || second == NULL || result == NULL)
     return -1;
-  *result = accel_min_add(first, second, a.length);
-  return 0;
+  return accel_min_add_checked(first, second, a.length, result);
 }
 
 static int accel_min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
@@ -153,6 +152,11 @@ static int accel_min2_value_batch(void *opaque, const pbqp_min2_value_job_t *job
   return accel_submit_batch(context->batch_commands, count, &context->batch_result);
 }
 
+static void accel_set_statistics(void *opaque, pbqp_statistics_t *statistics) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  context->statistics = statistics;
+}
+
 void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,
                                   pbqp_accelerator_kernel_context_t *context,
                                   pbqp_statistics_t *statistics) {
@@ -164,4 +168,5 @@ void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,
   kernel->min3_argmin_batch = accel_min3_batch;
   kernel->min2_value = accel_min2_value;
   kernel->min2_value_batch = accel_min2_value_batch;
+  kernel->set_statistics = accel_set_statistics;
 }

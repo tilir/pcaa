@@ -7,10 +7,28 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
 #define CHECK(expression) EXPECT_TRUE(expression)
+
+static void init_problem(pbqp_problem_t* problem) {
+  CHECK(pbqp_init(problem, pbqp_heap_allocator(), PBQP_MAX_NODES, PBQP_MAX_EDGES,
+                  PBQP_MAX_DOMAIN) == PBQP_OK);
+}
+
+static void clone_problem(pbqp_problem_t* destination, const pbqp_problem_t* source) {
+  CHECK(pbqp_problem_clone(destination, source, pbqp_heap_allocator()) == PBQP_OK);
+}
+
+static void init_solution(pbqp_solution_t* solution) {
+  const pbqp_allocator_t allocator = pbqp_heap_allocator();
+  unsigned* assignment =
+      static_cast<unsigned*>(allocator.allocate(allocator.context, PBQP_MAX_NODES * sizeof(int)));
+  ASSERT_NE(assignment, nullptr);
+  pbqp_solution_init(solution, assignment, PBQP_MAX_NODES);
+}
 
 static void build_triangle(pbqp_problem_t* problem) {
   const int32_t unary0[] = {2, -1};
@@ -19,7 +37,7 @@ static void build_triangle(pbqp_problem_t* problem) {
   const int32_t edge01[] = {0, 4, -3, 2};
   const int32_t edge02[] = {2, -1, 5, 0};
   const int32_t edge12[] = {1, 3, -2, 4};
-  pbqp_init(problem);
+  init_problem(problem);
   CHECK(pbqp_add_node(problem, 2, unary0) == PBQP_OK);
   CHECK(pbqp_add_node(problem, 2, unary1) == PBQP_OK);
   CHECK(pbqp_add_node(problem, 2, unary2) == PBQP_OK);
@@ -31,7 +49,7 @@ static void build_triangle(pbqp_problem_t* problem) {
 static void build_open_wedge(pbqp_problem_t* problem) {
   const int32_t unary[] = {0, 1};
   const int32_t edge[] = {0, 2, -1, 3};
-  pbqp_init(problem);
+  init_problem(problem);
   CHECK(pbqp_add_node(problem, 2, unary) == PBQP_OK);
   CHECK(pbqp_add_node(problem, 2, unary) == PBQP_OK);
   CHECK(pbqp_add_node(problem, 2, unary) == PBQP_OK);
@@ -42,7 +60,7 @@ static void build_open_wedge(pbqp_problem_t* problem) {
 static void build_irreducible_core(pbqp_problem_t* problem) {
   const int32_t unary[] = {0, 1};
   const int32_t edge[] = {0, 1, 2, -1};
-  pbqp_init(problem);
+  init_problem(problem);
   for (unsigned node = 0; node < 4; ++node) {
     CHECK(pbqp_add_node(problem, 2, unary) == PBQP_OK);
   }
@@ -53,11 +71,49 @@ static void build_irreducible_core(pbqp_problem_t* problem) {
   }
 }
 
+static void build_rn_orientation_problem(pbqp_problem_t* problem) {
+  const int32_t unary[] = {0, 0};
+  const int32_t constrained[] = {5, 0, ACCEL_INF, ACCEL_INF};
+  const int32_t zero[] = {0, 0, 0, 0};
+  init_problem(problem);
+  for (unsigned node = 0; node < 4; ++node) {
+    CHECK(pbqp_add_node(problem, 2, unary) == PBQP_OK);
+  }
+  CHECK(pbqp_add_edge(problem, 0, 1, constrained) == PBQP_OK);
+  CHECK(pbqp_add_edge(problem, 0, 2, constrained) == PBQP_OK);
+  CHECK(pbqp_add_edge(problem, 0, 3, constrained) == PBQP_OK);
+  CHECK(pbqp_add_edge(problem, 1, 2, zero) == PBQP_OK);
+  CHECK(pbqp_add_edge(problem, 1, 3, zero) == PBQP_OK);
+  CHECK(pbqp_add_edge(problem, 2, 3, zero) == PBQP_OK);
+}
+
+static void build_rn_transposed_orientation_problem(pbqp_problem_t* problem) {
+  const int32_t unary3[] = {0, 0, 0};
+  const int32_t unary2[] = {0, 0};
+  const int32_t asymmetric[] = {0, -5, 0, 0, 0, 0};
+  const int32_t zero32[] = {0, 0, 0, 0, 0, 0};
+  const int32_t zero22[] = {0, 0, 0, 0};
+  init_problem(problem);
+  CHECK(pbqp_add_node(problem, 3, unary3) == PBQP_OK);
+  for (unsigned node = 1; node < 5; ++node) {
+    CHECK(pbqp_add_node(problem, 2, unary2) == PBQP_OK);
+  }
+  CHECK(pbqp_add_edge(problem, 0, 1, asymmetric) == PBQP_OK);
+  for (unsigned first = 0; first < 5; ++first) {
+    for (unsigned second = first + 1; second < 5; ++second) {
+      if ((first != 0 || second != 1) && (first != 0 || second != 4)) {
+        const int32_t* costs = first == 0 ? zero32 : zero22;
+        CHECK(pbqp_add_edge(problem, first, second, costs) == PBQP_OK);
+      }
+    }
+  }
+}
+
 static void check_cost_range(void) {
   pbqp_problem_t problem;
   const int32_t out_of_range[] = {ACCEL_INF - 1};
   const int32_t valid[] = {0};
-  pbqp_init(&problem);
+  init_problem(&problem);
   CHECK(pbqp_add_node(&problem, 1, out_of_range) == PBQP_COST_RANGE_ERROR);
   CHECK(pbqp_add_node(&problem, 1, valid) == PBQP_OK);
   CHECK(pbqp_add_node(&problem, 1, valid) == PBQP_OK);
@@ -69,12 +125,16 @@ static void check_all_infinite_core(void) {
   const int32_t zero[] = {0};
   pbqp_problem_t original;
   pbqp_problem_t reduced;
-  pbqp_solution_t oracle = {0, {1000000}};
-  pbqp_solution_t solution = {0, {1000000}};
+  unsigned oracle_assignment[PBQP_MAX_NODES] = {1000000};
+  unsigned solution_assignment[PBQP_MAX_NODES] = {1000000};
+  pbqp_solution_t oracle;
+  pbqp_solution_t solution;
   pbqp_cost_kernel_t kernel;
   pbqp_solver_t solver;
 
-  pbqp_init(&original);
+  pbqp_solution_init(&oracle, oracle_assignment, PBQP_MAX_NODES);
+  pbqp_solution_init(&solution, solution_assignment, PBQP_MAX_NODES);
+  init_problem(&original);
   for (unsigned node = 0; node < 4; ++node) {
     CHECK(pbqp_add_node(&original, 1, infinite) == PBQP_OK);
   }
@@ -84,7 +144,7 @@ static void check_all_infinite_core(void) {
     }
   }
   CHECK(pbqp_bruteforce(&original, &oracle) == PBQP_OK);
-  reduced = original;
+  clone_problem(&reduced, &original);
   pbqp_make_software_kernel(&kernel, &reduced.statistics);
   CHECK(pbqp_solver_create(&solver, PBQP_MODE_SOFTWARE, &kernel) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_OK);
@@ -103,8 +163,10 @@ static void check_problem(void (*build)(pbqp_problem_t*), int expect_r2) {
   pbqp_solver_t solver;
 
   build(&original);
+  init_solution(&oracle);
+  init_solution(&solution);
   CHECK(pbqp_bruteforce(&original, &oracle) == PBQP_OK);
-  reduced = original;
+  clone_problem(&reduced, &original);
   pbqp_make_software_kernel(&kernel, &reduced.statistics);
   CHECK(pbqp_solver_create(&solver, PBQP_MODE_SOFTWARE, &kernel) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_OK);
@@ -125,8 +187,10 @@ TEST(PbqpSolver, ReductionsAndReconstruction) {
   pbqp_solver_t solver;
 
   build_triangle(&original);
+  init_solution(&oracle);
+  init_solution(&solution);
   CHECK(pbqp_bruteforce(&original, &oracle) == PBQP_OK);
-  reduced = original;
+  clone_problem(&reduced, &original);
   pbqp_make_software_kernel(&kernel, &reduced.statistics);
   CHECK(pbqp_solver_create(&solver, PBQP_MODE_SOFTWARE, &kernel) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_OK);
@@ -151,7 +215,8 @@ TEST(PbqpSolver, ReduceOnlyAndHeuristicRn) {
   pbqp_solver_config_t config = pbqp_solver_default_config();
 
   build_irreducible_core(&original);
-  reduced = original;
+  init_solution(&solution);
+  clone_problem(&reduced, &original);
   pbqp_make_software_kernel(&kernel, &reduced.statistics);
   config.strategy = PBQP_STRATEGY_REDUCE_ONLY;
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
@@ -159,7 +224,7 @@ TEST(PbqpSolver, ReduceOnlyAndHeuristicRn) {
 
   for (pbqp_rn_policy_t policy = PBQP_RN_MIN_DEGREE; policy <= PBQP_RN_MIN_WORK;
        policy = static_cast<pbqp_rn_policy_t>(policy + 1)) {
-    reduced = original;
+    clone_problem(&reduced, &original);
     pbqp_make_software_kernel(&kernel, &reduced.statistics);
     config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
     config.rn_policy = policy;
@@ -173,7 +238,45 @@ TEST(PbqpSolver, ReduceOnlyAndHeuristicRn) {
     CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_MAP_ADD_REDUCE_MIN] != 0);
     CHECK(reduced.statistics.rn_commit_bytes == 3 * reduced.statistics.rn_commit_elements *
                                                    sizeof(int32_t));
+    CHECK(reduced.statistics.rn_episodes == reduced.statistics.rn_count);
+    CHECK(reduced.statistics.rn_cascade_r0[0] + reduced.statistics.rn_cascade_r1[0] +
+              reduced.statistics.rn_cascade_r2[0] ==
+          reduced.statistics.rn_cascade_total_length);
+    CHECK(reduced.statistics.rn_cascade_length_histogram[
+              reduced.statistics.rn_cascade_total_length] == 1);
+    CHECK(reduced.statistics.rn_cascade_maximum_length ==
+          reduced.statistics.rn_cascade_total_length);
   }
+}
+
+TEST(PbqpSolver, RnProjectsTheConditionedNodeAxis) {
+  pbqp_problem_t original;
+  pbqp_problem_t reduced;
+  pbqp_solution_t solution;
+  pbqp_cost_kernel_t kernel;
+  pbqp_solver_t solver;
+  pbqp_solver_config_t config = pbqp_solver_default_config();
+
+  build_rn_orientation_problem(&original);
+  init_solution(&solution);
+  clone_problem(&reduced, &original);
+  config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
+  pbqp_make_software_kernel(&kernel, &reduced.statistics);
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_OK);
+  CHECK(solution.optimum == 0);
+  CHECK(solution.assignment[0] == 0);
+  CHECK(pbqp_evaluate(&original, solution.assignment) == 0);
+
+  build_rn_transposed_orientation_problem(&original);
+  clone_problem(&reduced, &original);
+  config.rn_policy = PBQP_RN_MAX_DEGREE;
+  pbqp_make_software_kernel(&kernel, &reduced.statistics);
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &reduced, &solution) == PBQP_OK);
+  CHECK(reduced.statistics.rn_nodes[0] == 1);
+  CHECK(reduced.statistics.rn_choices[0] == 1);
+  CHECK(pbqp_evaluate(&original, solution.assignment) == solution.optimum);
 }
 
 TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
@@ -187,13 +290,15 @@ TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
   pbqp_solver_config_t config = pbqp_solver_default_config();
 
   build_irreducible_core(&original);
-  enumerated = original;
+  init_solution(&enumeration_solution);
+  init_solution(&branch_solution);
+  clone_problem(&enumerated, &original);
   pbqp_make_software_kernel(&kernel, &enumerated.statistics);
   config.strategy = PBQP_STRATEGY_EXACT_CORE_ENUMERATION;
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &enumerated, &enumeration_solution) == PBQP_OK);
 
-  branched = original;
+  clone_problem(&branched, &original);
   pbqp_make_software_kernel(&kernel, &branched.statistics);
   config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
@@ -218,13 +323,15 @@ TEST(PbqpSolver, LocalSearchHybridNeverWorsensRn) {
   pbqp_solver_config_t config = pbqp_solver_default_config();
 
   build_irreducible_core(&original);
-  rn_problem = original;
+  init_solution(&rn_solution);
+  init_solution(&hybrid_solution);
+  clone_problem(&rn_problem, &original);
   pbqp_make_software_kernel(&kernel, &rn_problem.statistics);
   config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &rn_problem, &rn_solution) == PBQP_OK);
 
-  hybrid_problem = original;
+  clone_problem(&hybrid_problem, &original);
   pbqp_make_software_kernel(&kernel, &hybrid_problem.statistics);
   config.strategy = PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH;
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
@@ -242,6 +349,7 @@ TEST(PbqpSolver, ExactSearchLimit) {
   pbqp_solver_config_t config = pbqp_solver_default_config();
 
   build_irreducible_core(&problem);
+  init_solution(&solution);
   config.maximum_search_nodes = 1;
   pbqp_make_software_kernel(&kernel, &problem.statistics);
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
@@ -255,4 +363,32 @@ TEST(PbqpSolver, ExactSearchLimit) {
   CHECK(pbqp_solver_solve(&solver, &problem, &solution) == PBQP_SEARCH_LIMIT);
   CHECK(problem.statistics.search_limit_hits == 1);
   CHECK(problem.statistics.search_nodes_visited == 1);
+}
+
+TEST(PbqpSolver, HostedStorageExceedsBareMetalCapacity) {
+  constexpr unsigned kNodeCount = PBQP_MAX_NODES * 4;
+  constexpr unsigned kDomain = PBQP_MAX_DOMAIN * 2;
+  std::vector<int32_t> unary(kDomain, 1);
+  std::vector<int32_t> edge(kDomain * kDomain);
+  unary[0] = 0;
+  pbqp_problem_t problem;
+  CHECK(pbqp_init(&problem, pbqp_heap_allocator(), kNodeCount, kNodeCount, kDomain) == PBQP_OK);
+  for (unsigned node = 0; node < kNodeCount; ++node)
+    CHECK(pbqp_add_node(&problem, kDomain, unary.data()) == PBQP_OK);
+  for (unsigned node = 1; node < kNodeCount; ++node)
+    CHECK(pbqp_add_edge(&problem, node - 1, node, edge.data()) == PBQP_OK);
+
+  std::vector<unsigned> assignment(kNodeCount);
+  pbqp_solution_t solution;
+  pbqp_solution_init(&solution, assignment.data(), assignment.size());
+  pbqp_cost_kernel_t kernel;
+  pbqp_make_software_kernel(&kernel, &problem.statistics);
+  pbqp_solver_t solver;
+  CHECK(pbqp_solver_create(&solver, PBQP_MODE_SOFTWARE, &kernel) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &problem, &solution) == PBQP_OK);
+  CHECK(solution.optimum == 0);
+  CHECK(problem.statistics.nodes == kNodeCount);
+  for (unsigned value : assignment)
+    CHECK(value == 0);
+  pbqp_destroy(&problem);
 }

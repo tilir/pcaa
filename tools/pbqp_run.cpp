@@ -15,8 +15,10 @@
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,6 +44,7 @@ constexpr size_t kGuestMemoryBytes = 1024 * 1024;
 constexpr size_t kMaximumHostDomain = 64 * 1024;
 constexpr unsigned kTimedRunnerLanes = 4;
 constexpr int kTimedRunnerCyclePeriodNanoseconds = 1;
+constexpr unsigned kTimedRunnerBytesPerCycle = 16;
 constexpr uint64_t kFirstAllocationAddress = 0x100;
 constexpr size_t kAllocationAlignment = 8;
 constexpr uint32_t kDoorbellSubmit = 1;
@@ -68,6 +71,52 @@ struct RunnerSolution {
   bool exact = false;
 };
 
+const char *trace_type_name(pbqp_trace_event_type_t type) {
+  static const char *const names[] = {
+      "R0",        "R1",          "R2",         "RN_SELECT",     "RN_SCORE",
+      "RN_COMMIT", "LOCAL_SCORE", "LOCAL_MOVE", "BRANCH_SELECT", "BRANCH_CONDITION"};
+  return names[type];
+}
+
+const char *trace_phase_name(pbqp_trace_phase_t phase) {
+  static const char *const names[] = {"reduction", "heuristic", "local-search", "exact-search"};
+  return names[phase];
+}
+
+const char *trace_policy_name(pbqp_rn_policy_t policy) {
+  static const char *const names[] = {"min-degree", "max-degree", "min-work"};
+  return names[policy];
+}
+
+struct TraceWriter {
+  std::ofstream output;
+  unsigned sequence = 0;
+
+  static void emit(void *opaque, const pbqp_solver_event_t *event) {
+    TraceWriter *writer = static_cast<TraceWriter *>(opaque);
+    writer->output << "{\"sequence\":" << writer->sequence++ << ",\"phase\":\""
+                   << trace_phase_name(event->phase) << "\",\"type\":\""
+                   << trace_type_name(event->type) << "\",\"policy\":\""
+                   << trace_policy_name(event->policy) << "\",\"node\":" << event->node
+                   << ",\"choice\":" << event->choice << ",\"active_nodes\":" << event->active_nodes
+                   << ",\"active_edges\":" << event->active_edges
+                   << ",\"maximum_degree\":" << event->maximum_degree
+                   << ",\"unary_elements\":" << event->unary_elements
+                   << ",\"matrix_elements\":" << event->matrix_elements
+                   << ",\"r0\":" << event->r0_count << ",\"r1\":" << event->r1_count
+                   << ",\"r2\":" << event->r2_count << ",\"rn\":" << event->rn_count
+                   << ",\"project\":" << event->minplus_project_elements
+                   << ",\"project_accumulate\":" << event->project_accumulate_elements
+                   << ",\"slice\":" << event->slice_accumulate_elements
+                   << ",\"map3\":" << event->map3_reduce_elements
+                   << ",\"argmin\":" << event->argmin_vector_elements
+                   << ",\"primitive_descriptors\":" << event->primitive_descriptors
+                   << ",\"structural_operations\":" << event->structural_operations
+                   << ",\"operand_bytes\":" << event->operand_bytes
+                   << ",\"result_bytes\":" << event->result_bytes << "}\n";
+  }
+};
+
 enum class SolverMode { kBareMetal, kLocal };
 
 void print_usage(std::ostream &output) {
@@ -80,8 +129,9 @@ void print_usage(std::ostream &output) {
             "                              Select the solving algorithm (default: heuristic-rn).\n"
             "  --rn-policy min-degree|max-degree|min-work\n"
             "                              Select RN node choice (default: min-degree).\n"
-            "  --maximum-search-nodes N   Bound an exact search; zero means unbounded.\n"
+            "  --maximum-search-nodes N   Bound an exact search; zero leaves the limit unset.\n"
             "  --verbose                   Trace model activity to standard error.\n"
+            "  --trace FILE                Write stable JSONL solver events to FILE.\n"
             "  --help                      Show this help text.\n"
             "  --version                   Show the runner version.\n";
 }
@@ -169,6 +219,7 @@ class ModelKernel {
     kernel->min3_argmin_batch = min3_batch;
     kernel->min2_value = min2_value;
     kernel->min2_value_batch = min2_value_batch;
+    kernel->set_statistics = set_statistics;
   }
 
   const AccelTimingStatistics &timing_statistics() const {
@@ -180,6 +231,10 @@ class ModelKernel {
                   accel_min_argmin_result_t *result) {
     const pbqp_min2_job_t job = {first, second, result};
     return min2_batch(opaque, &job, 1);
+  }
+
+  static void set_statistics(void *opaque, pbqp_statistics_t *statistics) {
+    static_cast<ModelKernel *>(opaque)->statistics_ = statistics;
   }
 
   static int min3(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
@@ -332,6 +387,7 @@ class ModelKernel {
         !mmio(ACCEL_MMIO_DOORBELL, kDoorbellSubmit)) {
       return false;
     }
+    record_batch_submission(commands.size());
     uint32_t status = 0;
     if (!mmio_read(ACCEL_MMIO_STATUS, &status) || status != ACCEL_STATUS_DONE) {
       return false;
@@ -339,6 +395,21 @@ class ModelKernel {
     accel_batch_result_t result{};
     return memory_.read(batch_result_address, &result, sizeof(result)) &&
            result.completed == commands.size() && result.failed_index == UINT32_MAX;
+  }
+
+  void record_batch_submission(size_t count) {
+    if (statistics_ == nullptr) {
+      return;
+    }
+    const unsigned command_count = static_cast<unsigned>(count);
+    ++statistics_->top_level_submissions;
+    ++statistics_->batch_submissions;
+    statistics_->batch_primitive_descriptors += command_count;
+    if (command_count > statistics_->maximum_batch_size) {
+      statistics_->maximum_batch_size = command_count;
+    }
+    statistics_->batch_descriptor_bytes += sizeof(accel_command_t) * (count + 1);
+    statistics_->batch_child_descriptor_bytes += count * sizeof(accel_command_t);
   }
 
   bool mmio(uint64_t address, uint32_t value) {
@@ -364,6 +435,7 @@ class ModelKernel {
   GuestMemory memory_;
   Accelerator accelerator_;
   Initiator initiator_;
+  pbqp_statistics_t *statistics_ = nullptr;
 };
 
 bool parse_costs(std::istringstream *line, size_t count, std::vector<int32_t> *costs) {
@@ -375,7 +447,17 @@ bool parse_costs(std::istringstream *line, size_t count, std::vector<int32_t> *c
       return false;
     }
     try {
-      costs->push_back(token == "INF" ? ACCEL_INF : std::stoi(token));
+      if (token == "INF") {
+        costs->push_back(ACCEL_INF);
+        continue;
+      }
+      size_t parsed = 0;
+      const long long value = std::stoll(token, &parsed, 10);
+      if (parsed != token.size() || value < std::numeric_limits<int32_t>::min() ||
+          value > std::numeric_limits<int32_t>::max()) {
+        return false;
+      }
+      costs->push_back(static_cast<int32_t>(value));
     } catch (const std::exception &) {
       return false;
     }
@@ -444,25 +526,71 @@ bool load_problem(const std::string &path, InputProblem *problem) {
   return saw_nodes && problem->nodes.size() == declared_nodes;
 }
 
-bool build_fixed_problem(const InputProblem &input, pbqp_problem_t *problem) {
-  if (input.nodes.size() > PBQP_MAX_NODES || input.edges.size() > PBQP_MAX_EDGES) {
+bool build_problem(const InputProblem &input, bool fixed_capacity, pbqp_problem_t *problem) {
+  if (fixed_capacity &&
+      (input.nodes.size() > PBQP_MAX_NODES || input.edges.size() > PBQP_MAX_EDGES)) {
     return false;
   }
-  pbqp_init(problem);
+  if (input.nodes.size() > std::numeric_limits<unsigned>::max() ||
+      input.edges.size() >= std::numeric_limits<unsigned>::max()) {
+    return false;
+  }
+  const unsigned node_capacity = static_cast<unsigned>(input.nodes.size());
+  size_t maximum_domain = 0;
+  for (const InputNode &node : input.nodes)
+    maximum_domain = std::max(maximum_domain, node.unary.size());
+  if (maximum_domain > std::numeric_limits<unsigned>::max())
+    return false;
+  const unsigned domain_capacity =
+      fixed_capacity ? PBQP_MAX_DOMAIN : static_cast<unsigned>(maximum_domain);
+  // R2 may need one fill slot before it retires its two incident edges.
+  const unsigned edge_capacity = static_cast<unsigned>(input.edges.size()) + 1;
+  if (pbqp_init(problem, pbqp_heap_allocator(), node_capacity, edge_capacity, domain_capacity) !=
+      PBQP_OK) {
+    return false;
+  }
   for (const InputNode &node : input.nodes) {
     if (pbqp_add_node(problem, static_cast<unsigned>(node.unary.size()), node.unary.data()) !=
         PBQP_OK) {
+      pbqp_destroy(problem);
       return false;
     }
   }
   for (const InputEdge &edge : input.edges) {
     if (pbqp_add_edge(problem, static_cast<unsigned>(edge.first),
                       static_cast<unsigned>(edge.second), edge.costs.data()) != PBQP_OK) {
+      pbqp_destroy(problem);
       return false;
     }
   }
   return true;
 }
+
+struct ProblemOwner {
+  pbqp_problem_t value{};
+
+  ProblemOwner() = default;
+
+  ~ProblemOwner() {
+    pbqp_destroy(&value);
+  }
+
+  ProblemOwner(const ProblemOwner &) = delete;
+  ProblemOwner &operator=(const ProblemOwner &) = delete;
+
+  ProblemOwner(ProblemOwner &&other) noexcept : value(other.value) {
+    other.value = {};
+  }
+
+  ProblemOwner &operator=(ProblemOwner &&other) noexcept {
+    if (this != &other) {
+      pbqp_destroy(&value);
+      value = other.value;
+      other.value = {};
+    }
+    return *this;
+  }
+};
 
 }  // namespace
 
@@ -471,6 +599,9 @@ AccelTimingConfig runner_timing_config() {
   AccelTimingConfig timing;
   timing.mode = AccelTimingMode::kL1Streaming;
   timing.lanes = kTimedRunnerLanes;
+  timing.descriptor_bytes_per_cycle = kTimedRunnerBytesPerCycle;
+  timing.memory_read_bytes_per_cycle = kTimedRunnerBytesPerCycle;
+  timing.memory_write_bytes_per_cycle = kTimedRunnerBytesPerCycle;
   timing.cycle_period = sc_core::sc_time(kTimedRunnerCyclePeriodNanoseconds, sc_core::SC_NS);
   return timing;
 #else
@@ -483,6 +614,7 @@ int sc_main(int argc, char **argv) {
   SolverMode solver_mode = SolverMode::kLocal;
   bool saw_solver_mode = false;
   bool saw_strategy = false;
+  const char *trace_path = nullptr;
   pbqp_solver_config_t solver_config = pbqp_solver_default_config();
   const char *path = nullptr;
   for (int index = 1; index < argc; ++index) {
@@ -539,11 +671,19 @@ int sc_main(int argc, char **argv) {
       }
     } else if (argument == "--maximum-search-nodes" && index + 1 < argc) {
       try {
-        solver_config.maximum_search_nodes = static_cast<unsigned>(std::stoul(argv[++index]));
+        size_t parsed = 0;
+        const std::string value = argv[++index];
+        const unsigned long parsed_value = std::stoul(value, &parsed, 10);
+        if (parsed != value.size() || parsed_value > std::numeric_limits<unsigned>::max()) {
+          throw std::out_of_range("maximum search-node count");
+        }
+        solver_config.maximum_search_nodes = static_cast<unsigned>(parsed_value);
       } catch (const std::exception &) {
         std::cerr << "invalid maximum search-node count\n";
         return 2;
       }
+    } else if (argument == "--trace" && index + 1 < argc) {
+      trace_path = argv[++index];
     } else if (path == nullptr) {
       path = argv[index];
     } else {
@@ -551,7 +691,7 @@ int sc_main(int argc, char **argv) {
                    "[--strategy reduce-only|heuristic-rn|exact-core-enumeration|"
                    "exact-branch-reduce|local-search|heuristic-rn-local-search] "
                    "[--rn-policy min-degree|max-degree|min-work] "
-                   "[--maximum-search-nodes N] GRAPH.pbqp\n";
+                   "[--maximum-search-nodes N] [--trace FILE] GRAPH.pbqp\n";
       return 2;
     }
   }
@@ -560,7 +700,7 @@ int sc_main(int argc, char **argv) {
                  "[--strategy reduce-only|heuristic-rn|exact-core-enumeration|"
                  "exact-branch-reduce|local-search|heuristic-rn-local-search] "
                  "[--rn-policy min-degree|max-degree|min-work] "
-                 "[--maximum-search-nodes N] GRAPH.pbqp\n";
+                 "[--maximum-search-nodes N] [--trace FILE] GRAPH.pbqp\n";
     return 2;
   }
   if (!saw_strategy) {
@@ -576,25 +716,43 @@ int sc_main(int argc, char **argv) {
   ModelKernel model(verbose, runner_timing_config());
   pbqp_cost_kernel_t kernel;
   model.make_kernel(&kernel);
+  TraceWriter trace_writer;
+  pbqp_trace_sink_t trace_sink{};
+  if (trace_path != nullptr) {
+    trace_writer.output.open(trace_path);
+    if (!trace_writer.output) {
+      std::cerr << "cannot open trace output: " << trace_path << '\n';
+      return 2;
+    }
+    trace_sink.context = &trace_writer;
+    trace_sink.emit = TraceWriter::emit;
+    solver_config.trace_sink = &trace_sink;
+  }
   RunnerSolution solution;
-  pbqp_problem_t fixed_problem;
+  ProblemOwner problem;
+  ProblemOwner original_problem;
   const pbqp_statistics_t *statistics = nullptr;
   const bool uses_shared_solver = true;
   if (uses_shared_solver) {
-    if (!build_fixed_problem(input, &fixed_problem)) {
-      std::cerr << "graph does not fit the shared PBQP solver (64 vertices, 6 choices per vertex, "
-                   "2016 edges)\n";
+    if (!build_problem(input, solver_mode == SolverMode::kBareMetal, &problem.value)) {
+      std::cerr << "graph does not fit the shared PBQP solver in the selected mode\n";
       return 2;
     }
-    const pbqp_problem_t original_problem = fixed_problem;
+    if (pbqp_problem_clone(&original_problem.value, &problem.value, pbqp_heap_allocator()) !=
+        PBQP_OK) {
+      std::cerr << "could not allocate the PBQP graph copy\n";
+      return 1;
+    }
     pbqp_solver_t solver;
+    std::vector<unsigned> assignment(input.nodes.size());
     pbqp_solution_t fixed_solution;
+    pbqp_solution_init(&fixed_solution, assignment.data(), assignment.size());
     if (pbqp_solver_create_with_config(&solver, PBQP_MODE_ACCELERATOR, &kernel, &solver_config) !=
         PBQP_OK) {
       std::cerr << "PCAA model could not solve the graph\n";
       return 1;
     }
-    const pbqp_status_t status = pbqp_solver_solve(&solver, &fixed_problem, &fixed_solution);
+    const pbqp_status_t status = pbqp_solver_solve(&solver, &problem.value, &fixed_solution);
     if (status == PBQP_IRREDUCIBLE) {
       std::cout << "status IRREDUCIBLE\nstrategy " << strategy_name(solver_config.strategy) << '\n';
       return 0;
@@ -609,16 +767,15 @@ int sc_main(int argc, char **argv) {
       return 1;
     }
     solution.optimum = fixed_solution.optimum;
-    solution.assignment.assign(fixed_solution.assignment,
-                               fixed_solution.assignment + input.nodes.size());
-    const int32_t evaluated = pbqp_evaluate(&original_problem, fixed_solution.assignment);
+    solution.assignment = assignment;
+    const int32_t evaluated = pbqp_evaluate(&original_problem.value, fixed_solution.assignment);
     if (evaluated != fixed_solution.optimum) {
       std::cerr << "PBQP solver returned an objective inconsistent with its assignment\n";
       return 1;
     }
     solution.exact = solver_config.strategy == PBQP_STRATEGY_EXACT_CORE_ENUMERATION ||
                      solver_config.strategy == PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
-    statistics = &fixed_problem.statistics;
+    statistics = &problem.value.statistics;
   }
   std::cout << "optimum " << solution.optimum << "\nassignment";
   for (unsigned value : solution.assignment) {
@@ -646,6 +803,31 @@ int sc_main(int argc, char **argv) {
               << " R2=" << statistics->r2_after_rn
               << " cascade-total=" << statistics->rn_cascade_total_length
               << " cascade-max=" << statistics->rn_cascade_maximum_length << '\n';
+    unsigned rn_cascade_r0_total = 0;
+    unsigned rn_cascade_r1_total = 0;
+    unsigned rn_cascade_r2_total = 0;
+    for (unsigned episode = 0; episode < statistics->rn_episodes; ++episode) {
+      rn_cascade_r0_total += statistics->rn_cascade_r0[episode];
+      rn_cascade_r1_total += statistics->rn_cascade_r1[episode];
+      rn_cascade_r2_total += statistics->rn_cascade_r2[episode];
+    }
+    const double rn_cascade_mean =
+        statistics->rn_episodes == 0
+            ? 0.0
+            : static_cast<double>(statistics->rn_cascade_total_length) / statistics->rn_episodes;
+    std::cerr << "pcaa: rn_cascades rn_episodes=" << statistics->rn_episodes
+              << " rn_cascade_r0_total=" << rn_cascade_r0_total
+              << " rn_cascade_r1_total=" << rn_cascade_r1_total
+              << " rn_cascade_r2_total=" << rn_cascade_r2_total
+              << " rn_cascade_exact_total=" << statistics->rn_cascade_total_length
+              << " rn_cascade_mean=" << std::to_string(rn_cascade_mean)
+              << " rn_cascade_max=" << statistics->rn_cascade_maximum_length << '\n';
+    std::cerr << "pcaa: rn_cascade_histogram";
+    for (size_t length = 0; length <= input.nodes.size(); ++length) {
+      std::cerr << " cascade_len_" << length << '='
+                << statistics->rn_cascade_length_histogram[length];
+    }
+    std::cerr << '\n';
     std::cerr << "pcaa: RN traffic projection-read=" << statistics->rn_projection_operand_bytes
               << " projection-write=" << statistics->rn_projection_result_bytes
               << " score-accumulation=" << statistics->rn_score_accumulation_elements
@@ -665,15 +847,17 @@ int sc_main(int argc, char **argv) {
                                            statistics->map3_reduce_descriptors +
                                            statistics->argmin_vector_descriptors;
     const uint64_t operation_bytes =
-        statistics->minplus_project_bytes + statistics->project_accumulate_bytes +
-        statistics->slice_accumulate_bytes + statistics->map3_reduce_bytes +
-        statistics->argmin_vector_bytes;
+        statistics->operation_mix_operand_bytes + statistics->operation_mix_result_bytes;
     std::cerr << "pcaa: operation mix project-elements=" << statistics->minplus_project_elements
               << " project-accumulate-elements=" << statistics->project_accumulate_elements
               << " slice-elements=" << statistics->slice_accumulate_elements
               << " map3-elements=" << statistics->map3_reduce_elements
               << " argmin-elements=" << statistics->argmin_vector_elements
-              << " descriptors=" << operation_descriptors << " bytes=" << operation_bytes << '\n';
+              << " descriptors=" << operation_descriptors
+              << " batches=" << statistics->batch_submissions
+              << " operand-bytes=" << statistics->operation_mix_operand_bytes
+              << " result-bytes=" << statistics->operation_mix_result_bytes
+              << " bytes=" << operation_bytes << '\n';
     std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited
               << " branches=" << statistics->search_branches_created
               << " max-depth=" << statistics->search_maximum_depth

@@ -54,7 +54,7 @@ Document public ABI structs directly where they are declared: state their purpos
 * `accelerator/src/spike_device.cpp`: the sole Spike plugin and physical-memory adapter.
 * `accelerator/tests`: host/SystemC tests, no Spike.
 * `software`: bare-metal driver; callers use its API, not MMIO offsets.
-* `software/pbqp`: C ABI and C++17 implementation of fixed-capacity PBQP reductions.
+* `software/pbqp`: allocator-aware C ABI and freestanding C++17 PBQP implementation.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
 * `workload`: host-only C++ graph generation and logical workload characterization.
 * `tools/pbqp_run.cpp`: host-side PBQP text-format runner through the SystemC model.
@@ -73,9 +73,9 @@ line-oriented `nodes`/`node`/`edge` format and its `INF` literal unless a
 versioned user-facing format migration is explicitly requested. It must submit
 through the SystemC target socket rather than bypassing the accelerator. It
 requires an explicit `--solver bare-metal|local` choice: bare-metal rejects
-graphs outside the fixed C API, while local exercises the same shared solver
-through the hosted model path. Strategy is orthogonal to mode: every shared
-strategy may be selected in either mode when the graph fits the fixed C API.
+graphs outside its fixed arenas, while local sizes the same shared solver
+through the hosted allocator. Strategy is orthogonal to mode: every shared
+strategy may be selected in either mode when its storage fits that environment.
 Only `EXACT_CORE_ENUMERATION` and `EXACT_BRANCH_REDUCE` may label a completed
 result exact; `LOCAL_SEARCH` must label its result a local optimum.
 The runner default is `HEURISTIC_RN`.
@@ -99,9 +99,9 @@ PBQP strategies are explicit: `REDUCE_ONLY`, `HEURISTIC_RN`,
 `HEURISTIC_RN_LOCAL_SEARCH` hybrid share the same freestanding solver core and
 CostKernel. Exact core enumeration reduces once then enumerates a residual
 core; exact branch-and-reduce must condition one branch and re-run R0/R1/R2 at
-every search node. It uses bounded static snapshots, never graph-sized stack
-copies, and reports `PBQP_SEARCH_LIMIT` for an explicit node limit or snapshot
-depth limit. The hybrid must never worsen its RN seed.
+every search node. Snapshots come from the configured workspace allocator,
+never graph-sized stack copies, and allocator exhaustion reports
+`PBQP_SEARCH_LIMIT`. The hybrid must never worsen its RN seed.
 RN scoring projects each incident matrix against its neighbor unary through the
 kernel using the value-only minimum primitive; argmin is reserved for phases
 that need reconstruction or a chosen coordinate. Its software-only score
@@ -109,20 +109,30 @@ accumulation must remain distinct from shared conditioning/commit, which
 applies the selected matrix slice exactly once. Account generic conditioning
 traffic separately from RN-only commits: each updated element reads matrix and
 unary then writes unary (12 logical bytes).
+For RN projection, fix the selected node's coordinate and minimize across its
+neighbor; use `ConditionedEdgeView`, not the R1/R2-oriented `EdgeView`. Keep
+asymmetric, rectangular, and `INF` orientation regressions in the unit tests.
+Cost-kernel callbacks must propagate device failures independently of a valid
+`ACCEL_INF` result; use checked driver APIs for every callback that reports a
+status.
 Keep the solver's generic operation mix current: `MINPLUS_PROJECT`,
 `PROJECT_ACCUMULATE`, `SLICE_ACCUMULATE`, `MAP3_REDUCE`, and `ARGMIN_VECTOR`
 must retain separately reportable elements, current primitive descriptors, and
 logical bytes. The external characterization report's operation-mix table is
 the primary comparison artifact; do not replace it with only phase-specific
 counters.
+Keep RN cascade accounting episode-scoped: one RN commit and the exact
+reductions before the next RN or completion. Preserve its per-episode R0/R1/R2
+counts and exact-length histogram in the runner's machine-readable verbose
+output and characterization CSV; do not infer it externally from graph state.
 Never add a PBQP-specific accelerator opcode for RN.
 
-The fixed bare-metal PBQP C API supports 64 nodes and all simple edges between
-them. Its graph state and exact-search snapshots are statically allocated by
-the current ELFs; the solver's largest transient R2 frame is below 4 KiB and
-the startup reserve is 1 MiB.
-Do not raise this capacity without recalculating static-storage and stack use,
-then re-running all PBQP ELFs under Spike.
+The bare-metal PBQP configuration supports 64 nodes, six choices, and all
+simple edges between them. Its graph state, reconstruction data, operation
+scratch, and exact-search snapshots come from caller-owned static arenas; the
+host uses the same solver with a heap allocator and input-sized capacities.
+Do not raise the bare-metal arena policy without recalculating static-storage
+and stack use, then re-running all PBQP ELFs under Spike.
 
 `EXECUTE_BATCH` is an ordered, finite control operation, not a scheduler: the
 runtime constructs child primitive descriptors and the accelerator drains them
@@ -137,9 +147,9 @@ chain's stack use. The bare-metal startup reserve is 1 MiB and PBQP ELFs must
 be built and run under Spike before handoff; host-only CTest does not cover
 their stack or driver path.
 
-PBQP admits `ACCEL_INF` and finite costs only in the documented safe range
-`[PBQP_MIN_FINITE_COST, PBQP_MAX_FINITE_COST]`; reject other costs at graph construction so
-saturating arithmetic cannot make mathematically equivalent reductions disagree. Bare-metal PBQP
+PBQP admits `ACCEL_INF` and finite costs only in the capacity-dependent safe
+range returned by `pbqp_max_finite_cost`; reject other costs at graph construction so saturating
+arithmetic cannot make mathematically equivalent reductions disagree. Bare-metal PBQP
 differential tests must use `software/tests/pbqp_reference.h`, not production cost math, as their
 exhaustive oracle. Error-valued accelerator submissions must propagate through cost-kernel callbacks;
 never treat `ACCEL_INF` as an error sentinel.

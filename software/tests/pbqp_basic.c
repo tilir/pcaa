@@ -32,11 +32,23 @@ enum {
   kExpectedBatchChildDescriptorBytes = 336,
   kExpectedUniquePackedViews = 6,
   kInvalidGuestAddress = 0x40000000UL,
+  kProblemStorageBytes = 512 * 1024,
 };
 
 static pbqp_problem_t software_problem;
 static pbqp_problem_t accelerator_problem;
 static pbqp_problem_t original_problem;
+static uint64_t software_storage[kProblemStorageBytes / sizeof(uint64_t)];
+static uint64_t accelerator_storage[kProblemStorageBytes / sizeof(uint64_t)];
+static uint64_t original_storage[kProblemStorageBytes / sizeof(uint64_t)];
+static pbqp_arena_t software_arena;
+static pbqp_arena_t accelerator_arena;
+static pbqp_arena_t original_arena;
+
+static pbqp_allocator_t reset_allocator(pbqp_arena_t *arena, uint64_t *storage) {
+  pbqp_arena_init(arena, storage, kProblemStorageBytes);
+  return pbqp_arena_allocator(arena);
+}
 
 static int build_problem(pbqp_problem_t *problem) {
   static const int32_t unary0[] = {2, -1};
@@ -45,7 +57,10 @@ static int build_problem(pbqp_problem_t *problem) {
   static const int32_t edge01[] = {0, 4, -3, 2};
   static const int32_t edge02[] = {2, -1, 5, 0};
   static const int32_t edge12[] = {1, 3, -2, 4};
-  pbqp_init(problem);
+  if (pbqp_init(problem, reset_allocator(&original_arena, original_storage), PBQP_MAX_NODES,
+                PBQP_MAX_EDGES, PBQP_MAX_DOMAIN) != PBQP_OK) {
+    return PBQP_CAPACITY_ERROR;
+  }
   return pbqp_add_node(problem, 2, unary0) || pbqp_add_node(problem, 2, unary1) ||
          pbqp_add_node(problem, 2, unary2) || pbqp_add_edge(problem, 0, 1, edge01) ||
          pbqp_add_edge(problem, 0, 2, edge02) || pbqp_add_edge(problem, 1, 2, edge12);
@@ -60,18 +75,29 @@ int main(void) {
   pbqp_solver_t software_solver;
   pbqp_solver_t accelerator_solver;
   pbqp_accelerator_kernel_context_t accelerator_context;
+  unsigned oracle_assignment[PBQP_MAX_NODES];
+  unsigned software_assignment[PBQP_MAX_NODES];
+  unsigned accelerator_assignment[PBQP_MAX_NODES];
+
+  pbqp_solution_init(&oracle, oracle_assignment, PBQP_MAX_NODES);
+  pbqp_solution_init(&software_solution, software_assignment, PBQP_MAX_NODES);
+  pbqp_solution_init(&accelerator_solution, accelerator_assignment, PBQP_MAX_NODES);
 
   if (build_problem(&original_problem) != PBQP_OK) {
     finish(kExitGraphOrOracleFailure);
   }
   pbqp_reference_bruteforce(&original_problem, &oracle);
-  software_problem = original_problem;
+  if (pbqp_problem_clone(&software_problem, &original_problem,
+                         reset_allocator(&software_arena, software_storage)) != PBQP_OK)
+    finish(kExitGraphOrOracleFailure);
   pbqp_make_software_kernel(&software_kernel, &software_problem.statistics);
   if (pbqp_solver_create(&software_solver, PBQP_MODE_SOFTWARE, &software_kernel) != PBQP_OK ||
       pbqp_solver_solve(&software_solver, &software_problem, &software_solution) != PBQP_OK)
     finish(kExitSoftwareSolveFailure);
 
-  accelerator_problem = original_problem;
+  if (pbqp_problem_clone(&accelerator_problem, &original_problem,
+                         reset_allocator(&accelerator_arena, accelerator_storage)) != PBQP_OK)
+    finish(kExitGraphOrOracleFailure);
   accel_init();
   pbqp_make_accelerator_kernel(&accelerator_kernel, &accelerator_context,
                                &accelerator_problem.statistics);

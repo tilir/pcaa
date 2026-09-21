@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 PCAA contributors
-// Defines a small fixed-capacity PBQP solver and its cost-kernel boundary.
+// Defines the allocator-backed PBQP solver and its cost-kernel boundary.
 
 #pragma once
 
@@ -14,13 +14,11 @@ extern "C" {
 #endif
 
 enum {
+  /* Default RV64 arena capacities; the allocator-backed solver itself is not limited to these. */
   PBQP_MAX_NODES = 64,
   PBQP_MAX_DOMAIN = 6,
   PBQP_MAX_EDGES = PBQP_MAX_NODES * (PBQP_MAX_NODES - 1) / 2,
-  PBQP_VECTOR_HISTOGRAM_BINS = PBQP_MAX_DOMAIN + 1,
-  /* Fixed branch snapshots keep exact search out of the freestanding stack. */
-  PBQP_MAX_EXACT_BRANCH_DEPTH = 8,
-  /* Keeps every finite sum of one complete fixed-capacity graph below ACCEL_INF. */
+  /* Safe finite-cost range for the default RV64 capacities. */
   PBQP_MAX_FINITE_COST = (ACCEL_INF - 1) / (PBQP_MAX_NODES + PBQP_MAX_EDGES),
   PBQP_MIN_FINITE_COST = -PBQP_MAX_FINITE_COST,
 };
@@ -33,6 +31,24 @@ typedef enum {
   PBQP_IRREDUCIBLE = -4,
   PBQP_SEARCH_LIMIT = -5,
 } pbqp_status_t;
+
+/*
+ * Allocation boundary shared by hosted and freestanding callers. Allocations
+ * must be suitably aligned for any C type. The allocator remains caller-owned
+ * and must outlive every problem and solver workspace that refers to it.
+ */
+typedef struct {
+  void *context;
+  void *(*allocate)(void *context, size_t size);
+  void (*deallocate)(void *context, void *allocation, size_t size);
+} pbqp_allocator_t;
+
+/* LIFO arena over caller-owned bytes; nested allocations must be released in reverse order. */
+typedef struct {
+  unsigned char *storage;
+  size_t capacity;
+  size_t used;
+} pbqp_arena_t;
 
 typedef enum {
   PBQP_MODE_SOFTWARE,
@@ -56,10 +72,66 @@ typedef enum {
   PBQP_RN_MIN_WORK,
 } pbqp_rn_policy_t;
 
+/* Stable solver-event categories for external workload characterization. */
+typedef enum {
+  PBQP_TRACE_R0,
+  PBQP_TRACE_R1,
+  PBQP_TRACE_R2,
+  PBQP_TRACE_RN_SELECT,
+  PBQP_TRACE_RN_SCORE,
+  PBQP_TRACE_RN_COMMIT,
+  PBQP_TRACE_LOCAL_SCORE,
+  PBQP_TRACE_LOCAL_MOVE,
+  PBQP_TRACE_BRANCH_SELECT,
+  PBQP_TRACE_BRANCH_CONDITION,
+} pbqp_trace_event_type_t;
+
+typedef enum {
+  PBQP_TRACE_REDUCTION,
+  PBQP_TRACE_HEURISTIC,
+  PBQP_TRACE_LOCAL_SEARCH,
+  PBQP_TRACE_EXACT_SEARCH,
+} pbqp_trace_phase_t;
+
+/* One solver action and its directly associated logical cost-algebra work. */
+typedef struct {
+  pbqp_trace_event_type_t type;
+  pbqp_trace_phase_t phase;
+  pbqp_rn_policy_t policy;
+  int node;
+  int choice;
+  unsigned active_nodes;
+  unsigned active_edges;
+  unsigned maximum_degree;
+  unsigned unary_elements;
+  unsigned matrix_elements;
+  unsigned r0_count;
+  unsigned r1_count;
+  unsigned r2_count;
+  unsigned rn_count;
+  uint64_t minplus_project_elements;
+  uint64_t project_accumulate_elements;
+  uint64_t slice_accumulate_elements;
+  uint64_t map3_reduce_elements;
+  uint64_t argmin_vector_elements;
+  unsigned primitive_descriptors;
+  unsigned structural_operations;
+  uint64_t operand_bytes;
+  uint64_t result_bytes;
+} pbqp_solver_event_t;
+
+typedef struct {
+  void *context;
+  void (*emit)(void *context, const pbqp_solver_event_t *event);
+} pbqp_trace_sink_t;
+
 typedef struct {
   pbqp_solver_strategy_t strategy;
   pbqp_rn_policy_t rn_policy;
   unsigned maximum_search_nodes;
+  const pbqp_trace_sink_t *trace_sink;
+  /* Optional snapshot/scratch allocator; an empty value uses the problem allocator. */
+  pbqp_allocator_t workspace_allocator;
 } pbqp_solver_config_t;
 
 /* A logical cost vector; stride is measured in int32_t elements. */
@@ -102,7 +174,7 @@ typedef struct {
   unsigned rn_degree_min;
   unsigned rn_degree_max;
   uint64_t rn_degree_total;
-  unsigned rn_degree_histogram[PBQP_MAX_NODES + 1];
+  unsigned *rn_degree_histogram;
   unsigned rn_projection_count;
   unsigned rn_projection_primitives;
   uint64_t rn_projection_map_elements;
@@ -127,12 +199,12 @@ typedef struct {
   unsigned maximum_irreducible_core_nodes;
   unsigned maximum_irreducible_core_edges;
   unsigned rn_episodes;
-  unsigned rn_nodes[PBQP_MAX_NODES];
-  unsigned rn_choices[PBQP_MAX_NODES];
-  unsigned rn_cascade_r0[PBQP_MAX_NODES];
-  unsigned rn_cascade_r1[PBQP_MAX_NODES];
-  unsigned rn_cascade_r2[PBQP_MAX_NODES];
-  unsigned rn_cascade_length_histogram[PBQP_MAX_NODES + 1];
+  unsigned *rn_nodes;
+  unsigned *rn_choices;
+  unsigned *rn_cascade_r0;
+  unsigned *rn_cascade_r1;
+  unsigned *rn_cascade_r2;
+  unsigned *rn_cascade_length_histogram;
   unsigned rn_cascade_total_length;
   unsigned rn_cascade_maximum_length;
   unsigned local_search_node_evaluations;
@@ -160,12 +232,15 @@ typedef struct {
   uint64_t argmin_vector_elements;
   unsigned argmin_vector_descriptors;
   uint64_t argmin_vector_bytes;
+  /* Operand and result traffic across the five generic operation categories. */
+  uint64_t operation_mix_operand_bytes;
+  uint64_t operation_mix_result_bytes;
   uint64_t search_nodes_visited;
   uint64_t search_branches_created;
   unsigned search_maximum_depth;
   unsigned search_limit_hits;
   unsigned primitive_submissions[5];
-  unsigned vector_length_histogram[PBQP_VECTOR_HISTOGRAM_BINS];
+  unsigned *vector_length_histogram;
   uint64_t logical_map_elements;
   uint64_t logical_bytes_read;
   uint64_t logical_bytes_written;
@@ -193,6 +268,8 @@ typedef struct {
   int (*min3_argmin_batch)(void *context, const pbqp_min3_job_t *jobs, size_t count);
   int (*min2_value)(void *context, pbqp_vector_view_t a, pbqp_vector_view_t b, int32_t *result);
   int (*min2_value_batch)(void *context, const pbqp_min2_value_job_t *jobs, size_t count);
+  /* Redirects backend-only accounting while the solver evaluates a graph snapshot. */
+  void (*set_statistics)(void *context, pbqp_statistics_t *statistics);
 } pbqp_cost_kernel_t;
 
 /* A configured solver: the mode is descriptive, while kernel supplies its cost primitive. */
@@ -202,12 +279,11 @@ typedef struct {
   pbqp_solver_config_t config;
 } pbqp_solver_t;
 
-/* Fixed-capacity node state, including unary costs and elimination reconstruction data. */
+/* Node state; reconstruction choices live in the owning problem's allocated storage. */
 typedef struct {
   int active;
   unsigned domain;
-  int32_t unary[PBQP_MAX_DOMAIN];
-  unsigned choice[PBQP_MAX_DOMAIN * PBQP_MAX_DOMAIN];
+  int32_t *unary;
   int first_neighbor;
   int second_neighbor;
   int reduction_kind;
@@ -218,37 +294,68 @@ typedef struct {
   int active;
   unsigned first;
   unsigned second;
-  int32_t cost[PBQP_MAX_DOMAIN * PBQP_MAX_DOMAIN];
+  size_t stride;
+  int32_t *cost;
 } pbqp_edge_t;
 
 /*
- * Caller-owned fixed-capacity PBQP graph and mutable reduction workspace.
- * Finite unary and edge costs must be in [PBQP_MIN_FINITE_COST,
- * PBQP_MAX_FINITE_COST]; ACCEL_INF is also allowed. This preserves exact PBQP
- * reductions despite the accelerator's saturating arithmetic.
+ * Caller-owned PBQP graph handle and mutable reduction workspace. All arrays
+ * are carved from one allocator-owned block, so a graph must be copied with
+ * pbqp_problem_clone rather than by assigning this structure. This is a
+ * process-local owning handle containing native pointers, not a serialized
+ * binary format. pbqp_destroy releases its block but never the allocator.
+ * Finite unary and edge costs must be within the capacity-dependent symmetric
+ * bound returned by pbqp_max_finite_cost; ACCEL_INF is also allowed. This
+ * preserves exact PBQP reductions despite the accelerator's saturating
+ * arithmetic.
  */
 typedef struct {
+  pbqp_allocator_t allocator;
+  void *storage;
+  size_t storage_size;
+  unsigned node_capacity;
+  unsigned edge_capacity;
+  unsigned domain_capacity;
   unsigned node_count;
   unsigned edge_count;
-  pbqp_node_t nodes[PBQP_MAX_NODES];
-  pbqp_edge_t edges[PBQP_MAX_EDGES];
+  pbqp_node_t *nodes;
+  pbqp_edge_t *edges;
+  unsigned *reconstruction;
   int32_t objective_offset;
-  unsigned elimination_order[PBQP_MAX_NODES];
+  unsigned *elimination_order;
   unsigned elimination_count;
   pbqp_statistics_t statistics;
 } pbqp_problem_t;
 
-/* Minimum objective and one corresponding assignment returned by an oracle or solver. */
+/* Caller-sized output for a minimum objective and one corresponding assignment. */
 typedef struct {
   int32_t optimum;
-  unsigned assignment[PBQP_MAX_NODES];
+  unsigned *assignment;
+  size_t assignment_capacity;
 } pbqp_solution_t;
 
-void pbqp_init(pbqp_problem_t *problem);
+/* Hosted malloc/free allocator; it returns an empty allocator in a freestanding build. */
+pbqp_allocator_t pbqp_heap_allocator(void);
+void pbqp_arena_init(pbqp_arena_t *arena, void *storage, size_t size);
+pbqp_allocator_t pbqp_arena_allocator(pbqp_arena_t *arena);
+/* Returns zero when the requested capacity cannot be represented in size_t. */
+size_t pbqp_problem_storage_size(unsigned node_capacity, unsigned edge_capacity,
+                                 unsigned domain_capacity);
+/* Initializes a previously unowned handle and allocates its single state block. */
+pbqp_status_t pbqp_init(pbqp_problem_t *problem, pbqp_allocator_t allocator, unsigned node_capacity,
+                        unsigned edge_capacity, unsigned domain_capacity);
+void pbqp_destroy(pbqp_problem_t *problem);
+/* Deep-copies source into a previously unowned destination using allocator. */
+pbqp_status_t pbqp_problem_clone(pbqp_problem_t *destination, const pbqp_problem_t *source,
+                                 pbqp_allocator_t allocator);
+void pbqp_solution_init(pbqp_solution_t *solution, unsigned *assignment,
+                        size_t assignment_capacity);
 pbqp_status_t pbqp_add_node(pbqp_problem_t *problem, unsigned domain, const int32_t *unary);
 pbqp_status_t pbqp_add_edge(pbqp_problem_t *problem, unsigned first, unsigned second,
                             const int32_t *costs);
 int32_t pbqp_evaluate(const pbqp_problem_t *problem, const unsigned *assignment);
+/* Largest finite input magnitude safe for this problem's reserved capacities. */
+int32_t pbqp_max_finite_cost(const pbqp_problem_t *problem);
 pbqp_status_t pbqp_bruteforce(const pbqp_problem_t *problem, pbqp_solution_t *solution);
 void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *statistics);
 pbqp_solver_config_t pbqp_solver_default_config(void);

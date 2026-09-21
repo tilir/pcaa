@@ -18,6 +18,7 @@ struct GeneratorConfig {
   DomainProfile profile;
   int nodes;
   unsigned seed;
+  int uniform_domain;
 };
 
 struct Graph {

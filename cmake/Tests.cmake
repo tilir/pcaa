@@ -34,6 +34,22 @@ add_test(NAME pcaa_graph_run_bare_capacity
     -DRUNNER=$<TARGET_FILE:pcaa_graph_run>
     -DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/examples/wide-domain.pbqp
     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_bare_capacity.cmake)
+add_test(NAME pcaa_graph_run_local_wide_domain COMMAND pcaa_graph_run --solver local
+  --strategy heuristic-rn ${CMAKE_CURRENT_SOURCE_DIR}/examples/wide-domain.pbqp)
+set_tests_properties(pcaa_graph_run_local_wide_domain
+  PROPERTIES PASS_REGULAR_EXPRESSION "strategy HEURISTIC_RN")
+add_test(NAME pcaa_graph_run_invalid_numeric COMMAND pcaa_graph_run --solver local
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/testdata/invalid-numeric.pbqp)
+set_tests_properties(pcaa_graph_run_invalid_numeric
+  PROPERTIES WILL_FAIL TRUE)
+add_test(NAME pcaa_graph_run_invalid_fraction COMMAND pcaa_graph_run --solver local
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/testdata/invalid-fraction.pbqp)
+set_tests_properties(pcaa_graph_run_invalid_fraction
+  PROPERTIES WILL_FAIL TRUE)
+add_test(NAME pcaa_graph_run_invalid_search_limit COMMAND pcaa_graph_run --solver local
+  --maximum-search-nodes 4294967296 ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
+set_tests_properties(pcaa_graph_run_invalid_search_limit
+  PROPERTIES WILL_FAIL TRUE)
 add_test(NAME pcaa_graph_run_differential
   COMMAND ${CMAKE_COMMAND}
     -DRUNNER=$<TARGET_FILE:pcaa_graph_run>
@@ -41,7 +57,8 @@ add_test(NAME pcaa_graph_run_differential
     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_solver_differential.cmake)
 add_test(NAME pcaa_graph_run_timed COMMAND pcaa_graph_run_timed --solver bare-metal
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
-set_tests_properties(pcaa_graph_run_timed PROPERTIES PASS_REGULAR_EXPRESSION "timing cycles=[1-9][0-9]*")
+set_tests_properties(pcaa_graph_run_timed
+  PROPERTIES PASS_REGULAR_EXPRESSION "timing cycles=50 descriptor=32 operands=10 compute=6 result=8")
 add_test(NAME pcaa_graph_run_timed_exact_branch COMMAND pcaa_graph_run_timed --solver bare-metal
   --strategy exact-branch-reduce ${CMAKE_CURRENT_SOURCE_DIR}/examples/random-20.pbqp)
 set_tests_properties(pcaa_graph_run_timed_exact_branch
@@ -49,6 +66,10 @@ set_tests_properties(pcaa_graph_run_timed_exact_branch
 add_test(NAME pcaa_graph_run_verbose COMMAND pcaa_graph_run --verbose --solver bare-metal
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
 set_tests_properties(pcaa_graph_run_verbose PROPERTIES PASS_REGULAR_EXPRESSION "pcaa: doorbell descriptor=")
+add_test(NAME pcaa_graph_run_cascade_statistics COMMAND pcaa_graph_run --verbose --solver local
+  --strategy heuristic-rn ${CMAKE_CURRENT_SOURCE_DIR}/examples/chvatal.pbqp)
+set_tests_properties(pcaa_graph_run_cascade_statistics
+  PROPERTIES PASS_REGULAR_EXPRESSION "pcaa: rn_cascades rn_episodes=[1-9][0-9]*")
 
 set_source_files_properties(software/pbqp/pbqp_unit.c PROPERTIES LANGUAGE CXX)
 add_executable(pbqp_unit software/pbqp/pbqp_unit.c)

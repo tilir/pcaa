@@ -30,6 +30,8 @@ int accel_wait(void);
 /* Submits an ordered primitive descriptor array and waits for its batch result. */
 int accel_submit_batch(const accel_command_t *commands, size_t count, accel_batch_result_t *result);
 int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n);
+/* Writes a valid finite or INF result and separately reports submission/device failure. */
+int accel_min_add_checked(const int32_t *a, const int32_t *b, size_t n, int32_t *result);
 int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *c, size_t n);
 accel_min_argmin_result_t accel_min_add_argmin(const int32_t *a, const int32_t *b, size_t n);
 accel_min_argmin_result_t accel_min_add3_argmin(const int32_t *a, const int32_t *b,

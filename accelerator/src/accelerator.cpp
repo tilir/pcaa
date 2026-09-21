@@ -141,7 +141,8 @@ bool Accelerator::execute(sc_core::sc_time *delay) {
 
 bool Accelerator::execute_batch(const accel_command_t &command, sc_core::sc_time *delay) {
   (void)delay;
-  if (timing_.mode != AccelTimingMode::kUntimed && timing_.descriptor_bytes_per_cycle != 0) {
+  if (timing_.mode != AccelTimingMode::kUntimed && timing_.descriptor_bytes_per_cycle != 0 &&
+      timing_.memory_write_bytes_per_cycle != 0) {
     const uint64_t descriptor_cycles = (sizeof(command) + timing_.descriptor_bytes_per_cycle - 1) /
                                        timing_.descriptor_bytes_per_cycle;
     timing_statistics_.descriptor_cycles += descriptor_cycles;

@@ -176,6 +176,14 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   Accelerator accelerator("accelerator", memory, timing);
   TestInitiator initiator("initiator");
   initiator.socket.bind(accelerator.target_socket);
+  TestMemory zero_bandwidth_memory(kTestMemorySize);
+  AccelTimingConfig zero_bandwidth_timing = timing;
+  zero_bandwidth_timing.mode = AccelTimingMode::kL1Streaming;
+  zero_bandwidth_timing.memory_write_bytes_per_cycle = 0;
+  Accelerator zero_bandwidth_accelerator("zero_bandwidth_accelerator", zero_bandwidth_memory,
+                                         zero_bandwidth_timing);
+  TestInitiator zero_bandwidth_initiator("zero_bandwidth_initiator");
+  zero_bandwidth_initiator.socket.bind(zero_bandwidth_accelerator.target_socket);
   sc_core::sc_start(sc_core::SC_ZERO_TIME);
   test_invalid_mmio(initiator);
 
@@ -300,6 +308,28 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   EXPECT_EQ(accelerator.timing_statistics().batch_count, 7);
   EXPECT_GT(accelerator.timing_statistics().descriptor_cycles, 0);
   EXPECT_GT(accelerator.timing_statistics().total_service_cycles, 0);
+  const int32_t zero_bandwidth_first = 1;
+  const int32_t zero_bandwidth_second = 2;
+  const accel_command_t child = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
+                                 0,
+                                 1,
+                                 0,
+                                 0,
+                                 0,
+                                 kFirstInputAddress,
+                                 kSecondInputAddress,
+                                 0,
+                                 kResultAddress};
+  const accel_command_t batch = {
+      ACCEL_OPCODE_EXECUTE_BATCH, 0, 1, 0, 0, 0, kBatchDescriptorAddress, 0, 0,
+      kBatchResultAddress};
+  CHECK(zero_bandwidth_memory.write(kFirstInputAddress, &zero_bandwidth_first,
+                                    sizeof(zero_bandwidth_first)));
+  CHECK(zero_bandwidth_memory.write(kSecondInputAddress, &zero_bandwidth_second,
+                                    sizeof(zero_bandwidth_second)));
+  CHECK(zero_bandwidth_memory.write(kBatchDescriptorAddress, &child, sizeof(child)));
+  expect_done(zero_bandwidth_initiator, zero_bandwidth_memory, batch);
+  EXPECT_EQ(zero_bandwidth_accelerator.timing_statistics().total_service_cycles, 0);
 }
 
 TEST(TimingModel, CalculatesSequentialAndStreamingCommandCycles) {

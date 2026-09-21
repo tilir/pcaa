@@ -1,10 +1,9 @@
 # Programmable Cost Algebra Accelerator
 
 PCAA is a compact, programmable accelerator model for the regular cost-vector
-work inside graph optimizers such as PBQP. Software keeps ownership of the
-graph and its decisions; PCAA carries out the dense min-plus reductions. The
-repository is useful both as a runnable SystemC model and as a starting point
-for exploring how batching, scheduling and lane width change that workload.
+work inside graph optimizers such as PBQP. It is both a runnable SystemC model
+and a platform for exploring how batching, scheduling, and lane width affect
+that workload.
 
 The complete block contract and command semantics are in
 [the architecture specification](doc/arch.md). The L1 modeled-cycle study is
@@ -34,22 +33,21 @@ build/pcaa_graph_run_timed --solver bare-metal examples/triangle.pbqp
 ```
 
 It reports total modeled service cycles and descriptor, operand, compute, and
-result-write components using its fixed four-lane streaming configuration.
-Zero device cycles are valid when the graph is an irreducible PBQP core: that
-core is solved in software and produces no PCAA primitive submissions.
+result-write components using its fixed four-lane streaming configuration. A
+zero device-cycle total can occur when the selected algorithm completes without
+using accelerator operations.
 
 Choose the solver mode explicitly:
 
-- `--solver bare-metal` uses the fixed-capacity solver shared with the RV64
-  tests. It accepts at most 64 vertices, 6 choices per vertex, and 2,016
-  edges; a larger graph is rejected with a diagnostic.
-- `--solver local` uses the same shared solver and accepts the same graph
-  capacity. It is useful for comparing the hosted model path with the
-  bare-metal-compatible path; it is not a second, less restricted solver.
+- `--solver bare-metal` accepts graphs with at most 64 vertices, 6 choices per
+  vertex, and 2,016 edges. It matches the solver available to RV64 programs.
+- `--solver local` uses allocator-backed graph, reconstruction, and search
+  storage. Its graph size is limited by host memory; the parser accepts up to
+  65,536 choices per vertex.
 
-Select an algorithm independently with `--strategy`. Every listed strategy is
-implemented once in the shared fixed-capacity solver and works in either mode
-when the graph fits. The default strategy is `heuristic-rn`.
+Select an algorithm independently with `--strategy`. Each strategy is
+available in either mode when its storage fits the selected environment. The
+default is `heuristic-rn`.
 
 - `heuristic-rn` is the default. It first applies exact low-degree reductions,
   then deterministically fixes a node when a general core remains, and repeats.
@@ -65,8 +63,9 @@ when the graph fits. The default strategy is `heuristic-rn`.
   assignments of the residual core. It is an exact small-instance oracle.
 - `exact-branch-reduce` branches on a remaining node and re-applies exact
   reductions below every branch. A completed answer is exact; use
-  `--maximum-search-nodes N` to put an explicit bound on the search. Both time
-  and the fixed branch-workspace depth limit make it suitable for small cores.
+  `--maximum-search-nodes N` to put an explicit bound on the search. It is
+  suitable for small cores.
+  `N` is a non-negative whole number; zero leaves the search-node limit unset.
 - `local-search` starts from all zeroes and deterministic single-coordinate
   restarts, then repeatedly takes strict coordinate improvements. It reports a
   `local-optimum`, not a proof of global optimality.
@@ -117,13 +116,15 @@ build/pcaa_graph_run --solver bare-metal examples/tie.pbqp
 build/pcaa_graph_run --solver local examples/random-20.pbqp
 ```
 
-Add `--verbose` to follow the model as it handles the graph. The trace is
-written to stderr and shows doorbells, batch walking, child descriptors, and
-primitive min/argmin results:
+Add `--verbose` to follow execution. The trace is written to stderr and shows
+submitted work, executed operations, and intermediate results:
 
 ```sh
 build/pcaa_graph_run --verbose --solver bare-metal examples/triangle.pbqp
 ```
+
+For machine-readable solver events, use `--trace FILE`; each JSONL row records
+one solver action and its logical cost-algebra work.
 
 ## Build and verify the complete integration
 
@@ -154,10 +155,28 @@ To run the reproducible synthetic solver-characterization corpus through the CLI
 cmake --build build --target solver_characterization
 ```
 
-The target writes `build/solver-characterization.csv`. To choose seeds, exact
-limits, or stream CSV elsewhere, invoke `ruby scripts/rn_characterize.rb --help`
-directly. The study and its scope are in
+The target writes `build/solver-characterization.csv` and a Markdown summary
+alongside it. To choose seeds, exact limits, or stream CSV elsewhere, invoke
+`ruby scripts/rn_characterize.rb --help` directly. The study and its scope are in
 [the solver-characterization report](doc/solver-characterization.md).
+
+For the related HW/SW boundary corpus:
+
+```sh
+cmake --build build --target hw_sw_characterization
+```
+
+It writes `build/hw-sw-epochs.csv`; see
+[the HW/SW boundary report](doc/hw-sw-boundary-characterization.md).
+
+`cmake --build build --target scaling_characterization` runs the graph/domain
+scaling grid through allocator-backed local mode; it writes
+`build/scaling-runs.csv`. The sweep is family-specific (mixed-degree stays
+below N=1000 because its `O(N^2)` edge count makes large instances slow to
+solve, while degree-3/degree-4 reach N=1000 quickly) and supports resuming
+an interrupted run; invoke `ruby scripts/scaling_characterize.rb --help`
+directly to pick sweeps, node/domain lists per family, seeds, policies, or
+a per-run timeout. See [the scaling report](doc/scaling-characterization.md).
 
 To create a deterministic synthetic input yourself, use the host-only graph
 generator and pass its output back to the runner:
@@ -173,10 +192,10 @@ The build directory contains these generated artifacts:
 
 - `pcaa_graph_run` — host utility that runs a user-supplied PBQP file through
   the untimed SystemC accelerator model.
-- `pcaa_graph_run_model` — implementation launched by `pcaa_graph_run`; it
-  exists so the user-facing runner can suppress SystemC's startup banner.
+- `pcaa_graph_run_model` — companion executable used by `pcaa_graph_run` to
+  provide clean command-line output.
 - `pcaa_graph_run_timed` and `pcaa_graph_run_timed_model` — launcher and
-  implementation of the L1 timing-reporting graph runner.
+  companion executable for the L1 timing-reporting graph runner.
 - `pbqp_graph_generate` — host-only deterministic generator that writes a
   synthetic PBQP graph in the runner's text format to standard output.
 - `systemc_unit`, `pbqp_unit` — host unit-test executables.
@@ -191,6 +210,10 @@ The build directory contains these generated artifacts:
   available.
 - `solver-characterization.csv` — reproducible strategy-comparison data,
   produced by the `solver_characterization` target.
+- `solver-characterization-summary.md` — generated aggregate tables for the
+  characterization corpus.
+- `hw-sw-epochs.csv` — raw hypothetical HW/SW execution epochs from solver
+  event traces.
 
 ## Repository layout
 

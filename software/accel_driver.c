@@ -74,9 +74,16 @@ int accel_submit_batch(const accel_command_t *commands, size_t count,
 
 int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n) {
   int32_t result = ACCEL_INF;
+  accel_min_add_checked(a, b, n, &result);
+  return result;
+}
+
+int accel_min_add_checked(const int32_t *a, const int32_t *b, size_t n, int32_t *result) {
+  if (result == NULL)
+    return -1;
   const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, a, b, NULL, &result, n);
-  return accel_submit(&command) || accel_wait() ? ACCEL_INF : result;
+      make_command(ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, a, b, NULL, result, n);
+  return accel_submit(&command) || accel_wait() ? -1 : 0;
 }
 
 int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *d, size_t n) {

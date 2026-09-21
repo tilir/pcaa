@@ -26,12 +26,14 @@ separate from the functional characterization target: the latter compares
 solver algorithms and records logical work, while L1 reports only device
 service for the descriptors that a selected algorithm emits.
 
-RN scoring now emits the value-only `MAP_ADD_REDUCE_MIN` primitive. Its result
-is four bytes rather than an argmin pair, because RN does not reconstruct a
-candidate-state choice from that operation. R1, R2, and coordinate descent
-continue to use argmin primitives where their result index is required.
-Consequently any previous aggregate timing made with value-plus-argmin RN
-projections is stale and is intentionally not retained here.
+As a regression point, the untimed triangle's command stream reports 50 L1
+service cycles in the timed runner: 32 descriptor, 10 operand-read, 6 compute,
+and 8 result-write cycles. The host end-to-end test fixes these values.
+
+RN scoring emits the value-only `MAP_ADD_REDUCE_MIN` primitive. Its result is
+four bytes rather than an argmin pair, because RN does not reconstruct a
+candidate-state choice from that operation. R1, R2, and coordinate descent use
+argmin primitives where their result index is required.
 
 The structural comparison remains useful: a matrix--vector min-plus projection
 would collapse RN's repeated scalar descriptors, and a fused

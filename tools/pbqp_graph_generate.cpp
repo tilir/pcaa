@@ -18,7 +18,8 @@ using pcaa::graph_generator::GeneratorConfig;
 using pcaa::graph_generator::GraphFamily;
 
 void print_usage(std::ostream &output) {
-  output << "Usage: pbqp_graph_generate --family FAMILY --profile PROFILE --nodes N --seed N\n"
+  output << "Usage: pbqp_graph_generate --family FAMILY --profile PROFILE --nodes N --seed N "
+            "[--domain-size D]\n"
             "Families: random-sparse, degree-3, degree-4, mixed-degree, tree, cycle, two-tree\n"
             "Profiles: binary, small, register-like, large\n";
 }
@@ -60,7 +61,7 @@ bool parse_profile(const std::string &text, DomainProfile *profile) {
 }  // namespace
 
 int main(int argc, char **argv) {
-  GeneratorConfig config{GraphFamily::kRandomSparse, DomainProfile::kBinary, 0, 0};
+  GeneratorConfig config{GraphFamily::kRandomSparse, DomainProfile::kBinary, 0, 0, 0};
   bool saw_family = false;
   bool saw_profile = false;
   bool saw_nodes = false;
@@ -87,6 +88,8 @@ int main(int argc, char **argv) {
       } else if (argument == "--seed") {
         config.seed = static_cast<unsigned>(std::stoul(value));
         saw_seed = true;
+      } else if (argument == "--domain-size") {
+        config.uniform_domain = std::stoi(value);
       } else {
         print_usage(std::cerr);
         return 2;
@@ -104,7 +107,8 @@ int main(int argc, char **argv) {
     const auto graph = pcaa::graph_generator::GenerateGraph(config);
     std::cout << "# family=" << pcaa::graph_generator::ToString(config.family)
               << " profile=" << pcaa::graph_generator::ToString(config.profile)
-              << " nodes=" << config.nodes << " seed=" << config.seed << "\n"
+              << " nodes=" << config.nodes << " seed=" << config.seed
+              << " domain-size=" << config.uniform_domain << "\n"
               << "nodes " << graph.domains.size() << '\n';
     for (size_t node = 0; node < graph.domains.size(); ++node) {
       std::cout << "node " << graph.domains[node];

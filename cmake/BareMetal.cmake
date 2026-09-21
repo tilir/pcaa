@@ -34,6 +34,7 @@ function(add_pbqp_baremetal_test test_name)
     ${object_dir}/start.o ${object_dir}/runtime.o ${object_dir}/accel_driver.o
     ${object_dir}/pbqp_accelerator.o ${object_dir}/cost_math.o ${object_dir}/${test_name}.o)
   set(pbqp_object ${object_dir}/pbqp.o)
+  set(pbqp_storage_object ${object_dir}/pbqp_storage.o)
   file(MAKE_DIRECTORY ${object_dir})
 
   macro(add_pbqp_object object compiler standard source)
@@ -57,17 +58,20 @@ function(add_pbqp_baremetal_test test_name)
   add_pbqp_object(${pbqp_object} ${RISCV_GXX} -std=c++17
     ${CMAKE_CURRENT_SOURCE_DIR}/software/pbqp/pbqp.cpp
     -fno-exceptions -fno-rtti -fno-threadsafe-statics)
+  add_pbqp_object(${pbqp_storage_object} ${RISCV_GXX} -std=c++17
+    ${CMAKE_CURRENT_SOURCE_DIR}/software/pbqp/pbqp_storage.cpp
+    -fno-exceptions -fno-rtti -fno-threadsafe-statics)
   add_pbqp_object(${object_dir}/cost_math.o ${RISCV_GXX} -std=c++17
     ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/src/cost_math.cpp
     -fno-exceptions -fno-rtti -fno-threadsafe-statics)
-  add_custom_target(${test_name}_objects DEPENDS ${c_objects} ${pbqp_object})
+  add_custom_target(${test_name}_objects DEPENDS ${c_objects} ${pbqp_object} ${pbqp_storage_object})
 
   add_custom_command(
     OUTPUT ${output_elf}
-    COMMAND ${RISCV_GXX} -nostdlib -nostartfiles ${c_objects} ${pbqp_object}
+    COMMAND ${RISCV_GXX} -nostdlib -nostartfiles ${c_objects} ${pbqp_object} ${pbqp_storage_object}
       -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/software/tests/linker.ld
       -Wl,--build-id=none -o ${output_elf}
-    DEPENDS ${c_objects} ${pbqp_object}
+    DEPENDS ${c_objects} ${pbqp_object} ${pbqp_storage_object}
     VERBATIM)
   add_custom_target(${test_name}_elf DEPENDS ${output_elf})
   add_dependencies(${test_name}_elf ${test_name}_objects)

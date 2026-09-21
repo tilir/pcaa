@@ -54,6 +54,9 @@ Graph GenerateGraph(const GeneratorConfig &config) {
   if (config.nodes < 1) {
     throw std::invalid_argument("node count must be positive");
   }
+  if (config.uniform_domain < 0) {
+    throw std::invalid_argument("uniform domain size must be non-negative");
+  }
   if ((config.family == GraphFamily::kDegree3 || config.family == GraphFamily::kDegree4) &&
       (config.nodes < 6 || config.nodes % 2 != 0)) {
     throw std::invalid_argument(
@@ -64,7 +67,8 @@ Graph GenerateGraph(const GeneratorConfig &config) {
   Graph graph;
   graph.domains.reserve(config.nodes);
   for (int node = 0; node < config.nodes; ++node) {
-    graph.domains.push_back(DomainFor(config.profile, &random));
+    graph.domains.push_back(config.uniform_domain == 0 ? DomainFor(config.profile, &random)
+                                                       : config.uniform_domain);
   }
 
   switch (config.family) {
