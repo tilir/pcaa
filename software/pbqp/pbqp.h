@@ -18,6 +18,8 @@ enum {
   PBQP_MAX_DOMAIN = 6,
   PBQP_MAX_EDGES = PBQP_MAX_NODES * (PBQP_MAX_NODES - 1) / 2,
   PBQP_VECTOR_HISTOGRAM_BINS = PBQP_MAX_DOMAIN + 1,
+  /* Fixed branch snapshots keep exact search out of the freestanding stack. */
+  PBQP_MAX_EXACT_BRANCH_DEPTH = 8,
   /* Keeps every finite sum of one complete fixed-capacity graph below ACCEL_INF. */
   PBQP_MAX_FINITE_COST = (ACCEL_INF - 1) / (PBQP_MAX_NODES + PBQP_MAX_EDGES),
   PBQP_MIN_FINITE_COST = -PBQP_MAX_FINITE_COST,
@@ -41,8 +43,10 @@ typedef enum {
 typedef enum {
   PBQP_STRATEGY_REDUCE_ONLY,
   PBQP_STRATEGY_HEURISTIC_RN,
+  PBQP_STRATEGY_EXACT_CORE_ENUMERATION,
   PBQP_STRATEGY_EXACT_BRANCH_REDUCE,
   PBQP_STRATEGY_LOCAL_SEARCH,
+  PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH,
 } pbqp_solver_strategy_t;
 
 /* Deterministic selection rules for an irreducible node handled by RN. */
@@ -72,6 +76,13 @@ typedef struct {
   accel_min_argmin_result_t *result;
 } pbqp_min2_job_t;
 
+/* One value-only two-input primitive reduction for callers that do not reconstruct argmin. */
+typedef struct {
+  pbqp_vector_view_t a;
+  pbqp_vector_view_t b;
+  int32_t *result;
+} pbqp_min2_value_job_t;
+
 /* One already-scheduled three-input primitive reduction and its caller-owned output. */
 typedef struct {
   pbqp_vector_view_t a;
@@ -100,6 +111,14 @@ typedef struct {
   uint64_t rn_score_accumulation_elements;
   uint64_t rn_commit_elements;
   uint64_t rn_commit_bytes;
+  unsigned condition_count;
+  uint64_t condition_elements;
+  uint64_t condition_matrix_read_bytes;
+  uint64_t condition_unary_read_bytes;
+  uint64_t condition_unary_write_bytes;
+  uint64_t commit_matrix_read_bytes;
+  uint64_t commit_unary_read_bytes;
+  uint64_t commit_unary_write_bytes;
   unsigned r0_after_rn;
   unsigned r1_after_rn;
   unsigned r2_after_rn;
@@ -110,6 +129,37 @@ typedef struct {
   unsigned rn_episodes;
   unsigned rn_nodes[PBQP_MAX_NODES];
   unsigned rn_choices[PBQP_MAX_NODES];
+  unsigned rn_cascade_r0[PBQP_MAX_NODES];
+  unsigned rn_cascade_r1[PBQP_MAX_NODES];
+  unsigned rn_cascade_r2[PBQP_MAX_NODES];
+  unsigned rn_cascade_length_histogram[PBQP_MAX_NODES + 1];
+  unsigned rn_cascade_total_length;
+  unsigned rn_cascade_maximum_length;
+  unsigned local_search_node_evaluations;
+  unsigned local_search_sweeps;
+  unsigned local_search_accepted_moves;
+  uint64_t local_search_slice_accumulations;
+  uint64_t local_search_slice_elements;
+  uint64_t local_search_matrix_read_bytes;
+  uint64_t local_search_score_read_bytes;
+  uint64_t local_search_score_write_bytes;
+  unsigned local_search_argmin_reductions;
+  uint64_t local_search_argmin_elements;
+  /* Generic cost-algebra operation mix; bytes are logical operand/result traffic. */
+  uint64_t minplus_project_elements;
+  unsigned minplus_project_descriptors;
+  uint64_t minplus_project_bytes;
+  uint64_t project_accumulate_elements;
+  uint64_t project_accumulate_bytes;
+  uint64_t slice_accumulate_elements;
+  unsigned slice_accumulate_operations;
+  uint64_t slice_accumulate_bytes;
+  uint64_t map3_reduce_elements;
+  unsigned map3_reduce_descriptors;
+  uint64_t map3_reduce_bytes;
+  uint64_t argmin_vector_elements;
+  unsigned argmin_vector_descriptors;
+  uint64_t argmin_vector_bytes;
   uint64_t search_nodes_visited;
   uint64_t search_branches_created;
   unsigned search_maximum_depth;
@@ -141,6 +191,8 @@ typedef struct {
                      pbqp_vector_view_t c, accel_min_argmin_result_t *result);
   int (*min2_argmin_batch)(void *context, const pbqp_min2_job_t *jobs, size_t count);
   int (*min3_argmin_batch)(void *context, const pbqp_min3_job_t *jobs, size_t count);
+  int (*min2_value)(void *context, pbqp_vector_view_t a, pbqp_vector_view_t b, int32_t *result);
+  int (*min2_value_batch)(void *context, const pbqp_min2_value_job_t *jobs, size_t count);
 } pbqp_cost_kernel_t;
 
 /* A configured solver: the mode is descriptive, while kernel supplies its cost primitive. */

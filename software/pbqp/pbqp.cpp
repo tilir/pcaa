@@ -14,7 +14,10 @@
 
 namespace {
 
-enum ReductionKind { kReductionR0, kReductionR1, kReductionR2, kReductionRN };
+enum ReductionKind { kReductionR0, kReductionR1, kReductionR2, kReductionRN, kReductionBranch };
+
+/* Bounded global workspace avoids copying a roughly 300 KiB graph on the RV64 stack. */
+pbqp_problem_t g_branch_workspace[PBQP_MAX_EXACT_BRANCH_DEPTH];
 
 bool IsValidCost(int32_t cost) {
   return cost == ACCEL_INF || (cost >= PBQP_MIN_FINITE_COST && cost <= PBQP_MAX_FINITE_COST);
@@ -185,6 +188,29 @@ class CostKernel {
     return 0;
   }
 
+  int Min2Value(pbqp_vector_view_t first, pbqp_vector_view_t second, int32_t *result) const {
+    if (api_.min2_value != nullptr)
+      return api_.min2_value(api_.context, first, second, result);
+    accel_min_argmin_result_t argmin{};
+    const int status = Min2(first, second, &argmin);
+    *result = argmin.value;
+    return status;
+  }
+
+  int Min2ValueBatch(const pbqp_min2_value_job_t *jobs, size_t count) const {
+    if (api_.min2_value_batch != nullptr)
+      return api_.min2_value_batch(api_.context, jobs, count);
+    for (size_t index = 0; index < count; ++index) {
+      if (Min2Value(jobs[index].a, jobs[index].b, jobs[index].result) != 0)
+        return -1;
+    }
+    return 0;
+  }
+
+  const pbqp_cost_kernel_t &Api() const {
+    return api_;
+  }
+
  private:
   const pbqp_cost_kernel_t &api_;
 };
@@ -199,17 +225,53 @@ class Solver {
       return PBQP_ARGUMENT_ERROR;
     }
 
+    if (config_.strategy == PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH) {
+      pbqp_problem_t &original = g_branch_workspace[0];
+      original = *problem;
+      pbqp_solver_config_t rn_config = config_;
+      rn_config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
+      pbqp_solution_t rn_solution{};
+      const pbqp_status_t rn_status = Solver(kernel_.Api(), rn_config).Solve(problem, &rn_solution);
+      if (rn_status != PBQP_OK) {
+        return rn_status;
+      }
+      original.statistics = problem->statistics;
+      const pbqp_status_t local_status =
+          RunLocalDescent(original, rn_solution.assignment, solution);
+      if (local_status == PBQP_OK) {
+        assert(solution->optimum <= rn_solution.optimum);
+        problem->statistics = original.statistics;
+      }
+      return local_status;
+    }
+
     Graph graph(*problem);
     pbqp_problem_t &state = graph.State();
     state.statistics.nodes = state.node_count;
     state.statistics.initial_edges = state.edge_count;
 
-    bool after_rn = false;
+    if (config_.strategy == PBQP_STRATEGY_LOCAL_SEARCH) {
+      return SolveLocalSearch(state, solution);
+    }
+
+    int rn_episode = -1;
+    const auto record_rn_cascade = [&state, &rn_episode] {
+      if (rn_episode < 0)
+        return;
+      const unsigned length = state.statistics.rn_cascade_r0[rn_episode] +
+                              state.statistics.rn_cascade_r1[rn_episode] +
+                              state.statistics.rn_cascade_r2[rn_episode];
+      ++state.statistics.rn_cascade_length_histogram[length];
+      state.statistics.rn_cascade_total_length += length;
+      if (length > state.statistics.rn_cascade_maximum_length)
+        state.statistics.rn_cascade_maximum_length = length;
+    };
     while (true) {
       int edge_indices[2];
       const int node = graph.FindReducibleNode(edge_indices);
       if (node < 0) {
         if (graph.ActiveNodeCount() == 0) {
+          record_rn_cascade();
           solution->optimum = state.objective_offset;
           ReconstructSolution(state, solution);
           return PBQP_OK;
@@ -218,6 +280,7 @@ class Solver {
           return PBQP_IRREDUCIBLE;
         }
         if (config_.strategy == PBQP_STRATEGY_HEURISTIC_RN) {
+          record_rn_cascade();
           RecordIrreducibleCore(graph);
           const int rn_node = graph.SelectRnNode(config_.rn_policy);
           if (rn_node < 0) {
@@ -227,7 +290,7 @@ class Solver {
           if (status != PBQP_OK) {
             return status;
           }
-          after_rn = true;
+          rn_episode = static_cast<int>(state.statistics.rn_count - 1);
           continue;
         }
         break;
@@ -237,24 +300,34 @@ class Solver {
       pbqp_status_t status = PBQP_OK;
       if (degree == 0) {
         status = ReduceR0(graph, static_cast<unsigned>(node));
-        if (after_rn)
+        if (rn_episode >= 0) {
           ++state.statistics.r0_after_rn;
+          ++state.statistics.rn_cascade_r0[rn_episode];
+        }
       } else if (degree == 1) {
         status = ReduceR1(graph, static_cast<unsigned>(node), edge_indices[0]);
-        if (after_rn)
+        if (rn_episode >= 0) {
           ++state.statistics.r1_after_rn;
+          ++state.statistics.rn_cascade_r1[rn_episode];
+        }
       } else {
         status = ReduceR2(graph, static_cast<unsigned>(node), edge_indices[0], edge_indices[1]);
-        if (after_rn)
+        if (rn_episode >= 0) {
           ++state.statistics.r2_after_rn;
+          ++state.statistics.rn_cascade_r2[rn_episode];
+        }
       }
       if (status != PBQP_OK) {
         return status;
       }
     }
 
-    if (config_.strategy != PBQP_STRATEGY_EXACT_BRANCH_REDUCE) {
+    if (config_.strategy != PBQP_STRATEGY_EXACT_CORE_ENUMERATION &&
+        config_.strategy != PBQP_STRATEGY_EXACT_BRANCH_REDUCE) {
       return PBQP_ARGUMENT_ERROR;
+    }
+    if (config_.strategy == PBQP_STRATEGY_EXACT_BRANCH_REDUCE) {
+      return SolveBranchAndReduce(&state, solution, 0);
     }
     unsigned core_assignment[PBQP_MAX_NODES] = {};
     bool has_assignment = false;
@@ -302,12 +375,119 @@ class Solver {
   }
 
   static void RecordOperation(pbqp_statistics_t *statistics, unsigned opcode, unsigned length,
-                              unsigned input_count) {
+                              unsigned input_count,
+                              size_t result_bytes = sizeof(accel_min_argmin_result_t)) {
     ++statistics->primitive_submissions[opcode];
     ++statistics->vector_length_histogram[length];
     statistics->logical_map_elements += length;
     statistics->logical_bytes_read += static_cast<uint64_t>(length) * input_count * sizeof(int32_t);
-    statistics->logical_bytes_written += sizeof(accel_min_argmin_result_t);
+    statistics->logical_bytes_written += result_bytes;
+  }
+
+  static void RecordMinplusProject(pbqp_statistics_t *statistics, unsigned length,
+                                   unsigned result_bytes) {
+    statistics->minplus_project_elements += length;
+    ++statistics->minplus_project_descriptors;
+    statistics->minplus_project_bytes += 2 * length * sizeof(int32_t) + result_bytes;
+  }
+
+  static void RecordMap3Reduce(pbqp_statistics_t *statistics, unsigned length) {
+    statistics->map3_reduce_elements += length;
+    ++statistics->map3_reduce_descriptors;
+    statistics->map3_reduce_bytes +=
+        3 * length * sizeof(int32_t) + sizeof(accel_min_argmin_result_t);
+  }
+
+  static void RecordArgminVector(pbqp_statistics_t *statistics, unsigned length) {
+    statistics->argmin_vector_elements += length;
+    ++statistics->argmin_vector_descriptors;
+    statistics->argmin_vector_bytes +=
+        2 * length * sizeof(int32_t) + sizeof(accel_min_argmin_result_t);
+  }
+
+  pbqp_status_t RunLocalDescent(pbqp_problem_t &problem, unsigned *assignment,
+                                pbqp_solution_t *solution) const {
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      ++problem.statistics.local_search_sweeps;
+      for (unsigned node_index = 0; node_index < problem.node_count; ++node_index) {
+        const pbqp_node_t &node = problem.nodes[node_index];
+        int32_t scores[PBQP_MAX_DOMAIN];
+        int32_t zeroes[PBQP_MAX_DOMAIN] = {};
+        for (unsigned value = 0; value < node.domain; ++value) {
+          scores[value] = node.unary[value];
+        }
+        for (unsigned edge_index = 0; edge_index < PBQP_MAX_EDGES; ++edge_index) {
+          const pbqp_edge_t &edge = problem.edges[edge_index];
+          if (!edge.active || (edge.first != node_index && edge.second != node_index)) {
+            continue;
+          }
+          const unsigned neighbor = edge.first == node_index ? edge.second : edge.first;
+          const pbqp_vector_view_t slice =
+              ConditionedEdgeView(edge, neighbor, assignment[neighbor], node.domain);
+          for (unsigned value = 0; value < node.domain; ++value) {
+            scores[value] = accel_cost_add(scores[value], slice.base[value * slice.stride]);
+          }
+          ++problem.statistics.local_search_slice_accumulations;
+          problem.statistics.local_search_slice_elements += node.domain;
+          problem.statistics.local_search_matrix_read_bytes += node.domain * sizeof(int32_t);
+          problem.statistics.local_search_score_read_bytes += node.domain * sizeof(int32_t);
+          problem.statistics.local_search_score_write_bytes += node.domain * sizeof(int32_t);
+          problem.statistics.slice_accumulate_elements += node.domain;
+          ++problem.statistics.slice_accumulate_operations;
+          problem.statistics.slice_accumulate_bytes += 3 * node.domain * sizeof(int32_t);
+        }
+        accel_min_argmin_result_t best{};
+        const pbqp_vector_view_t score_view = {scores, node.domain, 1};
+        const pbqp_vector_view_t zero_view = {zeroes, node.domain, 1};
+        RecordView(&problem.statistics, score_view);
+        RecordView(&problem.statistics, zero_view);
+        RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, node.domain,
+                        2);
+        RecordArgminVector(&problem.statistics, node.domain);
+        if (kernel_.Min2(score_view, zero_view, &best) != 0 || best.index >= node.domain) {
+          return PBQP_ARGUMENT_ERROR;
+        }
+        ++problem.statistics.local_search_node_evaluations;
+        ++problem.statistics.local_search_argmin_reductions;
+        problem.statistics.local_search_argmin_elements += node.domain;
+        if (best.value < scores[assignment[node_index]]) {
+          assignment[node_index] = best.index;
+          ++problem.statistics.local_search_accepted_moves;
+          changed = true;
+        }
+      }
+    }
+    solution->optimum = pbqp_evaluate(&problem, assignment);
+    for (unsigned node = 0; node < problem.node_count; ++node) {
+      solution->assignment[node] = assignment[node];
+    }
+    return PBQP_OK;
+  }
+
+  pbqp_status_t SolveLocalSearch(pbqp_problem_t &problem, pbqp_solution_t *solution) const {
+    unsigned initial[PBQP_MAX_NODES] = {};
+    pbqp_solution_t best{};
+    if (RunLocalDescent(problem, initial, &best) != PBQP_OK) {
+      return PBQP_ARGUMENT_ERROR;
+    }
+    for (unsigned node = 0; node < problem.node_count; ++node) {
+      for (unsigned value = 1; value < problem.nodes[node].domain; ++value) {
+        initial[node] = value;
+        pbqp_solution_t candidate{};
+        const pbqp_status_t status = RunLocalDescent(problem, initial, &candidate);
+        if (status != PBQP_OK) {
+          return status;
+        }
+        if (candidate.optimum < best.optimum) {
+          best = candidate;
+        }
+        initial[node] = 0;
+      }
+    }
+    *solution = best;
+    return PBQP_OK;
   }
 
   void RecordIrreducibleCore(Graph &graph) const {
@@ -334,6 +514,7 @@ class Solver {
     if (!node.active || choice >= node.domain) {
       return PBQP_ARGUMENT_ERROR;
     }
+    ++problem.statistics.condition_count;
     problem.objective_offset = accel_cost_add(problem.objective_offset, node.unary[choice]);
     for (unsigned edge_index = 0; edge_index < PBQP_MAX_EDGES; ++edge_index) {
       pbqp_edge_t &edge = problem.edges[edge_index];
@@ -348,8 +529,20 @@ class Solver {
         neighbor.unary[value] =
             accel_cost_add(neighbor.unary[value], slice.base[value * slice.stride]);
       }
-      problem.statistics.rn_commit_elements += neighbor.domain;
-      problem.statistics.rn_commit_bytes += 2 * neighbor.domain * sizeof(int32_t);
+      problem.statistics.condition_elements += neighbor.domain;
+      problem.statistics.condition_matrix_read_bytes += neighbor.domain * sizeof(int32_t);
+      problem.statistics.condition_unary_read_bytes += neighbor.domain * sizeof(int32_t);
+      problem.statistics.condition_unary_write_bytes += neighbor.domain * sizeof(int32_t);
+      problem.statistics.slice_accumulate_elements += neighbor.domain;
+      ++problem.statistics.slice_accumulate_operations;
+      problem.statistics.slice_accumulate_bytes += 3 * neighbor.domain * sizeof(int32_t);
+      if (kind == kReductionRN) {
+        problem.statistics.rn_commit_elements += neighbor.domain;
+        problem.statistics.commit_matrix_read_bytes += neighbor.domain * sizeof(int32_t);
+        problem.statistics.commit_unary_read_bytes += neighbor.domain * sizeof(int32_t);
+        problem.statistics.commit_unary_write_bytes += neighbor.domain * sizeof(int32_t);
+        problem.statistics.rn_commit_bytes += 3 * neighbor.domain * sizeof(int32_t);
+      }
       edge.active = 0;
       --problem.edge_count;
     }
@@ -386,29 +579,32 @@ class Solver {
       }
       const unsigned neighbor_index = graph.OtherNode(edge, node_index);
       const pbqp_node_t &neighbor = problem.nodes[neighbor_index];
-      pbqp_min2_job_t jobs[PBQP_MAX_DOMAIN];
-      accel_min_argmin_result_t results[PBQP_MAX_DOMAIN];
+      pbqp_min2_value_job_t jobs[PBQP_MAX_DOMAIN];
+      int32_t results[PBQP_MAX_DOMAIN];
       for (unsigned value = 0; value < node.domain; ++value) {
         const pbqp_vector_view_t matrix_slice = EdgeView(edge, node_index, value, neighbor.domain);
         const pbqp_vector_view_t unary = {neighbor.unary, neighbor.domain, 1};
         jobs[value] = {matrix_slice, unary, &results[value]};
         RecordView(&problem.statistics, matrix_slice);
         RecordView(&problem.statistics, unary);
-        RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN,
-                        neighbor.domain, 2);
+        RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, neighbor.domain, 2,
+                        sizeof(int32_t));
+        RecordMinplusProject(&problem.statistics, neighbor.domain, sizeof(int32_t));
         ++problem.statistics.rn_projection_primitives;
         problem.statistics.rn_projection_map_elements += neighbor.domain;
         problem.statistics.rn_projection_operand_bytes += 2 * neighbor.domain * sizeof(int32_t);
-        problem.statistics.rn_projection_result_bytes += sizeof(accel_min_argmin_result_t);
+        problem.statistics.rn_projection_result_bytes += sizeof(int32_t);
       }
       ++problem.statistics.rn_projection_count;
-      if (kernel_.Min2Batch(jobs, node.domain) != 0) {
+      if (kernel_.Min2ValueBatch(jobs, node.domain) != 0) {
         return PBQP_ARGUMENT_ERROR;
       }
       for (unsigned value = 0; value < node.domain; ++value) {
-        scores[value] = accel_cost_add(scores[value], results[value].value);
+        scores[value] = accel_cost_add(scores[value], results[value]);
       }
       problem.statistics.rn_score_accumulation_elements += node.domain;
+      problem.statistics.project_accumulate_elements += node.domain;
+      problem.statistics.project_accumulate_bytes += 3 * node.domain * sizeof(int32_t);
     }
 
     unsigned choice = 0;
@@ -458,6 +654,7 @@ class Solver {
       RecordView(&problem.statistics, unary);
       RecordView(&problem.statistics, edge_cost);
       RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, node.domain, 2);
+      RecordMinplusProject(&problem.statistics, node.domain, sizeof(accel_min_argmin_result_t));
       jobs[neighbor_value] = {unary, edge_cost, &results[neighbor_value]};
     }
     if (kernel_.Min2Batch(jobs, neighbor.domain) != 0)
@@ -517,6 +714,7 @@ class Solver {
         RecordView(&problem.statistics, second_cost);
         RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, node.domain,
                         3);
+        RecordMap3Reduce(&problem.statistics, node.domain);
         jobs[job_count] = {unary, first_cost, second_cost, &results[job_count]};
         ++job_count;
       }
@@ -610,11 +808,168 @@ class Solver {
     }
   }
 
+  static void AddBranchStatistics(pbqp_statistics_t *total, const pbqp_statistics_t &base,
+                                  const pbqp_statistics_t &branch) {
+    total->r0_count += branch.r0_count - base.r0_count;
+    total->r1_count += branch.r1_count - base.r1_count;
+    total->r2_count += branch.r2_count - base.r2_count;
+    total->condition_count += branch.condition_count - base.condition_count;
+    total->condition_elements += branch.condition_elements - base.condition_elements;
+    total->condition_matrix_read_bytes +=
+        branch.condition_matrix_read_bytes - base.condition_matrix_read_bytes;
+    total->condition_unary_read_bytes +=
+        branch.condition_unary_read_bytes - base.condition_unary_read_bytes;
+    total->condition_unary_write_bytes +=
+        branch.condition_unary_write_bytes - base.condition_unary_write_bytes;
+    total->rn_commit_elements += branch.rn_commit_elements - base.rn_commit_elements;
+    total->rn_commit_bytes += branch.rn_commit_bytes - base.rn_commit_bytes;
+    total->commit_matrix_read_bytes +=
+        branch.commit_matrix_read_bytes - base.commit_matrix_read_bytes;
+    total->commit_unary_read_bytes += branch.commit_unary_read_bytes - base.commit_unary_read_bytes;
+    total->commit_unary_write_bytes +=
+        branch.commit_unary_write_bytes - base.commit_unary_write_bytes;
+    total->logical_map_elements += branch.logical_map_elements - base.logical_map_elements;
+    total->logical_bytes_read += branch.logical_bytes_read - base.logical_bytes_read;
+    total->logical_bytes_written += branch.logical_bytes_written - base.logical_bytes_written;
+    total->minplus_project_elements +=
+        branch.minplus_project_elements - base.minplus_project_elements;
+    total->minplus_project_descriptors +=
+        branch.minplus_project_descriptors - base.minplus_project_descriptors;
+    total->minplus_project_bytes += branch.minplus_project_bytes - base.minplus_project_bytes;
+    total->project_accumulate_elements +=
+        branch.project_accumulate_elements - base.project_accumulate_elements;
+    total->project_accumulate_bytes +=
+        branch.project_accumulate_bytes - base.project_accumulate_bytes;
+    total->slice_accumulate_elements +=
+        branch.slice_accumulate_elements - base.slice_accumulate_elements;
+    total->slice_accumulate_operations +=
+        branch.slice_accumulate_operations - base.slice_accumulate_operations;
+    total->slice_accumulate_bytes += branch.slice_accumulate_bytes - base.slice_accumulate_bytes;
+    total->map3_reduce_elements += branch.map3_reduce_elements - base.map3_reduce_elements;
+    total->map3_reduce_descriptors += branch.map3_reduce_descriptors - base.map3_reduce_descriptors;
+    total->map3_reduce_bytes += branch.map3_reduce_bytes - base.map3_reduce_bytes;
+    total->argmin_vector_elements += branch.argmin_vector_elements - base.argmin_vector_elements;
+    total->argmin_vector_descriptors +=
+        branch.argmin_vector_descriptors - base.argmin_vector_descriptors;
+    total->argmin_vector_bytes += branch.argmin_vector_bytes - base.argmin_vector_bytes;
+    total->contiguous_views += branch.contiguous_views - base.contiguous_views;
+    total->strided_views += branch.strided_views - base.strided_views;
+    total->scratch_packs += branch.scratch_packs - base.scratch_packs;
+    total->scratch_bytes += branch.scratch_bytes - base.scratch_bytes;
+    total->top_level_submissions += branch.top_level_submissions - base.top_level_submissions;
+    total->batch_submissions += branch.batch_submissions - base.batch_submissions;
+    total->batch_primitive_descriptors +=
+        branch.batch_primitive_descriptors - base.batch_primitive_descriptors;
+    if (branch.maximum_batch_size > total->maximum_batch_size)
+      total->maximum_batch_size = branch.maximum_batch_size;
+    total->batch_descriptor_bytes += branch.batch_descriptor_bytes - base.batch_descriptor_bytes;
+    total->batch_child_descriptor_bytes +=
+        branch.batch_child_descriptor_bytes - base.batch_child_descriptor_bytes;
+    total->unique_packed_views += branch.unique_packed_views - base.unique_packed_views;
+    for (unsigned opcode = 0; opcode < 5; ++opcode)
+      total->primitive_submissions[opcode] +=
+          branch.primitive_submissions[opcode] - base.primitive_submissions[opcode];
+    for (unsigned length = 0; length < PBQP_VECTOR_HISTOGRAM_BINS; ++length)
+      total->vector_length_histogram[length] +=
+          branch.vector_length_histogram[length] - base.vector_length_histogram[length];
+  }
+
+  struct SearchControl {
+    uint64_t nodes_visited = 0;
+    uint64_t branches_created = 0;
+    unsigned maximum_depth = 0;
+    unsigned limit_hits = 0;
+  };
+
+  static void RecordSearchStatistics(pbqp_statistics_t *statistics, const SearchControl &search) {
+    statistics->search_nodes_visited = search.nodes_visited;
+    statistics->search_branches_created = search.branches_created;
+    statistics->search_maximum_depth = search.maximum_depth;
+    statistics->search_limit_hits = search.limit_hits;
+  }
+
+  pbqp_status_t SolveBranchAndReduce(pbqp_problem_t *state, pbqp_solution_t *solution,
+                                     unsigned depth, SearchControl *search = nullptr) const {
+    SearchControl root_search;
+    if (search == nullptr) {
+      search = &root_search;
+    }
+    if (config_.maximum_search_nodes != 0 &&
+        search->nodes_visited >= config_.maximum_search_nodes) {
+      ++search->limit_hits;
+      RecordSearchStatistics(&state->statistics, *search);
+      return PBQP_SEARCH_LIMIT;
+    }
+    ++search->nodes_visited;
+    if (depth > search->maximum_depth)
+      search->maximum_depth = depth;
+    Graph graph(*state);
+    while (true) {
+      int edges[2];
+      const int node = graph.FindReducibleNode(edges);
+      if (node < 0)
+        break;
+      const unsigned degree = graph.NeighborCount(static_cast<unsigned>(node), edges);
+      const pbqp_status_t status =
+          degree == 0   ? ReduceR0(graph, static_cast<unsigned>(node))
+          : degree == 1 ? ReduceR1(graph, static_cast<unsigned>(node), edges[0])
+                        : ReduceR2(graph, static_cast<unsigned>(node), edges[0], edges[1]);
+      if (status != PBQP_OK)
+        return status;
+    }
+    if (graph.ActiveNodeCount() == 0) {
+      solution->optimum = state->objective_offset;
+      ReconstructSolution(*state, solution);
+      RecordSearchStatistics(&state->statistics, *search);
+      return PBQP_OK;
+    }
+    const int branch_node = graph.SelectRnNode(config_.rn_policy);
+    if (branch_node < 0)
+      return PBQP_IRREDUCIBLE;
+    if (depth == PBQP_MAX_EXACT_BRANCH_DEPTH) {
+      ++search->limit_hits;
+      RecordSearchStatistics(&state->statistics, *search);
+      return PBQP_SEARCH_LIMIT;
+    }
+    pbqp_solution_t best{};
+    bool has_best = false;
+    const unsigned domain = state->nodes[branch_node].domain;
+    const pbqp_statistics_t base_statistics = state->statistics;
+    pbqp_statistics_t aggregate_statistics = base_statistics;
+    for (unsigned value = 0; value < domain; ++value) {
+      pbqp_problem_t &child = g_branch_workspace[depth];
+      child = *state;
+      child.statistics = base_statistics;
+      Graph child_graph(child);
+      const pbqp_status_t condition =
+          ConditionNode(child_graph, static_cast<unsigned>(branch_node), value, kReductionBranch);
+      if (condition != PBQP_OK)
+        return condition;
+      pbqp_solution_t candidate{};
+      ++search->branches_created;
+      const pbqp_status_t status = SolveBranchAndReduce(&child, &candidate, depth + 1, search);
+      if (status != PBQP_OK) {
+        RecordSearchStatistics(&state->statistics, *search);
+        return status;
+      }
+      AddBranchStatistics(&aggregate_statistics, base_statistics, child.statistics);
+      if (!has_best || candidate.optimum < best.optimum) {
+        best = candidate;
+        has_best = true;
+      }
+    }
+    state->statistics = aggregate_statistics;
+    RecordSearchStatistics(&state->statistics, *search);
+    *solution = best;
+    return PBQP_OK;
+  }
+
   static void ReconstructSolution(const pbqp_problem_t &problem, pbqp_solution_t *solution) {
     for (unsigned position = problem.elimination_count; position > 0; --position) {
       const unsigned node_index = problem.elimination_order[position - 1];
       const pbqp_node_t &node = problem.nodes[node_index];
-      if (node.reduction_kind == kReductionR0 || node.reduction_kind == kReductionRN) {
+      if (node.reduction_kind == kReductionR0 || node.reduction_kind == kReductionRN ||
+          node.reduction_kind == kReductionBranch) {
         solution->assignment[node_index] = node.choice[0];
       } else if (node.reduction_kind == kReductionR1) {
         assert(node.first_neighbor >= 0);
@@ -692,6 +1047,26 @@ int SoftwareMin3(void *, pbqp_vector_view_t first, pbqp_vector_view_t second,
 int SoftwareMin2Batch(void *context, const pbqp_min2_job_t *jobs, size_t count) {
   for (size_t index = 0; index < count; ++index) {
     if (SoftwareMin2(context, jobs[index].a, jobs[index].b, jobs[index].result) != 0)
+      return -1;
+  }
+  return 0;
+}
+
+int SoftwareMin2Value(void *, pbqp_vector_view_t first, pbqp_vector_view_t second,
+                      int32_t *result) {
+  *result = ACCEL_INF;
+  for (size_t index = 0; index < first.length; ++index) {
+    const int32_t value =
+        accel_cost_add(first.base[index * first.stride], second.base[index * second.stride]);
+    if (index == 0 || value < *result)
+      *result = value;
+  }
+  return 0;
+}
+
+int SoftwareMin2ValueBatch(void *context, const pbqp_min2_value_job_t *jobs, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    if (SoftwareMin2Value(context, jobs[index].a, jobs[index].b, jobs[index].result) != 0)
       return -1;
   }
   return 0;
@@ -814,10 +1189,12 @@ void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *st
   kernel->min3_argmin = SoftwareMin3;
   kernel->min2_argmin_batch = SoftwareMin2Batch;
   kernel->min3_argmin_batch = SoftwareMin3Batch;
+  kernel->min2_value = SoftwareMin2Value;
+  kernel->min2_value_batch = SoftwareMin2ValueBatch;
 }
 
 pbqp_solver_config_t pbqp_solver_default_config(void) {
-  return {PBQP_STRATEGY_EXACT_BRANCH_REDUCE, PBQP_RN_MIN_DEGREE, 0};
+  return {PBQP_STRATEGY_EXACT_CORE_ENUMERATION, PBQP_RN_MIN_DEGREE, 0};
 }
 
 pbqp_status_t pbqp_solver_create(pbqp_solver_t *solver, pbqp_mode_t mode,

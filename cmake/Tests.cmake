@@ -42,10 +42,10 @@ add_test(NAME pcaa_graph_run_differential
 add_test(NAME pcaa_graph_run_timed COMMAND pcaa_graph_run_timed --solver bare-metal
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
 set_tests_properties(pcaa_graph_run_timed PROPERTIES PASS_REGULAR_EXPRESSION "timing cycles=[1-9][0-9]*")
-add_test(NAME pcaa_graph_run_timed_software_core COMMAND pcaa_graph_run_timed --solver bare-metal
+add_test(NAME pcaa_graph_run_timed_exact_branch COMMAND pcaa_graph_run_timed --solver bare-metal
   --strategy exact-branch-reduce ${CMAKE_CURRENT_SOURCE_DIR}/examples/random-20.pbqp)
-set_tests_properties(pcaa_graph_run_timed_software_core
-  PROPERTIES PASS_REGULAR_EXPRESSION "timing note=no accelerator primitives were issued")
+set_tests_properties(pcaa_graph_run_timed_exact_branch
+  PROPERTIES PASS_REGULAR_EXPRESSION "timing cycles=[1-9][0-9]*")
 add_test(NAME pcaa_graph_run_verbose COMMAND pcaa_graph_run --verbose --solver bare-metal
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/triangle.pbqp)
 set_tests_properties(pcaa_graph_run_verbose PROPERTIES PASS_REGULAR_EXPRESSION "pcaa: doorbell descriptor=")

@@ -21,16 +21,20 @@ completion-result costs. No host packing/search time, cache, DMA, FIFO, or
 pipeline hazard is modeled.
 
 The timed graph runner uses streaming mode, four lanes, 16 descriptor/read/write
-bytes per cycle, and the default setup latencies. The reproducible RN corpus
-(`cmake --build build --target rn_characterization`) measures ten local,
-synthetic 20-node binary graphs. For minimum-degree RN it reports:
+bytes per cycle, and the default setup latencies. It remains intentionally
+separate from the functional characterization target: the latter compares
+solver algorithms and records logical work, while L1 reports only device
+service for the descriptors that a selected algorithm emits.
 
-| Work | Cycles | Descriptor | Operand | Compute | Result | Primitives / batches |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Ten-graph corpus | 7,695 | 1,213 | 4,056 | 860 | 2,426 | 860 / 353 |
+RN scoring now emits the value-only `MAP_ADD_REDUCE_MIN` primitive. Its result
+is four bytes rather than an argmin pair, because RN does not reconstruct a
+candidate-state choice from that operation. R1, R2, and coordinate descent
+continue to use argmin primitives where their result index is required.
+Consequently any previous aggregate timing made with value-plus-argmin RN
+projections is stale and is intentionally not retained here.
 
-Operand service dominates this small-domain corpus. RN scoring contributes 247
-generic min-plus projections, expanded into 494 current scalar primitives.
-A structural matrix-vector projection would halve that projection-descriptor
-count; fused projection-accumulate would also remove intermediate result
-traffic. These comparisons are analytical and do not change the ABI.
+The structural comparison remains useful: a matrix--vector min-plus projection
+would collapse RN's repeated scalar descriptors, and a fused
+projection-and-accumulate form would avoid materialized projection values.
+Those are analytical generic cost-algebra alternatives; they do not change the
+descriptor ABI or claim RTL performance.

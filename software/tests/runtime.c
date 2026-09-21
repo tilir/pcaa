@@ -11,3 +11,12 @@ void *memset(void *destination, int value, size_t size) {
   }
   return destination;
 }
+
+void *memcpy(void *destination, const void *source, size_t size) {
+  unsigned char *output = destination;
+  const unsigned char *input = source;
+  for (size_t index = 0; index < size; ++index) {
+    output[index] = input[index];
+  }
+  return destination;
+}

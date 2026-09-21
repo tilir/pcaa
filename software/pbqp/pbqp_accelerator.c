@@ -74,6 +74,17 @@ static int accel_min3(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
   return accel_min_add3_argmin_checked(first, second, third, a.length, result);
 }
 
+static int accel_min2_value(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
+                            int32_t *result) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  const int32_t *first = contiguous(context, a, context->scratch0);
+  const int32_t *second = contiguous(context, b, context->scratch1);
+  if (first == NULL || second == NULL || result == NULL)
+    return -1;
+  *result = accel_min_add(first, second, a.length);
+  return 0;
+}
+
 static int accel_min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   if (count > PBQP_MAX_BATCH_JOBS)
@@ -120,6 +131,28 @@ static int accel_min3_batch(void *opaque, const pbqp_min3_job_t *jobs, size_t co
   return accel_submit_batch(context->batch_commands, count, &context->batch_result);
 }
 
+static int accel_min2_value_batch(void *opaque, const pbqp_min2_value_job_t *jobs, size_t count) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  if (count > PBQP_MAX_BATCH_JOBS)
+    return -1;
+  begin_batch(context);
+  for (size_t index = 0; index < count; ++index) {
+    const int32_t *first = batch_contiguous(context, jobs[index].a);
+    const int32_t *second = batch_contiguous(context, jobs[index].b);
+    if (first == NULL || second == NULL || jobs[index].result == NULL)
+      return -1;
+    context->batch_commands[index] = (accel_command_t){
+        .opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
+        .n = (uint32_t)jobs[index].a.length,
+        .src0 = (uintptr_t)first,
+        .src1 = (uintptr_t)second,
+        .dst = (uintptr_t)jobs[index].result,
+    };
+  }
+  record_batch_submission(context, count);
+  return accel_submit_batch(context->batch_commands, count, &context->batch_result);
+}
+
 void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,
                                   pbqp_accelerator_kernel_context_t *context,
                                   pbqp_statistics_t *statistics) {
@@ -129,4 +162,6 @@ void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,
   kernel->min3_argmin = accel_min3;
   kernel->min2_argmin_batch = accel_min2_batch;
   kernel->min3_argmin_batch = accel_min3_batch;
+  kernel->min2_value = accel_min2_value;
+  kernel->min2_value_batch = accel_min2_value_batch;
 }

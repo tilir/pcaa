@@ -23,16 +23,16 @@ target_compile_definitions(pcaa_graph_run_timed PRIVATE
   PCAA_GRAPH_RUN_MODEL_NAME="pcaa_graph_run_timed_model")
 add_dependencies(pcaa_graph_run_timed pcaa_graph_run_timed_model)
 
-add_custom_target(rn_characterization
+add_custom_target(solver_characterization
   COMMAND ${RUBY_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/rn_characterize.rb
     --runner $<TARGET_FILE:pcaa_graph_run>
-    --timed-runner $<TARGET_FILE:pcaa_graph_run_timed>
     --generator $<TARGET_FILE:pbqp_graph_generate>
-    --timed
-    --output ${PROJECT_BINARY_DIR}/rn-characterization.csv
-  DEPENDS pcaa_graph_run pcaa_graph_run_timed pbqp_graph_generate
-  BYPRODUCTS ${PROJECT_BINARY_DIR}/rn-characterization.csv
-  COMMENT "Characterizing deterministic synthetic RN workloads through the CLI")
+    --output ${PROJECT_BINARY_DIR}/solver-characterization.csv
+  DEPENDS pcaa_graph_run pbqp_graph_generate
+  BYPRODUCTS ${PROJECT_BINARY_DIR}/solver-characterization.csv
+  COMMENT "Characterizing deterministic synthetic solver workloads through the CLI")
+
+add_custom_target(rn_characterization DEPENDS solver_characterization)
 
 pcaa_add_format_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run.cpp

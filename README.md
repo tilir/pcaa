@@ -43,14 +43,13 @@ Choose the solver mode explicitly:
 - `--solver bare-metal` uses the fixed-capacity solver shared with the RV64
   tests. It accepts at most 64 vertices, 6 choices per vertex, and 2,016
   edges; a larger graph is rejected with a diagnostic.
-- `--solver local` supports arbitrary vertex counts and up to 65,536 choices
-  per vertex (subject to host memory). It can run the shared solver for graphs
-  within its capacity, or the host-only local-search strategy for larger ones.
+- `--solver local` uses the same shared solver and accepts the same graph
+  capacity. It is useful for comparing the hosted model path with the
+  bare-metal-compatible path; it is not a second, less restricted solver.
 
-Select an algorithm independently with `--strategy`. `reduce-only`,
-`heuristic-rn`, and `exact-branch-reduce` use the shared fixed-capacity solver
-in either mode; `local-search` is available only with `--solver local` and is
-an explicit alternative. The default strategy is `heuristic-rn`.
+Select an algorithm independently with `--strategy`. Every listed strategy is
+implemented once in the shared fixed-capacity solver and works in either mode
+when the graph fits. The default strategy is `heuristic-rn`.
 
 - `heuristic-rn` is the default. It first applies exact low-degree reductions,
   then deterministically fixes a node when a general core remains, and repeats.
@@ -62,14 +61,18 @@ an explicit alternative. The default strategy is `heuristic-rn`.
   if it finishes; otherwise it reports `IRREDUCIBLE`, meaning that the input
   has a remaining general core and no assignment is returned. It is useful for
   recognizing graphs that need a general-graph algorithm.
-- `exact-branch-reduce` applies the same exact reductions and then exhaustively
-  examines any remaining core. Its completed answer is exact, but runtime can
-  grow rapidly with core size. Use it for small graphs and for checking the
-  quality of a heuristic result.
-- `local-search` is a host-only alternative for `--solver local`, including
-  graphs beyond the shared solver capacity. It repeatedly improves a complete
-  assignment and reports a deterministic `local-optimum`; it is not a proof of
-  global optimality.
+- `exact-core-enumeration` applies exact reductions once, then enumerates all
+  assignments of the residual core. It is an exact small-instance oracle.
+- `exact-branch-reduce` branches on a remaining node and re-applies exact
+  reductions below every branch. A completed answer is exact; use
+  `--maximum-search-nodes N` to put an explicit bound on the search. Both time
+  and the fixed branch-workspace depth limit make it suitable for small cores.
+- `local-search` starts from all zeroes and deterministic single-coordinate
+  restarts, then repeatedly takes strict coordinate improvements. It reports a
+  `local-optimum`, not a proof of global optimality.
+- `heuristic-rn-local-search` first runs RN and then applies the same local
+  improvement from that assignment. It never returns an objective worse than
+  its RN starting point, but remains heuristic.
 
 Run `pcaa_graph_run --help` for the complete command synopsis, including
 `--version`.
@@ -145,14 +148,16 @@ spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 bui
 spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build/pbqp_rn.elf
 ```
 
-To run the reproducible synthetic RN characterization corpus through the CLI:
+To run the reproducible synthetic solver-characterization corpus through the CLI:
 
 ```sh
-cmake --build build --target rn_characterization
+cmake --build build --target solver_characterization
 ```
 
-The target writes `build/rn-characterization.csv`. To choose seeds or stream
-CSV elsewhere, invoke `ruby scripts/rn_characterize.rb --help` directly.
+The target writes `build/solver-characterization.csv`. To choose seeds, exact
+limits, or stream CSV elsewhere, invoke `ruby scripts/rn_characterize.rb --help`
+directly. The study and its scope are in
+[the solver-characterization report](doc/solver-characterization.md).
 
 To create a deterministic synthetic input yourself, use the host-only graph
 generator and pass its output back to the runner:
@@ -184,6 +189,8 @@ The build directory contains these generated artifacts:
   `pbqp_randomized.elf`, and `pbqp_rn.elf` — freestanding RV64 verification programs, produced by
   their corresponding `*_elf` build targets when the RISC-V toolchain is
   available.
+- `solver-characterization.csv` — reproducible strategy-comparison data,
+  produced by the `solver_characterization` target.
 
 ## Repository layout
 

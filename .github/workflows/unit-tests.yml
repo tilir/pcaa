@@ -55,7 +55,7 @@ jobs:
           cmake --build build-debug --target format
           cmake --build build-debug --parallel
           ctest --test-dir build-debug --output-on-failure
-          cmake --build build-debug --target rn_characterization
+          cmake --build build-debug --target solver_characterization
           cmake --build build-debug --target basic_elf batch_elf randomized_elf pbqp_basic_elf pbqp_randomized_elf pbqp_rn_elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/basic.elf
           spike-build/install/bin/spike --extlib=build-debug/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 build-debug/batch.elf

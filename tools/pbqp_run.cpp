@@ -4,7 +4,6 @@
 
 #include "accelerator.h"
 #include "accel_protocol.h"
-#include "cost_math.h"
 #include "memory_interface.h"
 #include "pbqp/pbqp.h"
 #include "timing_model.h"
@@ -76,10 +75,12 @@ void print_usage(std::ostream &output) {
             "Run a PBQP graph through the PCAA SystemC model.\n\n"
             "Options:\n"
             "  --solver bare-metal|local  Select bounded shared or host-local execution.\n"
-            "  --strategy reduce-only|heuristic-rn|exact-branch-reduce|local-search\n"
+            "  --strategy reduce-only|heuristic-rn|exact-core-enumeration|exact-branch-reduce|\n"
+            "             local-search|heuristic-rn-local-search\n"
             "                              Select the solving algorithm (default: heuristic-rn).\n"
             "  --rn-policy min-degree|max-degree|min-work\n"
             "                              Select RN node choice (default: min-degree).\n"
+            "  --maximum-search-nodes N   Bound an exact search; zero means unbounded.\n"
             "  --verbose                   Trace model activity to standard error.\n"
             "  --help                      Show this help text.\n"
             "  --version                   Show the runner version.\n";
@@ -91,10 +92,14 @@ const char *strategy_name(pbqp_solver_strategy_t strategy) {
       return "REDUCE_ONLY";
     case PBQP_STRATEGY_HEURISTIC_RN:
       return "HEURISTIC_RN";
+    case PBQP_STRATEGY_EXACT_CORE_ENUMERATION:
+      return "EXACT_CORE_ENUMERATION";
     case PBQP_STRATEGY_EXACT_BRANCH_REDUCE:
       return "EXACT_BRANCH_REDUCE";
     case PBQP_STRATEGY_LOCAL_SEARCH:
       return "LOCAL_SEARCH";
+    case PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH:
+      return "HEURISTIC_RN_LOCAL_SEARCH";
   }
   return "UNKNOWN";
 }
@@ -162,6 +167,8 @@ class ModelKernel {
     kernel->min3_argmin = min3;
     kernel->min2_argmin_batch = min2_batch;
     kernel->min3_argmin_batch = min3_batch;
+    kernel->min2_value = min2_value;
+    kernel->min2_value_batch = min2_value_batch;
   }
 
   const AccelTimingStatistics &timing_statistics() const {
@@ -179,6 +186,40 @@ class ModelKernel {
                   pbqp_vector_view_t third, accel_min_argmin_result_t *result) {
     const pbqp_min3_job_t job = {first, second, third, result};
     return min3_batch(opaque, &job, 1);
+  }
+
+  static int min2_value(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
+                        int32_t *result) {
+    const pbqp_min2_value_job_t job = {first, second, result};
+    return min2_value_batch(opaque, &job, 1);
+  }
+
+  static int min2_value_batch(void *opaque, const pbqp_min2_value_job_t *jobs, size_t count) {
+    ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
+    kernel->memory_.reset();
+    std::vector<accel_command_t> commands;
+    std::vector<uint64_t> result_addresses;
+    commands.reserve(count);
+    result_addresses.reserve(count);
+    for (size_t index = 0; index < count; ++index) {
+      const uint64_t first = kernel->copy_view(jobs[index].a);
+      const uint64_t second = kernel->copy_view(jobs[index].b);
+      const uint64_t result = kernel->memory_.allocate(sizeof(int32_t));
+      if (first == 0 || second == 0 || result == 0)
+        return -1;
+      commands.push_back({ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, 0,
+                          static_cast<uint32_t>(jobs[index].a.length), 0, 0, 0, first, second, 0,
+                          result});
+      result_addresses.push_back(result);
+    }
+    if (!kernel->submit_batch(commands))
+      return -1;
+    for (size_t index = 0; index < count; ++index) {
+      if (!kernel->memory_.read(result_addresses[index], jobs[index].result,
+                                sizeof(*jobs[index].result)))
+        return -1;
+    }
+    return 0;
   }
 
   static int min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
@@ -423,81 +464,6 @@ bool build_fixed_problem(const InputProblem &input, pbqp_problem_t *problem) {
   return true;
 }
 
-int32_t edge_cost(const InputProblem &problem, const InputEdge &edge, size_t node, unsigned value,
-                  const std::vector<unsigned> &assignment) {
-  const bool node_is_first = edge.first == node;
-  const size_t other = node_is_first ? edge.second : edge.first;
-  const size_t first_value = node_is_first ? value : assignment[other];
-  const size_t second_value = node_is_first ? assignment[other] : value;
-  return edge.costs[first_value * problem.nodes[edge.second].unary.size() + second_value];
-}
-
-RunnerSolution run_local_descent(const InputProblem &problem, const pbqp_cost_kernel_t &kernel,
-                                 std::vector<unsigned> assignment) {
-  RunnerSolution solution;
-  solution.assignment = std::move(assignment);
-  bool changed = true;
-  while (changed) {
-    changed = false;
-    for (size_t node = 0; node < problem.nodes.size(); ++node) {
-      const InputNode &current = problem.nodes[node];
-      std::vector<int32_t> scores = current.unary;
-      for (const InputEdge &edge : problem.edges) {
-        if (edge.first != node && edge.second != node) {
-          continue;
-        }
-        for (size_t value = 0; value < scores.size(); ++value) {
-          scores[value] = accel_cost_add(
-              scores[value],
-              edge_cost(problem, edge, node, static_cast<unsigned>(value), solution.assignment));
-        }
-      }
-      std::vector<int32_t> zeroes(scores.size());
-      accel_min_argmin_result_t best{};
-      const pbqp_vector_view_t score_view = {scores.data(), scores.size(), 1};
-      const pbqp_vector_view_t zero_view = {zeroes.data(), zeroes.size(), 1};
-      if (kernel.min2_argmin(kernel.context, score_view, zero_view, &best) != 0 ||
-          best.index >= scores.size()) {
-        return solution;
-      }
-      if (best.value < scores[solution.assignment[node]]) {
-        solution.assignment[node] = best.index;
-        changed = true;
-      }
-    }
-  }
-  int32_t total = 0;
-  for (size_t node = 0; node < problem.nodes.size(); ++node) {
-    total = accel_cost_add(total, problem.nodes[node].unary[solution.assignment[node]]);
-  }
-  for (const InputEdge &edge : problem.edges) {
-    total = accel_cost_add(
-        total,
-        edge.costs[solution.assignment[edge.first] * problem.nodes[edge.second].unary.size() +
-                   solution.assignment[edge.second]]);
-  }
-  solution.optimum = total;
-  return solution;
-}
-
-RunnerSolution solve_large_problem(const InputProblem &problem, const pbqp_cost_kernel_t &kernel) {
-  RunnerSolution best;
-  std::vector<unsigned> initial(problem.nodes.size());
-  best = run_local_descent(problem, kernel, initial);
-
-  for (size_t node = 0; node < problem.nodes.size(); ++node) {
-    for (unsigned value = 1; value < problem.nodes[node].unary.size(); ++value) {
-      initial[node] = value;
-      RunnerSolution candidate = run_local_descent(problem, kernel, initial);
-      if (candidate.optimum < best.optimum) {
-        best = std::move(candidate);
-      }
-      initial[node] = 0;
-    }
-  }
-  return best;
-}
-
 }  // namespace
 
 AccelTimingConfig runner_timing_config() {
@@ -548,8 +514,12 @@ int sc_main(int argc, char **argv) {
         solver_config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
       } else if (strategy == "exact-branch-reduce") {
         solver_config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+      } else if (strategy == "exact-core-enumeration") {
+        solver_config.strategy = PBQP_STRATEGY_EXACT_CORE_ENUMERATION;
       } else if (strategy == "local-search") {
         solver_config.strategy = PBQP_STRATEGY_LOCAL_SEARCH;
+      } else if (strategy == "heuristic-rn-local-search") {
+        solver_config.strategy = PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH;
       } else {
         std::cerr << "unknown solver strategy: " << strategy << '\n';
         return 2;
@@ -567,19 +537,30 @@ int sc_main(int argc, char **argv) {
         std::cerr << "unknown RN policy: " << policy << '\n';
         return 2;
       }
+    } else if (argument == "--maximum-search-nodes" && index + 1 < argc) {
+      try {
+        solver_config.maximum_search_nodes = static_cast<unsigned>(std::stoul(argv[++index]));
+      } catch (const std::exception &) {
+        std::cerr << "invalid maximum search-node count\n";
+        return 2;
+      }
     } else if (path == nullptr) {
       path = argv[index];
     } else {
       std::cerr << "usage: pcaa_graph_run [--verbose] --solver bare-metal|local "
-                   "[--strategy reduce-only|heuristic-rn|exact-branch-reduce|local-search] "
-                   "[--rn-policy min-degree|max-degree|min-work] GRAPH.pbqp\n";
+                   "[--strategy reduce-only|heuristic-rn|exact-core-enumeration|"
+                   "exact-branch-reduce|local-search|heuristic-rn-local-search] "
+                   "[--rn-policy min-degree|max-degree|min-work] "
+                   "[--maximum-search-nodes N] GRAPH.pbqp\n";
       return 2;
     }
   }
   if (!saw_solver_mode || path == nullptr) {
     std::cerr << "usage: pcaa_graph_run [--verbose] --solver bare-metal|local "
-                 "[--strategy reduce-only|heuristic-rn|exact-branch-reduce|local-search] "
-                 "[--rn-policy min-degree|max-degree|min-work] GRAPH.pbqp\n";
+                 "[--strategy reduce-only|heuristic-rn|exact-core-enumeration|"
+                 "exact-branch-reduce|local-search|heuristic-rn-local-search] "
+                 "[--rn-policy min-degree|max-degree|min-work] "
+                 "[--maximum-search-nodes N] GRAPH.pbqp\n";
     return 2;
   }
   if (!saw_strategy) {
@@ -598,11 +579,11 @@ int sc_main(int argc, char **argv) {
   RunnerSolution solution;
   pbqp_problem_t fixed_problem;
   const pbqp_statistics_t *statistics = nullptr;
-  const bool uses_shared_solver = solver_config.strategy != PBQP_STRATEGY_LOCAL_SEARCH;
+  const bool uses_shared_solver = true;
   if (uses_shared_solver) {
     if (!build_fixed_problem(input, &fixed_problem)) {
       std::cerr << "graph does not fit the shared PBQP solver (64 vertices, 6 choices per vertex, "
-                   "2016 edges); use --solver local --strategy local-search\n";
+                   "2016 edges)\n";
       return 2;
     }
     const pbqp_problem_t original_problem = fixed_problem;
@@ -618,6 +599,11 @@ int sc_main(int argc, char **argv) {
       std::cout << "status IRREDUCIBLE\nstrategy " << strategy_name(solver_config.strategy) << '\n';
       return 0;
     }
+    if (status == PBQP_SEARCH_LIMIT) {
+      std::cout << "status SEARCH_LIMIT\nstrategy " << strategy_name(solver_config.strategy)
+                << '\n';
+      return 0;
+    }
     if (status != PBQP_OK) {
       std::cerr << "PCAA model could not solve the graph\n";
       return 1;
@@ -630,21 +616,16 @@ int sc_main(int argc, char **argv) {
       std::cerr << "PBQP solver returned an objective inconsistent with its assignment\n";
       return 1;
     }
-    solution.exact = solver_config.strategy == PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+    solution.exact = solver_config.strategy == PBQP_STRATEGY_EXACT_CORE_ENUMERATION ||
+                     solver_config.strategy == PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
     statistics = &fixed_problem.statistics;
-  } else {
-    if (solver_mode == SolverMode::kBareMetal) {
-      std::cerr << "local-search is available only with --solver local\n";
-      return 2;
-    }
-    solution = solve_large_problem(input, kernel);
   }
   std::cout << "optimum " << solution.optimum << "\nassignment";
   for (unsigned value : solution.assignment) {
     std::cout << ' ' << value;
   }
   const char *solution_kind = solution.exact ? "exact" : "local-optimum";
-  if (uses_shared_solver && !solution.exact) {
+  if (solver_config.strategy != PBQP_STRATEGY_LOCAL_SEARCH && !solution.exact) {
     solution_kind = "heuristic";
   }
   std::cout << "\nsolution " << solution_kind << '\n';
@@ -662,11 +643,37 @@ int sc_main(int argc, char **argv) {
               << " edges episodes=" << statistics->rn_episodes
               << " degree=" << statistics->rn_degree_min << ".." << statistics->rn_degree_max
               << " after-RN R0=" << statistics->r0_after_rn << " R1=" << statistics->r1_after_rn
-              << " R2=" << statistics->r2_after_rn << '\n';
+              << " R2=" << statistics->r2_after_rn
+              << " cascade-total=" << statistics->rn_cascade_total_length
+              << " cascade-max=" << statistics->rn_cascade_maximum_length << '\n';
     std::cerr << "pcaa: RN traffic projection-read=" << statistics->rn_projection_operand_bytes
               << " projection-write=" << statistics->rn_projection_result_bytes
               << " score-accumulation=" << statistics->rn_score_accumulation_elements
               << " commit-bytes=" << statistics->rn_commit_bytes << '\n';
+    std::cerr << "pcaa: condition traffic operations=" << statistics->condition_count
+              << " elements=" << statistics->condition_elements
+              << " matrix-read=" << statistics->condition_matrix_read_bytes
+              << " unary-read=" << statistics->condition_unary_read_bytes
+              << " unary-write=" << statistics->condition_unary_write_bytes << '\n';
+    std::cerr << "pcaa: local search evaluations=" << statistics->local_search_node_evaluations
+              << " sweeps=" << statistics->local_search_sweeps
+              << " accepted-moves=" << statistics->local_search_accepted_moves
+              << " slices=" << statistics->local_search_slice_accumulations
+              << " slice-elements=" << statistics->local_search_slice_elements
+              << " argmin=" << statistics->local_search_argmin_reductions << '\n';
+    const unsigned operation_descriptors = statistics->minplus_project_descriptors +
+                                           statistics->map3_reduce_descriptors +
+                                           statistics->argmin_vector_descriptors;
+    const uint64_t operation_bytes =
+        statistics->minplus_project_bytes + statistics->project_accumulate_bytes +
+        statistics->slice_accumulate_bytes + statistics->map3_reduce_bytes +
+        statistics->argmin_vector_bytes;
+    std::cerr << "pcaa: operation mix project-elements=" << statistics->minplus_project_elements
+              << " project-accumulate-elements=" << statistics->project_accumulate_elements
+              << " slice-elements=" << statistics->slice_accumulate_elements
+              << " map3-elements=" << statistics->map3_reduce_elements
+              << " argmin-elements=" << statistics->argmin_vector_elements
+              << " descriptors=" << operation_descriptors << " bytes=" << operation_bytes << '\n';
     std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited
               << " branches=" << statistics->search_branches_created
               << " max-depth=" << statistics->search_maximum_depth

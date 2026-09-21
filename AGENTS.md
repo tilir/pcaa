@@ -65,7 +65,7 @@ initializes and runs GoogleTest; bare-metal ELFs remain freestanding and do not 
 
 Keep `doc/arch.md` confined to architectural block facts. Put workload methodology, trace schemas,
 and unresolved interface-analysis material in `doc/design.md` and factual corpus output in
-`doc/workload-characterization.md`. The workload generator is host-only and may use standard C++
+`doc/workload-characterization.md` or a scoped solver report in `doc/`. The workload generator is host-only and may use standard C++
 containers; never enlarge bare-metal PBQP limits merely to characterize workloads.
 
 `pcaa_graph_run` is the supported hands-on host entry point. Preserve its
@@ -73,11 +73,11 @@ line-oriented `nodes`/`node`/`edge` format and its `INF` literal unless a
 versioned user-facing format migration is explicitly requested. It must submit
 through the SystemC target socket rather than bypassing the accelerator. It
 requires an explicit `--solver bare-metal|local` choice: bare-metal rejects
-graphs outside the fixed C API, while local labels its deterministic
-model-backed local optimum as such and never presents it as exact. Strategy is
-orthogonal to mode: the shared `REDUCE_ONLY`, `HEURISTIC_RN`, and
-`EXACT_BRANCH_REDUCE` strategies may be selected in either mode when the graph
-fits the fixed C API; `LOCAL_SEARCH` is local-only and must be explicit.
+graphs outside the fixed C API, while local exercises the same shared solver
+through the hosted model path. Strategy is orthogonal to mode: every shared
+strategy may be selected in either mode when the graph fits the fixed C API.
+Only `EXACT_CORE_ENUMERATION` and `EXACT_BRANCH_REDUCE` may label a completed
+result exact; `LOCAL_SEARCH` must label its result a local optimum.
 The runner default is `HEURISTIC_RN`.
 The local mode's 65,536-choice practical domain limit is determined by the
 runner's reusable guest-memory staging area, not the PCAA protocol.
@@ -94,16 +94,33 @@ explicitly that its zero device cycles reflect software-core solving.
 
 PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
 
-PBQP strategies are explicit: `REDUCE_ONLY`, `HEURISTIC_RN`, and
-`EXACT_BRANCH_REDUCE` share the same freestanding solver core and CostKernel.
+PBQP strategies are explicit: `REDUCE_ONLY`, `HEURISTIC_RN`,
+`EXACT_CORE_ENUMERATION`, `EXACT_BRANCH_REDUCE`, `LOCAL_SEARCH`, and the
+`HEURISTIC_RN_LOCAL_SEARCH` hybrid share the same freestanding solver core and
+CostKernel. Exact core enumeration reduces once then enumerates a residual
+core; exact branch-and-reduce must condition one branch and re-run R0/R1/R2 at
+every search node. It uses bounded static snapshots, never graph-sized stack
+copies, and reports `PBQP_SEARCH_LIMIT` for an explicit node limit or snapshot
+depth limit. The hybrid must never worsen its RN seed.
 RN scoring projects each incident matrix against its neighbor unary through the
-kernel; its software-only score accumulation must remain distinct from shared
-conditioning/commit, which applies the selected matrix slice exactly once.
+kernel using the value-only minimum primitive; argmin is reserved for phases
+that need reconstruction or a chosen coordinate. Its software-only score
+accumulation must remain distinct from shared conditioning/commit, which
+applies the selected matrix slice exactly once. Account generic conditioning
+traffic separately from RN-only commits: each updated element reads matrix and
+unary then writes unary (12 logical bytes).
+Keep the solver's generic operation mix current: `MINPLUS_PROJECT`,
+`PROJECT_ACCUMULATE`, `SLICE_ACCUMULATE`, `MAP3_REDUCE`, and `ARGMIN_VECTOR`
+must retain separately reportable elements, current primitive descriptors, and
+logical bytes. The external characterization report's operation-mix table is
+the primary comparison artifact; do not replace it with only phase-specific
+counters.
 Never add a PBQP-specific accelerator opcode for RN.
 
 The fixed bare-metal PBQP C API supports 64 nodes and all simple edges between
-them. Its graph state is statically allocated by the current ELFs; the solver's
-largest transient R2 frame is below 4 KiB and the startup reserve is 1 MiB.
+them. Its graph state and exact-search snapshots are statically allocated by
+the current ELFs; the solver's largest transient R2 frame is below 4 KiB and
+the startup reserve is 1 MiB.
 Do not raise this capacity without recalculating static-storage and stack use,
 then re-running all PBQP ELFs under Spike.
 

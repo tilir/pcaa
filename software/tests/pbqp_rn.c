@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 PCAA contributors
-// Differentially checks shared heuristic-RN solver semantics on RV64 bare metal.
+// Differentially checks every shared PBQP solver strategy on RV64 bare metal.
 
 #include "accel_driver.h"
 #include "common.h"
@@ -47,6 +47,12 @@ static int equal_trace(const pbqp_problem_t *software, const pbqp_problem_t *acc
       software->statistics.r1_count != accelerator->statistics.r1_count ||
       software->statistics.r2_count != accelerator->statistics.r2_count ||
       software->statistics.rn_count != accelerator->statistics.rn_count ||
+      software->statistics.condition_elements != accelerator->statistics.condition_elements ||
+      software->statistics.local_search_node_evaluations !=
+          accelerator->statistics.local_search_node_evaluations ||
+      software->statistics.search_nodes_visited != accelerator->statistics.search_nodes_visited ||
+      software->statistics.search_branches_created !=
+          accelerator->statistics.search_branches_created ||
       software->statistics.rn_projection_primitives !=
           accelerator->statistics.rn_projection_primitives) {
     return 0;
@@ -70,36 +76,47 @@ int main(void) {
   pbqp_solution_t accelerator_solution;
   pbqp_solver_config_t config;
   pbqp_rn_policy_t policy;
+  static const pbqp_solver_strategy_t strategies[] = {
+      PBQP_STRATEGY_HEURISTIC_RN,
+      PBQP_STRATEGY_EXACT_CORE_ENUMERATION,
+      PBQP_STRATEGY_EXACT_BRANCH_REDUCE,
+      PBQP_STRATEGY_LOCAL_SEARCH,
+      PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH,
+  };
+  unsigned strategy_index;
 
   if (build_problem(&original_problem) != 0) {
     finish(kExitBuildFailure);
   }
   accel_init();
-  for (policy = PBQP_RN_MIN_DEGREE; policy <= PBQP_RN_MIN_WORK; ++policy) {
-    config = pbqp_solver_default_config();
-    config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
-    config.rn_policy = policy;
-    software_problem = original_problem;
-    accelerator_problem = original_problem;
-    pbqp_make_software_kernel(&software_kernel, &software_problem.statistics);
-    pbqp_make_accelerator_kernel(&accelerator_kernel, &accelerator_context,
-                                 &accelerator_problem.statistics);
-    if (pbqp_solver_create_with_config(&software_solver, PBQP_MODE_SOFTWARE, &software_kernel,
-                                       &config) != PBQP_OK ||
-        pbqp_solver_create_with_config(&accelerator_solver, PBQP_MODE_ACCELERATOR,
-                                       &accelerator_kernel, &config) != PBQP_OK ||
-        pbqp_solver_solve(&software_solver, &software_problem, &software_solution) != PBQP_OK ||
-        pbqp_solver_solve(&accelerator_solver, &accelerator_problem, &accelerator_solution) !=
-            PBQP_OK) {
-      finish(kExitSolverFailure);
-    }
-    if (software_solution.optimum != accelerator_solution.optimum ||
-        pbqp_reference_evaluate(&original_problem, software_solution.assignment) !=
-            software_solution.optimum ||
-        pbqp_reference_evaluate(&original_problem, accelerator_solution.assignment) !=
-            accelerator_solution.optimum ||
-        !equal_trace(&software_problem, &accelerator_problem)) {
-      finish(kExitMismatch);
+  for (strategy_index = 0; strategy_index < sizeof(strategies) / sizeof(strategies[0]);
+       ++strategy_index) {
+    for (policy = PBQP_RN_MIN_DEGREE; policy <= PBQP_RN_MIN_WORK; ++policy) {
+      config = pbqp_solver_default_config();
+      config.strategy = strategies[strategy_index];
+      config.rn_policy = policy;
+      software_problem = original_problem;
+      accelerator_problem = original_problem;
+      pbqp_make_software_kernel(&software_kernel, &software_problem.statistics);
+      pbqp_make_accelerator_kernel(&accelerator_kernel, &accelerator_context,
+                                   &accelerator_problem.statistics);
+      if (pbqp_solver_create_with_config(&software_solver, PBQP_MODE_SOFTWARE, &software_kernel,
+                                         &config) != PBQP_OK ||
+          pbqp_solver_create_with_config(&accelerator_solver, PBQP_MODE_ACCELERATOR,
+                                         &accelerator_kernel, &config) != PBQP_OK ||
+          pbqp_solver_solve(&software_solver, &software_problem, &software_solution) != PBQP_OK ||
+          pbqp_solver_solve(&accelerator_solver, &accelerator_problem, &accelerator_solution) !=
+              PBQP_OK) {
+        finish(kExitSolverFailure);
+      }
+      if (software_solution.optimum != accelerator_solution.optimum ||
+          pbqp_reference_evaluate(&original_problem, software_solution.assignment) !=
+              software_solution.optimum ||
+          pbqp_reference_evaluate(&original_problem, accelerator_solution.assignment) !=
+              accelerator_solution.optimum ||
+          !equal_trace(&software_problem, &accelerator_problem)) {
+        finish(kExitMismatch);
+      }
     }
   }
   finish(kExitSuccess);

@@ -2,13 +2,13 @@
 // Copyright (C) 2026 PCAA contributors
 // Checks PBQP reductions against exhaustive enumeration without accelerator dependencies.
 
+#include "accel_protocol.h"
+#include "pbqp/pbqp.h"
+
 #include <stdint.h>
 #include <string>
 
 #include <gtest/gtest.h>
-
-#include "accel_protocol.h"
-#include "pbqp/pbqp.h"
 
 #define CHECK(expression) EXPECT_TRUE(expression)
 
@@ -170,7 +170,68 @@ TEST(PbqpSolver, ReduceOnlyAndHeuristicRn) {
     CHECK(reduced.statistics.rn_projection_count != 0);
     CHECK(reduced.statistics.rn_projection_primitives != 0);
     CHECK(reduced.statistics.rn_commit_elements != 0);
+    CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_MAP_ADD_REDUCE_MIN] != 0);
+    CHECK(reduced.statistics.rn_commit_bytes == 3 * reduced.statistics.rn_commit_elements *
+                                                   sizeof(int32_t));
   }
+}
+
+TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
+  pbqp_problem_t original;
+  pbqp_problem_t enumerated;
+  pbqp_problem_t branched;
+  pbqp_solution_t enumeration_solution;
+  pbqp_solution_t branch_solution;
+  pbqp_cost_kernel_t kernel;
+  pbqp_solver_t solver;
+  pbqp_solver_config_t config = pbqp_solver_default_config();
+
+  build_irreducible_core(&original);
+  enumerated = original;
+  pbqp_make_software_kernel(&kernel, &enumerated.statistics);
+  config.strategy = PBQP_STRATEGY_EXACT_CORE_ENUMERATION;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &enumerated, &enumeration_solution) == PBQP_OK);
+
+  branched = original;
+  pbqp_make_software_kernel(&kernel, &branched.statistics);
+  config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &branched, &branch_solution) == PBQP_OK);
+  CHECK(branch_solution.optimum == enumeration_solution.optimum);
+  CHECK(pbqp_evaluate(&original, branch_solution.assignment) == branch_solution.optimum);
+  CHECK(branched.statistics.search_nodes_visited > 1);
+  CHECK(branched.statistics.search_branches_created != 0);
+  CHECK(branched.statistics.condition_count != 0);
+  CHECK(branched.statistics.condition_elements != 0);
+  CHECK(branched.statistics.rn_count == 0);
+}
+
+TEST(PbqpSolver, LocalSearchHybridNeverWorsensRn) {
+  pbqp_problem_t original;
+  pbqp_problem_t rn_problem;
+  pbqp_problem_t hybrid_problem;
+  pbqp_solution_t rn_solution;
+  pbqp_solution_t hybrid_solution;
+  pbqp_cost_kernel_t kernel;
+  pbqp_solver_t solver;
+  pbqp_solver_config_t config = pbqp_solver_default_config();
+
+  build_irreducible_core(&original);
+  rn_problem = original;
+  pbqp_make_software_kernel(&kernel, &rn_problem.statistics);
+  config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &rn_problem, &rn_solution) == PBQP_OK);
+
+  hybrid_problem = original;
+  pbqp_make_software_kernel(&kernel, &hybrid_problem.statistics);
+  config.strategy = PBQP_STRATEGY_HEURISTIC_RN_LOCAL_SEARCH;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &hybrid_problem, &hybrid_solution) == PBQP_OK);
+  CHECK(hybrid_solution.optimum <= rn_solution.optimum);
+  CHECK(pbqp_evaluate(&original, hybrid_solution.assignment) == hybrid_solution.optimum);
+  CHECK(hybrid_problem.statistics.local_search_node_evaluations != 0);
 }
 
 TEST(PbqpSolver, ExactSearchLimit) {
@@ -186,4 +247,12 @@ TEST(PbqpSolver, ExactSearchLimit) {
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &problem, &solution) == PBQP_SEARCH_LIMIT);
   CHECK(problem.statistics.search_limit_hits == 1);
+
+  build_irreducible_core(&problem);
+  config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+  pbqp_make_software_kernel(&kernel, &problem.statistics);
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &problem, &solution) == PBQP_SEARCH_LIMIT);
+  CHECK(problem.statistics.search_limit_hits == 1);
+  CHECK(problem.statistics.search_nodes_visited == 1);
 }
