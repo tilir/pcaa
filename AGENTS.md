@@ -119,15 +119,17 @@ returns the solver-internal `PBQP_PRUNED` status, consumed only by its
 immediate caller; it must never escape `pbqp_solver_solve`. Count prunes in
 `pbqp_statistics_t.search_nodes_pruned`, separate from `search_limit_hits`.
 RN scoring projects each incident matrix against its neighbor unary through the
-kernel using the value-only minimum primitive; argmin is reserved for phases
-that need reconstruction or a chosen coordinate. Its software-only score
-accumulation must remain distinct from shared conditioning/commit, which
+kernel using vector-output `MINPLUS_PROJECT`; argmin is reserved for phases
+that need reconstruction or a chosen coordinate. Compose the projection into
+the running score with `COST_ADD_VECTOR` in the same ordered batch. Keep the
+legacy scalar value-only path for differential testing. Score accumulation
+must remain distinct from shared conditioning/commit, which
 applies the selected matrix slice exactly once. Account generic conditioning
 traffic separately from RN-only commits: each updated element reads matrix and
 unary then writes unary (12 logical bytes).
-Submit all scalar RN projections for one selected node in one ordered batch by
-default; retain the per-edge mode as a characterization control, with identical
-projection ordering, scores, and child descriptors.
+Submit all RN projection/add chains for one selected node in one ordered batch
+by default; retain the scalar per-edge mode as a characterization control, with
+identical projection ordering and scores but a different descriptor count.
 For RN projection, fix the selected node's coordinate and minimize across its
 neighbor; use `ConditionedEdgeView`, not the R1/R2-oriented `EdgeView`. Keep
 asymmetric, rectangular, and `INF` orientation regressions in the unit tests.
@@ -153,13 +155,16 @@ host uses the same solver with a heap allocator and input-sized capacities.
 Do not raise the bare-metal arena policy without recalculating static-storage
 and stack use, then re-running all PBQP ELFs under Spike.
 
+ISA v1 uses an 80-byte descriptor with the original 56-byte prefix unchanged,
+plus explicit element strides for vector add, min-plus project, and partial-vector
+MAP3 project. Keep dimensions runtime-sized and independent of lane count.
 `EXECUTE_BATCH` is an ordered, finite control operation, not a scheduler: the
 runtime constructs child primitive descriptors and the accelerator drains them
 in order. Do not add dependency discovery, reordering, graph awareness, or
-batching across PBQP reductions. Within one software-built batch, cache packed
-strided views by `(base, length, stride)` and keep their storage valid through
-completion; this applies to the RV64 adapter and to the host runner's guest
-staging area alike (R2 repeats one unary and 2·D slices across D² primitives).
+batching across PBQP reductions. Successful child outputs must be visible to
+the following child. The retained scalar differential path must cache packed
+strided views by `(base, length, stride)` through completion. The v1 path uses
+affine strides directly on RV64; host staging may pack views into guest memory.
 Keep statistics for primitive descriptors separate from top-level MMIO
 submissions.
 

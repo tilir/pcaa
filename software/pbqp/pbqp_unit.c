@@ -134,6 +134,8 @@ static void make_batch_recording_kernel(pbqp_cost_kernel_t* kernel,
   *kernel = recording->inner;
   kernel->context = recording;
   kernel->min2_value_batch = BatchRecordingKernel::min2_value_batch;
+  kernel->project_add_batch = nullptr;
+  kernel->map3_project_batch = nullptr;
 }
 
 struct TraceCapture {
@@ -234,7 +236,7 @@ TEST(PbqpSolver, ReductionsAndReconstruction) {
   CHECK(reduced.statistics.r2_count == 1);
   CHECK(reduced.statistics.r1_count != 0);
   CHECK(reduced.statistics.r0_count != 0);
-  CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN] != 0);
+  CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_MINPLUS_MAP3_PROJECT] != 0);
   check_problem(build_open_wedge, 1);
   check_problem(build_irreducible_core, 0);
   check_cost_range();
@@ -270,7 +272,8 @@ TEST(PbqpSolver, ReduceOnlyAndHeuristicRn) {
     CHECK(reduced.statistics.rn_projection_count != 0);
     CHECK(reduced.statistics.rn_projection_primitives != 0);
     CHECK(reduced.statistics.rn_commit_elements != 0);
-    CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_MAP_ADD_REDUCE_MIN] != 0);
+    CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_MINPLUS_PROJECT] != 0);
+    CHECK(reduced.statistics.primitive_submissions[ACCEL_OPCODE_COST_ADD_VECTOR] != 0);
     CHECK(reduced.statistics.rn_commit_bytes == 3 * reduced.statistics.rn_commit_elements *
                                                    sizeof(int32_t));
     CHECK(reduced.statistics.rn_episodes == reduced.statistics.rn_count);
@@ -354,6 +357,43 @@ TEST(PbqpSolver, PerNodeRnBatchingMatchesLegacyPerEdgePath) {
   CHECK(memcmp(per_node_solution.assignment, per_edge_solution.assignment,
                original.node_count * sizeof(unsigned)) == 0);
   CHECK(pbqp_evaluate(&original, per_node_solution.assignment) == per_node_solution.optimum);
+}
+
+TEST(PbqpSolver, VectorCostKernelReferenceMatchesScalarMap3) {
+  pbqp_cost_kernel_t kernel{};
+  pbqp_statistics_t statistics{};
+  pbqp_make_software_kernel(&kernel, &statistics);
+  const int32_t matrix[] = {2, 2, 99, 99, ACCEL_INF, -3, 99, 99, -4, 0};
+  const int32_t unary[] = {0, 0};
+  const int32_t fixed[] = {1, 1};
+  const pbqp_matrix_view_t view = {matrix, 3, 2, 4, 1};
+  int32_t projected[3]{};
+  CHECK(kernel.minplus_project(kernel.context, view, {unary, 2, 1}, projected) == 0);
+  EXPECT_EQ(projected[0], 2);
+  EXPECT_EQ(projected[1], -3);
+  EXPECT_EQ(projected[2], -4);
+  const int32_t seed[] = {1, 2, 3};
+  int32_t added[3]{};
+  CHECK(kernel.cost_add_vector(kernel.context, {projected, 3, 1}, {seed, 3, 1}, added) == 0);
+  EXPECT_EQ(added[0], 3);
+  EXPECT_EQ(added[1], -1);
+  EXPECT_EQ(added[2], -1);
+  accel_min_argmin_result_t outputs[3]{};
+  CHECK(kernel.minplus_map3_project(kernel.context, {unary, 2, 1}, {fixed, 2, 1}, view,
+                                    outputs) == 0);
+  for (size_t row = 0; row < 3; ++row) {
+    accel_min_argmin_result_t scalar{};
+    CHECK(kernel.min3_argmin(kernel.context, {unary, 2, 1}, {fixed, 2, 1},
+                             {matrix + 4 * row, 2, 1}, &scalar) == 0);
+    EXPECT_EQ(outputs[row].value, scalar.value);
+    EXPECT_EQ(outputs[row].index, scalar.index);
+  }
+  const int32_t overflow[] = {1, INT32_MIN};
+  const int32_t minus_one[] = {0, -1};
+  int32_t sentinel[] = {71, 72};
+  CHECK(kernel.cost_add_vector(kernel.context, {overflow, 2, 1}, {minus_one, 2, 1}, sentinel) != 0);
+  EXPECT_EQ(sentinel[0], 71);
+  EXPECT_EQ(sentinel[1], 72);
 }
 
 TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {

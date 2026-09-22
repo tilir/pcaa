@@ -100,6 +100,9 @@ def solve(runner, path, strategy, policy: "min-degree", exact_limit: 0)
   result[:operation_mix] = metrics(diagnostics,
     /operation mix project-elements=(\d+) project-accumulate-elements=(\d+) slice-elements=(\d+) map3-elements=(\d+) argmin-elements=(\d+) descriptors=(\d+) batches=(\d+) operand-bytes=(\d+) result-bytes=(\d+) bytes=(\d+)/,
     "operation mix")
+  result[:isa_mix] = metrics(diagnostics,
+    /scalar-project-descriptors=(\d+) vector-project-descriptors=(\d+) vector-add-descriptors=(\d+) scalar-map3-descriptors=(\d+) partial-map3-descriptors=(\d+)/,
+    "ISA descriptor mix")
   result[:views] = metrics(diagnostics,
     /views contiguous=(\d+) strided=(\d+)/,
     "view statistics")
@@ -116,7 +119,9 @@ header = %w[family profile nodes seed strategy policy status objective exact_obj
             condition_operations condition_elements condition_matrix_read condition_unary_read condition_unary_write
             local_evaluations local_sweeps local_moves local_slices local_slice_elements local_argmin
             project_elements project_accumulate_elements slice_elements map3_elements argmin_elements descriptors
-            batches operand_bytes result_bytes bytes contiguous_views strided_views
+            batches operand_bytes result_bytes bytes
+            scalar_project_descriptors vector_project_descriptors vector_add_descriptors
+            scalar_map3_descriptors partial_map3_descriptors contiguous_views strided_views
             search_nodes search_branches search_depth search_limit_hits]
 header.concat((0..64).map { |length| "cascade_len_#{length}" })
 rows = []
@@ -146,12 +151,14 @@ def collect(rows, corpus, exact, options)
           condition = result[:condition] || Array.new(5)
           local = result[:local] || Array.new(6)
           operation_mix = result[:operation_mix] || Array.new(10)
+          isa_mix = result[:isa_mix] || Array.new(5)
           views = result[:views] || Array.new(2)
           search = result[:search] || Array.new(4)
           exact_objective = exact_result && exact_result[:status] == "OK" ? exact_result[:objective] : nil
           gap = result[:objective] && exact_objective ? result[:objective] - exact_objective : nil
           rows << [family, profile, nodes, seed, strategy, policy, result[:status], result[:objective],
                    exact_objective, gap, *reductions, *cascades, *condition, *local, *operation_mix,
+                   *isa_mix,
                    *views,
                    *search, *cascade_histogram]
         end

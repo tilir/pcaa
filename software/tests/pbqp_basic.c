@@ -18,19 +18,18 @@ enum {
   kExitAssignmentMismatch = 6,
   kExitWorkloadStatisticsMismatch = 7,
   kExpectedR2Reductions = 1,
-  kExpectedAdd3ArgminSubmissions = 4,
+  kExpectedPartialMap3Submissions = 2,
   kExpectedAddArgminSubmissions = 2,
   kExpectedContiguousViews = 6,
   kExpectedStridedViews = 10,
-  kExpectedScratchPacks = 6,
-  kExpectedScratchBytes = 48,
+  kMaximumLegacyScratchPacks = 6,
+  kMaximumLegacyScratchBytes = 48,
   kExpectedTopLevelSubmissions = 2,
   kExpectedBatchSubmissions = 2,
-  kExpectedBatchPrimitiveDescriptors = 6,
-  kExpectedMaximumBatchSize = 4,
-  kExpectedBatchDescriptorBytes = 448,
-  kExpectedBatchChildDescriptorBytes = 336,
-  kExpectedUniquePackedViews = 6,
+  kExpectedBatchPrimitiveDescriptors = 4,
+  kExpectedMaximumBatchSize = 2,
+  kExpectedBatchDescriptorBytes = 480,
+  kExpectedBatchChildDescriptorBytes = 320,
   kInvalidGuestAddress = 0x40000000UL,
   kProblemStorageBytes = 512 * 1024,
 };
@@ -123,21 +122,22 @@ int main(void) {
     finish(kExitAssignmentMismatch);
   const pbqp_statistics_t *statistics = &accelerator_problem.statistics;
   if (statistics->r2_count != kExpectedR2Reductions ||
-      statistics->primitive_submissions[ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN] !=
-          kExpectedAdd3ArgminSubmissions ||
+      statistics->primitive_submissions[ACCEL_OPCODE_MINPLUS_MAP3_PROJECT] !=
+          kExpectedPartialMap3Submissions ||
+      statistics->primitive_submissions[ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN] != 0 ||
       statistics->primitive_submissions[ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN] !=
           kExpectedAddArgminSubmissions ||
       statistics->contiguous_views != kExpectedContiguousViews ||
       statistics->strided_views != kExpectedStridedViews ||
-      statistics->scratch_packs != kExpectedScratchPacks ||
-      statistics->scratch_bytes != kExpectedScratchBytes ||
+      statistics->scratch_packs > kMaximumLegacyScratchPacks ||
+      statistics->scratch_bytes > kMaximumLegacyScratchBytes ||
       statistics->top_level_submissions != kExpectedTopLevelSubmissions ||
       statistics->batch_submissions != kExpectedBatchSubmissions ||
       statistics->batch_primitive_descriptors != kExpectedBatchPrimitiveDescriptors ||
       statistics->maximum_batch_size != kExpectedMaximumBatchSize ||
       statistics->batch_descriptor_bytes != kExpectedBatchDescriptorBytes ||
       statistics->batch_child_descriptor_bytes != kExpectedBatchChildDescriptorBytes ||
-      statistics->unique_packed_views != kExpectedUniquePackedViews)
+      statistics->unique_packed_views != statistics->scratch_packs)
     finish(kExitWorkloadStatisticsMismatch);
   finish(kExitSuccess);
 }

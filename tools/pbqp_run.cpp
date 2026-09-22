@@ -149,7 +149,7 @@ void print_usage(std::ostream &output) {
             "  --rn-policy min-degree|max-degree|min-work\n"
             "                              Select RN node choice (default: min-degree).\n"
             "  --rn-batching per-node|per-edge\n"
-            "                              Batch all RN-node jobs or retain the legacy path.\n"
+            "                              Use vector RN/R2 jobs or retain scalar reference jobs.\n"
             "  --maximum-search-nodes N   Bound an exact search; zero leaves the limit unset.\n"
             "  --verbose                   Trace model activity to standard error.\n"
             "  --trace FILE                Write stable JSONL solver events to FILE.\n"
@@ -251,6 +251,11 @@ class ModelKernel {
     kernel->min3_argmin_batch = min3_batch;
     kernel->min2_value = min2_value;
     kernel->min2_value_batch = min2_value_batch;
+    kernel->cost_add_vector = cost_add_vector;
+    kernel->minplus_project = minplus_project;
+    kernel->minplus_map3_project = map3_project;
+    kernel->project_add_batch = project_add_batch;
+    kernel->map3_project_batch = map3_project_batch;
     kernel->set_statistics = set_statistics;
   }
 
@@ -359,6 +364,40 @@ class ModelKernel {
     record_cycles(&vector_cycle_projection_.map3_full,
                   jobs[0].a.length + first_elements + second_elements, count * reduction_chunks,
                   count * sizeof(accel_min_argmin_result_t));
+  }
+
+  void record_vector_project_projection(const pbqp_project_add_job_t *jobs, size_t count) {
+    for (size_t index = 0; index < count; ++index) {
+      const uint64_t columns = jobs[index].matrix.columns;
+      const uint64_t rows = jobs[index].matrix.rows;
+      const uint64_t chunks = divide_round_up(columns, kTimedRunnerLanes);
+      for (size_t row = 0; row < rows; ++row)
+        record_cycles(&vector_cycle_projection_.project_scalar, 2 * columns, chunks,
+                      sizeof(int32_t));
+      record_cycles(&vector_cycle_projection_.project_vector, columns * (rows + 1), rows * chunks,
+                    rows * sizeof(int32_t));
+    }
+  }
+
+  void record_vector_map3_projection(const pbqp_map3_project_job_t *jobs, size_t count) {
+    uint64_t full_operands = 0;
+    uint64_t full_chunks = 0;
+    uint64_t full_results = 0;
+    for (size_t index = 0; index < count; ++index) {
+      const uint64_t columns = jobs[index].varying_edge.columns;
+      const uint64_t rows = jobs[index].varying_edge.rows;
+      const uint64_t chunks = divide_round_up(columns, kTimedRunnerLanes);
+      for (size_t row = 0; row < rows; ++row)
+        record_cycles(&vector_cycle_projection_.map3_scalar, 3 * columns, chunks,
+                      sizeof(accel_min_argmin_result_t));
+      record_cycles(&vector_cycle_projection_.map3_partial, columns * (rows + 2), rows * chunks,
+                    rows * sizeof(accel_min_argmin_result_t));
+      full_operands += columns * (rows + 1);
+      full_chunks += rows * chunks;
+      full_results += rows * sizeof(accel_min_argmin_result_t);
+    }
+    if (count != 0)
+      record_cycles(&vector_cycle_projection_.map3_full, full_operands, full_chunks, full_results);
   }
 
   static int min2(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
@@ -476,6 +515,151 @@ class ModelKernel {
     return 0;
   }
 
+  static int project_add_batch(void *opaque, const pbqp_project_add_job_t *jobs, size_t count) {
+    ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
+    if (count == 0)
+      return 0;
+    kernel->record_vector_project_projection(jobs, count);
+    kernel->begin_batch();
+    std::vector<accel_command_t> commands;
+    commands.reserve(2 * count);
+    const size_t rows = jobs[0].matrix.rows;
+    const uint64_t scores = kernel->copy_view({jobs[0].scores, rows, 1});
+    if (scores == 0)
+      return -1;
+    for (size_t index = 0; index < count; ++index) {
+      const pbqp_project_add_job_t &job = jobs[index];
+      const uint64_t matrix = kernel->copy_matrix(job.matrix);
+      const uint64_t unary = kernel->copy_view(job.unary);
+      const uint64_t temporary = kernel->memory_.allocate(rows * sizeof(int32_t));
+      if (matrix == 0 || unary == 0 || temporary == 0)
+        return -1;
+      accel_command_t project{};
+      project.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
+      project.n = static_cast<uint32_t>(job.matrix.columns);
+      project.m = static_cast<uint32_t>(rows);
+      project.src0 = matrix;
+      project.src1 = unary;
+      project.dst = temporary;
+      project.src0_stride = 1;
+      project.src0_outer_stride = static_cast<uint32_t>(job.matrix.columns);
+      project.src1_stride = 1;
+      project.dst_stride = 1;
+      commands.push_back(project);
+      accel_command_t add{};
+      add.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
+      add.n = static_cast<uint32_t>(rows);
+      add.src0 = temporary;
+      add.src1 = scores;
+      add.dst = scores;
+      add.src0_stride = 1;
+      add.src1_stride = 1;
+      add.dst_stride = 1;
+      commands.push_back(add);
+    }
+    return kernel->submit_batch(commands) &&
+                   kernel->memory_.read(scores, jobs[0].scores, rows * sizeof(int32_t))
+               ? 0
+               : -1;
+  }
+
+  static int map3_project_batch(void *opaque, const pbqp_map3_project_job_t *jobs, size_t count) {
+    ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
+    if (count == 0)
+      return 0;
+    kernel->record_vector_map3_projection(jobs, count);
+    kernel->begin_batch();
+    std::vector<accel_command_t> commands;
+    std::vector<uint64_t> results;
+    commands.reserve(count);
+    results.reserve(count);
+    for (size_t index = 0; index < count; ++index) {
+      const pbqp_map3_project_job_t &job = jobs[index];
+      const uint64_t unary = kernel->copy_view(job.unary);
+      const uint64_t fixed = kernel->copy_view(job.fixed_edge);
+      const uint64_t varying = kernel->copy_matrix(job.varying_edge);
+      const uint64_t result =
+          kernel->memory_.allocate(job.varying_edge.rows * sizeof(accel_min_argmin_result_t));
+      if (unary == 0 || fixed == 0 || varying == 0 || result == 0)
+        return -1;
+      accel_command_t command{};
+      command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+      command.n = static_cast<uint32_t>(job.unary.length);
+      command.m = static_cast<uint32_t>(job.varying_edge.rows);
+      command.src0 = unary;
+      command.src1 = fixed;
+      command.src2 = varying;
+      command.dst = result;
+      command.src0_stride = 1;
+      command.src1_stride = 1;
+      command.src2_stride = 1;
+      command.src2_outer_stride = static_cast<uint32_t>(job.varying_edge.columns);
+      command.dst_stride = 1;
+      commands.push_back(command);
+      results.push_back(result);
+    }
+    if (!kernel->submit_batch(commands))
+      return -1;
+    for (size_t index = 0; index < count; ++index) {
+      if (!kernel->memory_.read(results[index], jobs[index].results,
+                                jobs[index].varying_edge.rows * sizeof(accel_min_argmin_result_t)))
+        return -1;
+    }
+    return 0;
+  }
+
+  static int cost_add_vector(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
+                             int32_t *result) {
+    ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
+    kernel->begin_batch();
+    const uint64_t first_address = kernel->copy_view(first);
+    const uint64_t second_address = kernel->copy_view(second);
+    const uint64_t result_address = kernel->memory_.allocate(first.length * sizeof(int32_t));
+    if (first_address == 0 || second_address == 0 || result_address == 0)
+      return -1;
+    accel_command_t command{};
+    command.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
+    command.n = static_cast<uint32_t>(first.length);
+    command.src0 = first_address;
+    command.src1 = second_address;
+    command.dst = result_address;
+    command.src0_stride = command.src1_stride = command.dst_stride = 1;
+    return kernel->submit_batch({command}) &&
+                   kernel->memory_.read(result_address, result, first.length * sizeof(int32_t))
+               ? 0
+               : -1;
+  }
+
+  static int minplus_project(void *opaque, pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
+                             int32_t *result) {
+    ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
+    kernel->begin_batch();
+    const uint64_t matrix_address = kernel->copy_matrix(matrix);
+    const uint64_t unary_address = kernel->copy_view(unary);
+    const uint64_t result_address = kernel->memory_.allocate(matrix.rows * sizeof(int32_t));
+    if (matrix_address == 0 || unary_address == 0 || result_address == 0)
+      return -1;
+    accel_command_t command{};
+    command.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
+    command.n = static_cast<uint32_t>(matrix.columns);
+    command.m = static_cast<uint32_t>(matrix.rows);
+    command.src0 = matrix_address;
+    command.src1 = unary_address;
+    command.dst = result_address;
+    command.src0_stride = command.src1_stride = command.dst_stride = 1;
+    command.src0_outer_stride = static_cast<uint32_t>(matrix.columns);
+    return kernel->submit_batch({command}) &&
+                   kernel->memory_.read(result_address, result, matrix.rows * sizeof(int32_t))
+               ? 0
+               : -1;
+  }
+
+  static int map3_project(void *opaque, pbqp_vector_view_t unary, pbqp_vector_view_t fixed,
+                          pbqp_matrix_view_t varying, accel_min_argmin_result_t *result) {
+    const pbqp_map3_project_job_t job{unary, fixed, varying, result};
+    return map3_project_batch(opaque, &job, 1);
+  }
+
   // Starts a new staging-area lifetime: every view copied below stays valid
   // until the next batch, so identical views within one batch share one copy.
   void begin_batch() {
@@ -503,6 +687,21 @@ class ModelKernel {
       }
     }
     view_cache_.emplace(key, address);
+    return address;
+  }
+
+  uint64_t copy_matrix(pbqp_matrix_view_t matrix) {
+    const uint64_t address = memory_.allocate(matrix.rows * matrix.columns * sizeof(int32_t));
+    if (address == 0)
+      return 0;
+    for (size_t row = 0; row < matrix.rows; ++row) {
+      for (size_t column = 0; column < matrix.columns; ++column) {
+        const int32_t value = matrix.base[row * matrix.row_stride + column * matrix.column_stride];
+        if (!memory_.write(address + (row * matrix.columns + column) * sizeof(int32_t), &value,
+                           sizeof(value)))
+          return 0;
+      }
+    }
     return address;
   }
 
@@ -1012,9 +1211,9 @@ int sc_main(int argc, char **argv) {
               << " slices=" << statistics->local_search_slice_accumulations
               << " slice-elements=" << statistics->local_search_slice_elements
               << " argmin=" << statistics->local_search_argmin_reductions << '\n';
-    const unsigned operation_descriptors = statistics->minplus_project_descriptors +
-                                           statistics->map3_reduce_descriptors +
-                                           statistics->argmin_vector_descriptors;
+    const unsigned operation_descriptors =
+        statistics->minplus_project_descriptors + statistics->vector_add_descriptors +
+        statistics->map3_reduce_descriptors + statistics->argmin_vector_descriptors;
     const uint64_t operation_bytes =
         statistics->operation_mix_operand_bytes + statistics->operation_mix_result_bytes;
     std::cerr << "pcaa: operation mix project-elements=" << statistics->minplus_project_elements
@@ -1026,7 +1225,12 @@ int sc_main(int argc, char **argv) {
               << " batches=" << statistics->batch_submissions
               << " operand-bytes=" << statistics->operation_mix_operand_bytes
               << " result-bytes=" << statistics->operation_mix_result_bytes
-              << " bytes=" << operation_bytes << '\n';
+              << " bytes=" << operation_bytes
+              << " scalar-project-descriptors=" << statistics->scalar_project_descriptors
+              << " vector-project-descriptors=" << statistics->vector_project_descriptors
+              << " vector-add-descriptors=" << statistics->vector_add_descriptors
+              << " scalar-map3-descriptors=" << statistics->scalar_map3_descriptors
+              << " partial-map3-descriptors=" << statistics->partial_map3_descriptors << '\n';
     std::cerr << "pcaa: views contiguous=" << statistics->contiguous_views
               << " strided=" << statistics->strided_views << '\n';
     std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited

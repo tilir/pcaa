@@ -259,6 +259,18 @@ class CostKernel {
     return 0;
   }
 
+  int ProjectAddBatch(const pbqp_project_add_job_t *jobs, size_t count) const {
+    if (api_.project_add_batch == nullptr)
+      return -1;
+    return api_.project_add_batch(api_.context, jobs, count);
+  }
+
+  int Map3ProjectBatch(const pbqp_map3_project_job_t *jobs, size_t count) const {
+    if (api_.map3_project_batch == nullptr)
+      return -1;
+    return api_.map3_project_batch(api_.context, jobs, count);
+  }
+
   const pbqp_cost_kernel_t &Api() const {
     return api_;
   }
@@ -474,6 +486,23 @@ class Solver {
       return {edge.cost + node_value * edge.stride, neighbor_length, 1};
     }
     return {edge.cost + node_value, neighbor_length, edge.stride};
+  }
+
+  static pbqp_matrix_view_t ConditionedEdgeMatrix(const pbqp_edge_t &edge, unsigned node,
+                                                  unsigned output_domain,
+                                                  unsigned reduction_domain) {
+    assert(edge.first == node || edge.second == node);
+    if (node == edge.first)
+      return {edge.cost, output_domain, reduction_domain, edge.stride, 1};
+    return {edge.cost, output_domain, reduction_domain, 1, edge.stride};
+  }
+
+  static pbqp_matrix_view_t EdgeMatrix(const pbqp_edge_t &edge, unsigned node,
+                                       unsigned output_domain, unsigned reduction_domain) {
+    assert(edge.first == node || edge.second == node);
+    if (node == edge.first)
+      return {edge.cost, output_domain, reduction_domain, 1, edge.stride};
+    return {edge.cost, output_domain, reduction_domain, edge.stride, 1};
   }
 
   static void RecordView(pbqp_statistics_t *statistics, pbqp_vector_view_t view) {
@@ -706,14 +735,22 @@ class Solver {
     if (node.domain != 0 && degree > SIZE_MAX / node.domain)
       return PBQP_CAPACITY_ERROR;
     const size_t node_job_count = static_cast<size_t>(degree) * node.domain;
+    const bool vector_path =
+        config_.rn_batching == PBQP_RN_BATCH_PER_NODE && kernel_.Api().project_add_batch != nullptr;
     const size_t job_capacity =
-        config_.rn_batching == PBQP_RN_BATCH_PER_NODE ? node_job_count : node.domain;
+        vector_path
+            ? 0
+            : (config_.rn_batching == PBQP_RN_BATCH_PER_NODE ? node_job_count : node.domain);
     const pbqp_allocator_t allocator = WorkspaceAllocator(problem, config_);
     Array<int32_t> scores_storage(allocator, node.domain);
     Array<pbqp_min2_value_job_t> jobs_storage(allocator, job_capacity);
     Array<int32_t> results_storage(allocator, job_capacity);
-    if (scores_storage.Get() == nullptr || jobs_storage.Get() == nullptr ||
-        results_storage.Get() == nullptr)
+    Array<pbqp_project_add_job_t> vector_jobs_storage(allocator, vector_path ? degree : 0);
+    Array<int32_t> temporary_storage(allocator, vector_path ? node_job_count : 0);
+    if (scores_storage.Get() == nullptr ||
+        (!vector_path && (jobs_storage.Get() == nullptr || results_storage.Get() == nullptr)) ||
+        (vector_path &&
+         (vector_jobs_storage.Get() == nullptr || temporary_storage.Get() == nullptr)))
       return PBQP_CAPACITY_ERROR;
     int32_t *scores = scores_storage.Get();
     pbqp_min2_value_job_t *jobs = jobs_storage.Get();
@@ -745,22 +782,56 @@ class Solver {
       }
       const unsigned neighbor_index = graph.OtherNode(edge, node_index);
       const pbqp_node_t &neighbor = problem.nodes[neighbor_index];
-      for (unsigned value = 0; value < node.domain; ++value) {
-        const pbqp_vector_view_t matrix_slice =
-            ConditionedEdgeView(edge, node_index, value, neighbor.domain);
-        const pbqp_vector_view_t unary = {neighbor.unary, neighbor.domain, 1};
-        const size_t job_index =
-            config_.rn_batching == PBQP_RN_BATCH_PER_NODE ? job_offset + value : value;
-        jobs[job_index] = {matrix_slice, unary, &results[job_index]};
-        RecordView(&problem.statistics, matrix_slice);
-        RecordView(&problem.statistics, unary);
-        RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, neighbor.domain, 2,
-                        sizeof(int32_t));
-        RecordMinplusProject(&problem.statistics, neighbor.domain, sizeof(int32_t));
+      if (vector_path) {
+        const pbqp_matrix_view_t matrix =
+            ConditionedEdgeMatrix(edge, node_index, node.domain, neighbor.domain);
+        vector_jobs_storage.Get()[job_offset] = {matrix,
+                                                 {neighbor.unary, neighbor.domain, 1},
+                                                 temporary_storage.Get() + job_offset * node.domain,
+                                                 scores};
+        for (unsigned value = 0; value < node.domain; ++value)
+          RecordView(&problem.statistics,
+                     ConditionedEdgeView(edge, node_index, value, neighbor.domain));
+        RecordView(&problem.statistics, {neighbor.unary, neighbor.domain, 1});
+        const uint64_t elements = static_cast<uint64_t>(node.domain) * neighbor.domain;
+        ++problem.statistics.primitive_submissions[ACCEL_OPCODE_MINPLUS_PROJECT];
+        ++problem.statistics.primitive_submissions[ACCEL_OPCODE_COST_ADD_VECTOR];
+        ++problem.statistics.vector_length_histogram[neighbor.domain];
+        ++problem.statistics.vector_length_histogram[node.domain];
+        ++problem.statistics.vector_project_descriptors;
+        ++problem.statistics.vector_add_descriptors;
         ++problem.statistics.rn_projection_primitives;
-        problem.statistics.rn_projection_map_elements += neighbor.domain;
-        problem.statistics.rn_projection_operand_bytes += 2 * neighbor.domain * sizeof(int32_t);
-        problem.statistics.rn_projection_result_bytes += sizeof(int32_t);
+        problem.statistics.logical_map_elements += elements + node.domain;
+        problem.statistics.logical_bytes_read += (2 * elements + 2 * node.domain) * sizeof(int32_t);
+        problem.statistics.logical_bytes_written += 2 * node.domain * sizeof(int32_t);
+        problem.statistics.minplus_project_elements += elements;
+        ++problem.statistics.minplus_project_descriptors;
+        problem.statistics.minplus_project_bytes += (2 * elements + node.domain) * sizeof(int32_t);
+        problem.statistics.operation_mix_operand_bytes += 2 * elements * sizeof(int32_t);
+        problem.statistics.operation_mix_result_bytes += node.domain * sizeof(int32_t);
+        problem.statistics.rn_projection_map_elements += elements;
+        problem.statistics.rn_projection_operand_bytes += 2 * elements * sizeof(int32_t);
+        problem.statistics.rn_projection_result_bytes += node.domain * sizeof(int32_t);
+        ++job_offset;
+      } else {
+        for (unsigned value = 0; value < node.domain; ++value) {
+          const pbqp_vector_view_t matrix_slice =
+              ConditionedEdgeView(edge, node_index, value, neighbor.domain);
+          const pbqp_vector_view_t unary = {neighbor.unary, neighbor.domain, 1};
+          const size_t job_index =
+              config_.rn_batching == PBQP_RN_BATCH_PER_NODE ? job_offset + value : value;
+          jobs[job_index] = {matrix_slice, unary, &results[job_index]};
+          RecordView(&problem.statistics, matrix_slice);
+          RecordView(&problem.statistics, unary);
+          RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, neighbor.domain, 2,
+                          sizeof(int32_t));
+          RecordMinplusProject(&problem.statistics, neighbor.domain, sizeof(int32_t));
+          ++problem.statistics.scalar_project_descriptors;
+          ++problem.statistics.rn_projection_primitives;
+          problem.statistics.rn_projection_map_elements += neighbor.domain;
+          problem.statistics.rn_projection_operand_bytes += 2 * neighbor.domain * sizeof(int32_t);
+          problem.statistics.rn_projection_result_bytes += sizeof(int32_t);
+        }
       }
       ++problem.statistics.rn_projection_count;
       if (config_.rn_batching == PBQP_RN_BATCH_PER_EDGE) {
@@ -768,7 +839,7 @@ class Solver {
           return PBQP_ARGUMENT_ERROR;
         for (unsigned value = 0; value < node.domain; ++value)
           scores[value] = accel_cost_add(scores[value], results[value]);
-      } else {
+      } else if (!vector_path) {
         job_offset += node.domain;
       }
       problem.statistics.rn_score_accumulation_elements += node.domain;
@@ -777,7 +848,11 @@ class Solver {
       problem.statistics.operation_mix_operand_bytes += 2 * node.domain * sizeof(int32_t);
       problem.statistics.operation_mix_result_bytes += node.domain * sizeof(int32_t);
     }
-    if (config_.rn_batching == PBQP_RN_BATCH_PER_NODE) {
+    if (vector_path) {
+      if (job_offset != degree ||
+          kernel_.ProjectAddBatch(vector_jobs_storage.Get(), job_offset) != 0)
+        return PBQP_ARGUMENT_ERROR;
+    } else if (config_.rn_batching == PBQP_RN_BATCH_PER_NODE) {
       if (job_offset != node_job_count || kernel_.Min2ValueBatch(jobs, job_offset) != 0)
         return PBQP_ARGUMENT_ERROR;
       for (size_t edge_offset = 0; edge_offset < job_offset; edge_offset += node.domain) {
@@ -861,6 +936,7 @@ class Solver {
       RecordView(&problem.statistics, edge_cost);
       RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, node.domain, 2);
       RecordMinplusProject(&problem.statistics, node.domain, sizeof(accel_min_argmin_result_t));
+      ++problem.statistics.scalar_project_descriptors;
       jobs[neighbor_value] = {unary, edge_cost, &results[neighbor_value]};
     }
     if (kernel_.Min2Batch(jobs, neighbor.domain) != 0)
@@ -909,16 +985,50 @@ class Solver {
     }
     pbqp_edge_t &fill_edge = problem.edges[fill_edge_index];
     const size_t maximum_jobs = static_cast<size_t>(first.domain) * second.domain;
+    const bool vector_path = config_.rn_batching == PBQP_RN_BATCH_PER_NODE &&
+                             kernel_.Api().map3_project_batch != nullptr;
     const pbqp_allocator_t allocator = WorkspaceAllocator(problem, config_);
-    Array<pbqp_min3_job_t> jobs_storage(allocator, maximum_jobs);
+    Array<pbqp_min3_job_t> jobs_storage(allocator, vector_path ? 0 : maximum_jobs);
+    Array<pbqp_map3_project_job_t> vector_jobs_storage(allocator, vector_path ? first.domain : 0);
     Array<accel_min_argmin_result_t> results_storage(allocator, maximum_jobs);
-    if (jobs_storage.Get() == nullptr || results_storage.Get() == nullptr)
+    if (results_storage.Get() == nullptr ||
+        (vector_path ? vector_jobs_storage.Get() == nullptr : jobs_storage.Get() == nullptr))
       return PBQP_CAPACITY_ERROR;
     pbqp_min3_job_t *jobs = jobs_storage.Get();
     accel_min_argmin_result_t *results = results_storage.Get();
 
     unsigned job_count = 0;
     for (unsigned first_value = 0; first_value < first.domain; ++first_value) {
+      if (vector_path) {
+        vector_jobs_storage.Get()[first_value] = {
+            {node.unary, node.domain, 1},
+            EdgeView(first_edge, node_index, first_value, node.domain),
+            EdgeMatrix(second_edge, node_index, second.domain, node.domain),
+            &results[first_value * second.domain]};
+        ++problem.statistics.primitive_submissions[ACCEL_OPCODE_MINPLUS_MAP3_PROJECT];
+        ++problem.statistics.vector_length_histogram[node.domain];
+        ++problem.statistics.partial_map3_descriptors;
+        const uint64_t elements = static_cast<uint64_t>(second.domain) * node.domain;
+        problem.statistics.logical_map_elements += elements;
+        problem.statistics.logical_bytes_read += 3 * elements * sizeof(int32_t);
+        problem.statistics.logical_bytes_written +=
+            second.domain * sizeof(accel_min_argmin_result_t);
+        problem.statistics.map3_reduce_elements += elements;
+        ++problem.statistics.map3_reduce_descriptors;
+        problem.statistics.map3_reduce_bytes +=
+            3 * elements * sizeof(int32_t) + second.domain * sizeof(accel_min_argmin_result_t);
+        problem.statistics.operation_mix_operand_bytes += 3 * elements * sizeof(int32_t);
+        problem.statistics.operation_mix_result_bytes +=
+            second.domain * sizeof(accel_min_argmin_result_t);
+        for (unsigned second_value = 0; second_value < second.domain; ++second_value) {
+          RecordView(&problem.statistics, {node.unary, node.domain, 1});
+          RecordView(&problem.statistics,
+                     EdgeView(first_edge, node_index, first_value, node.domain));
+          RecordView(&problem.statistics,
+                     EdgeView(second_edge, node_index, second_value, node.domain));
+        }
+        continue;
+      }
       for (unsigned second_value = 0; second_value < second.domain; ++second_value) {
         const pbqp_vector_view_t unary = {node.unary, node.domain, 1};
         const pbqp_vector_view_t first_cost =
@@ -931,11 +1041,13 @@ class Solver {
         RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, node.domain,
                         3);
         RecordMap3Reduce(&problem.statistics, node.domain);
+        ++problem.statistics.scalar_map3_descriptors;
         jobs[job_count] = {unary, first_cost, second_cost, &results[job_count]};
         ++job_count;
       }
     }
-    if (kernel_.Min3Batch(jobs, job_count) != 0)
+    if (vector_path ? kernel_.Map3ProjectBatch(vector_jobs_storage.Get(), first.domain) != 0
+                    : kernel_.Min3Batch(jobs, job_count) != 0)
       return PBQP_ARGUMENT_ERROR;
     job_count = 0;
     for (unsigned first_value = 0; first_value < first.domain; ++first_value) {
@@ -966,7 +1078,7 @@ class Solver {
     node.active = 0;
     ++problem.statistics.r2_count;
     problem.elimination_order[problem.elimination_count++] = node_index;
-    const unsigned descriptors = first.domain * second.domain;
+    const unsigned descriptors = vector_path ? first.domain : first.domain * second.domain;
     const uint64_t elements = static_cast<uint64_t>(descriptors) * node.domain;
     Emit(graph, PBQP_TRACE_R2, ReductionPhase(), static_cast<int>(node_index), -1, 0, 0, 0,
          elements, 0, descriptors, 1, 3 * elements * sizeof(int32_t),
@@ -1069,6 +1181,14 @@ class Solver {
     total->slice_accumulate_bytes += branch.slice_accumulate_bytes - base.slice_accumulate_bytes;
     total->map3_reduce_elements += branch.map3_reduce_elements - base.map3_reduce_elements;
     total->map3_reduce_descriptors += branch.map3_reduce_descriptors - base.map3_reduce_descriptors;
+    total->scalar_project_descriptors +=
+        branch.scalar_project_descriptors - base.scalar_project_descriptors;
+    total->vector_project_descriptors +=
+        branch.vector_project_descriptors - base.vector_project_descriptors;
+    total->vector_add_descriptors += branch.vector_add_descriptors - base.vector_add_descriptors;
+    total->scalar_map3_descriptors += branch.scalar_map3_descriptors - base.scalar_map3_descriptors;
+    total->partial_map3_descriptors +=
+        branch.partial_map3_descriptors - base.partial_map3_descriptors;
     total->map3_reduce_bytes += branch.map3_reduce_bytes - base.map3_reduce_bytes;
     total->argmin_vector_elements += branch.argmin_vector_elements - base.argmin_vector_elements;
     total->argmin_vector_descriptors +=
@@ -1092,7 +1212,7 @@ class Solver {
     total->batch_child_descriptor_bytes +=
         branch.batch_child_descriptor_bytes - base.batch_child_descriptor_bytes;
     total->unique_packed_views += branch.unique_packed_views - base.unique_packed_views;
-    for (unsigned opcode = 0; opcode < 5; ++opcode)
+    for (unsigned opcode = 0; opcode < 9; ++opcode)
       total->primitive_submissions[opcode] +=
           branch.primitive_submissions[opcode] - base.primitive_submissions[opcode];
     for (unsigned length = 0; length <= domain_capacity; ++length)
@@ -1425,6 +1545,88 @@ int SoftwareMin3Batch(void *context, const pbqp_min3_job_t *jobs, size_t count) 
   return 0;
 }
 
+int SoftwareCostAddVector(void *, pbqp_vector_view_t first, pbqp_vector_view_t second,
+                          int32_t *result) {
+  if (first.length != second.length || result == nullptr)
+    return -1;
+  for (size_t index = 0; index < first.length; ++index) {
+    int32_t checked = 0;
+    if (accel_cost_add_checked(first.base[index * first.stride], second.base[index * second.stride],
+                               &checked) != 0)
+      return -1;
+  }
+  for (size_t index = 0; index < first.length; ++index) {
+    if (accel_cost_add_checked(first.base[index * first.stride], second.base[index * second.stride],
+                               &result[index]) != 0)
+      return -1;
+  }
+  return 0;
+}
+
+int SoftwareMinplusProject(void *, pbqp_matrix_view_t matrix, pbqp_vector_view_t vector,
+                           int32_t *result) {
+  if (matrix.columns != vector.length || result == nullptr)
+    return -1;
+  for (size_t output = 0; output < matrix.rows; ++output) {
+    int32_t minimum = ACCEL_INF;
+    for (size_t inner = 0; inner < matrix.columns; ++inner) {
+      int32_t value = 0;
+      if (accel_cost_add_checked(
+              matrix.base[output * matrix.row_stride + inner * matrix.column_stride],
+              vector.base[inner * vector.stride], &value) != 0)
+        return -1;
+      if (inner == 0 || value < minimum)
+        minimum = value;
+    }
+    result[output] = minimum;
+  }
+  return 0;
+}
+
+int SoftwareMap3Project(void *, pbqp_vector_view_t unary, pbqp_vector_view_t fixed_edge,
+                        pbqp_matrix_view_t varying_edge, accel_min_argmin_result_t *result) {
+  if (unary.length != fixed_edge.length || unary.length != varying_edge.columns ||
+      result == nullptr)
+    return -1;
+  for (size_t output = 0; output < varying_edge.rows; ++output) {
+    result[output] = {ACCEL_INF, 0};
+    for (size_t inner = 0; inner < unary.length; ++inner) {
+      int32_t sum = 0;
+      int32_t value = 0;
+      if (accel_cost_add_checked(unary.base[inner * unary.stride],
+                                 fixed_edge.base[inner * fixed_edge.stride], &sum) != 0 ||
+          accel_cost_add_checked(sum,
+                                 varying_edge.base[output * varying_edge.row_stride +
+                                                   inner * varying_edge.column_stride],
+                                 &value) != 0)
+        return -1;
+      if (inner == 0 || value < result[output].value)
+        result[output] = {value, static_cast<uint32_t>(inner)};
+    }
+  }
+  return 0;
+}
+
+int SoftwareProjectAddBatch(void *context, const pbqp_project_add_job_t *jobs, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    const pbqp_project_add_job_t &job = jobs[index];
+    if (SoftwareMinplusProject(context, job.matrix, job.unary, job.temporary) != 0 ||
+        SoftwareCostAddVector(context, {job.temporary, job.matrix.rows, 1},
+                              {job.scores, job.matrix.rows, 1}, job.scores) != 0)
+      return -1;
+  }
+  return 0;
+}
+
+int SoftwareMap3ProjectBatch(void *context, const pbqp_map3_project_job_t *jobs, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    const pbqp_map3_project_job_t &job = jobs[index];
+    if (SoftwareMap3Project(context, job.unary, job.fixed_edge, job.varying_edge, job.results) != 0)
+      return -1;
+  }
+  return 0;
+}
+
 }  // namespace
 
 extern "C" {
@@ -1542,6 +1744,11 @@ void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *st
   kernel->min3_argmin_batch = SoftwareMin3Batch;
   kernel->min2_value = SoftwareMin2Value;
   kernel->min2_value_batch = SoftwareMin2ValueBatch;
+  kernel->cost_add_vector = SoftwareCostAddVector;
+  kernel->minplus_project = SoftwareMinplusProject;
+  kernel->minplus_map3_project = SoftwareMap3Project;
+  kernel->project_add_batch = SoftwareProjectAddBatch;
+  kernel->map3_project_batch = SoftwareMap3ProjectBatch;
   kernel->set_statistics = nullptr;
 }
 

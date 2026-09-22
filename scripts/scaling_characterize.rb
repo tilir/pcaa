@@ -318,6 +318,7 @@ REDUCTIONS_RE = /reductions R0=(\d+) R1=(\d+) R2=(\d+) RN=(\d+) projections=(\d+
 RN_CORE_RE = /RN core first=(\d+) nodes\/(\d+) edges max=(\d+) nodes\/(\d+) edges episodes=(\d+) degree=(\d+)\.\.(\d+) after-RN R0=(\d+) R1=(\d+) R2=(\d+) cascade-total=(\d+) cascade-max=(\d+)/
 CASCADES_RE = /rn_cascades rn_episodes=(\d+) rn_cascade_r0_total=(\d+) rn_cascade_r1_total=(\d+) rn_cascade_r2_total=(\d+) rn_cascade_exact_total=(\d+) rn_cascade_mean=([0-9.]+) rn_cascade_max=(\d+)/
 OPERATION_MIX_RE = /operation mix project-elements=(\d+) project-accumulate-elements=(\d+) slice-elements=(\d+) map3-elements=(\d+) argmin-elements=(\d+) descriptors=(\d+) batches=(\d+) operand-bytes=(\d+) result-bytes=(\d+) bytes=(\d+)/
+ISA_MIX_RE = /scalar-project-descriptors=(\d+) vector-project-descriptors=(\d+) vector-add-descriptors=(\d+) scalar-map3-descriptors=(\d+) partial-map3-descriptors=(\d+)/
 VIEWS_RE = /views contiguous=(\d+) strided=(\d+)/
 LOCAL_SEARCH_RE = /local search evaluations=(\d+) sweeps=(\d+) accepted-moves=(\d+) slices=(\d+) slice-elements=(\d+) argmin=(\d+)/
 
@@ -330,7 +331,10 @@ HEADER = %w[sweeps family profile seed nodes domain policy strategy status wall_
             rn_episodes cascade_r0_total cascade_r1_total cascade_r2_total cascade_exact_total
             cascade_mean cascade_max
             project_elements project_accumulate_elements slice_elements map3_elements argmin_elements
-            descriptors batches operand_bytes result_bytes total_bytes contiguous_views strided_views total_elements
+            descriptors batches operand_bytes result_bytes total_bytes
+            scalar_project_descriptors vector_project_descriptors vector_add_descriptors
+            scalar_map3_descriptors partial_map3_descriptors
+            contiguous_views strided_views total_elements
             elements_per_rn_episode
             ls_evaluations ls_sweeps ls_moves ls_slice_ops ls_slice_elements ls_argmin_elements
             ls_a_epochs ls_a_median_elements ls_a_p90_elements
@@ -417,8 +421,9 @@ def run_point(options, job, key)
     rn_core = metrics(stderr_text, RN_CORE_RE)
     cascades = metrics(stderr_text, CASCADES_RE)
     mix = metrics(stderr_text, OPERATION_MIX_RE)
+    isa_mix = metrics(stderr_text, ISA_MIX_RE)
     views = metrics(stderr_text, VIEWS_RE)
-    unless reductions && rn_core && cascades && mix && views
+    unless reductions && rn_core && cascades && mix && isa_mix && views
       return row_prefix + ["missing-diagnostics", format("%.3f", elapsed)] + state + Array.new(HEADER.length - filled)
     end
 
@@ -449,7 +454,7 @@ def run_point(options, job, key)
     row_prefix + ["ok", format("%.3f", elapsed)] + state +
       reductions + [rn_core[0], rn_core[1], rn_core[2], rn_core[3], rn_core[5], rn_core[6],
                     rn_core[7], rn_core[8], rn_core[9]] +
-      cascades + mix + views + [total_elements, elements_per_episode] +
+      cascades + mix + isa_mix + views + [total_elements, elements_per_episode] +
       local_search + ls_a_stats + ls_b_stats +
       [pre_rn_reductions, model_c_epochs, elements_per_model_c_epoch]
   end

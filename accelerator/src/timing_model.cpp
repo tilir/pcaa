@@ -36,17 +36,30 @@ AccelCommandTiming accel_estimate_command_cycles(const accel_command_t &command,
     return {};
   }
 
-  const uint64_t chunks = divide_round_up(command.n, config.lanes);
-  const uint64_t operand_bytes =
-      static_cast<uint64_t>(command.n) * operand_count(command.opcode) * sizeof(int32_t);
-  const uint64_t result_bytes =
-      returns_argmin(command.opcode) ? sizeof(accel_min_argmin_result_t) : sizeof(int32_t);
+  const bool add_vector = command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR;
+  const bool project = command.opcode == ACCEL_OPCODE_MINPLUS_PROJECT;
+  const bool map3_project = command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  const uint64_t outputs = project || map3_project ? command.m : 1;
+  const uint64_t chunks = divide_round_up(command.n, config.lanes) * outputs;
+  uint64_t operand_elements = static_cast<uint64_t>(command.n) * operand_count(command.opcode);
+  if (project)
+    operand_elements = static_cast<uint64_t>(command.n) * (outputs + 1);
+  if (map3_project)
+    operand_elements = static_cast<uint64_t>(command.n) * (outputs + 2);
+  if (add_vector)
+    operand_elements = static_cast<uint64_t>(command.n) * 2;
+  const uint64_t operand_bytes = operand_elements * sizeof(int32_t);
+  const uint64_t result_bytes = map3_project ? outputs * sizeof(accel_min_argmin_result_t)
+                                : add_vector ? static_cast<uint64_t>(command.n) * sizeof(int32_t)
+                                : project    ? outputs * sizeof(int32_t)
+                                : returns_argmin(command.opcode) ? sizeof(accel_min_argmin_result_t)
+                                                                 : sizeof(int32_t);
   AccelCommandTiming timing;
   timing.descriptor_cycles = divide_round_up(sizeof(command), config.descriptor_bytes_per_cycle);
   timing.operand_read_cycles = divide_round_up(operand_bytes, config.memory_read_bytes_per_cycle);
   timing.compute_cycles = config.primitive_start_cycles + config.map_pipeline_latency + chunks +
                           config.reduction_tree_latency + config.result_latency;
-  if (is_add3(command.opcode)) {
+  if (is_add3(command.opcode) || map3_project) {
     timing.compute_cycles += config.add3_map_extra_latency;
   }
   timing.result_write_cycles = divide_round_up(result_bytes, config.memory_write_bytes_per_cycle);
@@ -71,9 +84,14 @@ void accel_accumulate_command_timing(const accel_command_t &command,
   statistics->result_write_cycles += timing.result_write_cycles;
   statistics->total_service_cycles += timing.total_cycles;
   ++statistics->primitive_count;
-  const uint64_t chunks = config.lanes == 0 ? 0 : divide_round_up(command.n, config.lanes);
+  const uint64_t outputs = command.opcode == ACCEL_OPCODE_MINPLUS_PROJECT ||
+                                   command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT
+                               ? command.m
+                               : 1;
+  const uint64_t chunks =
+      config.lanes == 0 ? 0 : divide_round_up(command.n, config.lanes) * outputs;
   statistics->lane_slots += chunks * config.lanes;
-  statistics->active_lane_elements += command.n;
+  statistics->active_lane_elements += static_cast<uint64_t>(command.n) * outputs;
   if (timing.operand_read_cycles > timing.compute_cycles) {
     ++statistics->memory_dominant_primitives;
   } else {

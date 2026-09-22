@@ -152,6 +152,108 @@ static int accel_min2_value_batch(void *opaque, const pbqp_min2_value_job_t *job
   return accel_submit_batch(context->batch_commands, count, &context->batch_result);
 }
 
+static accel_command_t project_command(pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
+                                       int32_t *result) {
+  accel_command_t command = {0};
+  command.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
+  command.n = (uint32_t)matrix.columns;
+  command.m = (uint32_t)matrix.rows;
+  command.src0 = (uintptr_t)matrix.base;
+  command.src1 = (uintptr_t)unary.base;
+  command.dst = (uintptr_t)result;
+  command.src0_stride = (uint32_t)matrix.column_stride;
+  command.src0_outer_stride = (uint32_t)matrix.row_stride;
+  command.src1_stride = (uint32_t)unary.stride;
+  command.dst_stride = 1;
+  return command;
+}
+
+static accel_command_t add_vector_command(pbqp_vector_view_t first, pbqp_vector_view_t second,
+                                          int32_t *result) {
+  accel_command_t command = {0};
+  command.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
+  command.n = (uint32_t)first.length;
+  command.src0 = (uintptr_t)first.base;
+  command.src1 = (uintptr_t)second.base;
+  command.dst = (uintptr_t)result;
+  command.src0_stride = (uint32_t)first.stride;
+  command.src1_stride = (uint32_t)second.stride;
+  command.dst_stride = 1;
+  return command;
+}
+
+static accel_command_t map3_project_command(pbqp_vector_view_t unary, pbqp_vector_view_t fixed_edge,
+                                            pbqp_matrix_view_t varying_edge,
+                                            accel_min_argmin_result_t *result) {
+  accel_command_t command = {0};
+  command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  command.n = (uint32_t)unary.length;
+  command.m = (uint32_t)varying_edge.rows;
+  command.src0 = (uintptr_t)unary.base;
+  command.src1 = (uintptr_t)fixed_edge.base;
+  command.src2 = (uintptr_t)varying_edge.base;
+  command.dst = (uintptr_t)result;
+  command.src0_stride = (uint32_t)unary.stride;
+  command.src1_stride = (uint32_t)fixed_edge.stride;
+  command.src2_stride = (uint32_t)varying_edge.column_stride;
+  command.src2_outer_stride = (uint32_t)varying_edge.row_stride;
+  command.dst_stride = 1;
+  return command;
+}
+
+static int accel_cost_add_vector(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
+                                 int32_t *result) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  context->batch_commands[0] = add_vector_command(first, second, result);
+  record_batch_submission(context, 1);
+  return accel_submit_batch(context->batch_commands, 1, &context->batch_result);
+}
+
+static int accel_minplus_project(void *opaque, pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
+                                 int32_t *result) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  context->batch_commands[0] = project_command(matrix, unary, result);
+  record_batch_submission(context, 1);
+  return accel_submit_batch(context->batch_commands, 1, &context->batch_result);
+}
+
+static int accel_map3_project(void *opaque, pbqp_vector_view_t unary, pbqp_vector_view_t fixed_edge,
+                              pbqp_matrix_view_t varying_edge, accel_min_argmin_result_t *result) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  context->batch_commands[0] = map3_project_command(unary, fixed_edge, varying_edge, result);
+  record_batch_submission(context, 1);
+  return accel_submit_batch(context->batch_commands, 1, &context->batch_result);
+}
+
+static int accel_project_add_batch(void *opaque, const pbqp_project_add_job_t *jobs, size_t count) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  if (count > PBQP_MAX_BATCH_JOBS / 2)
+    return -1;
+  for (size_t index = 0; index < count; ++index) {
+    const pbqp_project_add_job_t *job = &jobs[index];
+    context->batch_commands[2 * index] = project_command(job->matrix, job->unary, job->temporary);
+    context->batch_commands[2 * index + 1] =
+        add_vector_command((pbqp_vector_view_t){job->temporary, job->matrix.rows, 1},
+                           (pbqp_vector_view_t){job->scores, job->matrix.rows, 1}, job->scores);
+  }
+  record_batch_submission(context, 2 * count);
+  return accel_submit_batch(context->batch_commands, 2 * count, &context->batch_result);
+}
+
+static int accel_map3_project_batch(void *opaque, const pbqp_map3_project_job_t *jobs,
+                                    size_t count) {
+  pbqp_accelerator_kernel_context_t *context = opaque;
+  if (count > PBQP_MAX_BATCH_JOBS)
+    return -1;
+  for (size_t index = 0; index < count; ++index) {
+    const pbqp_map3_project_job_t *job = &jobs[index];
+    context->batch_commands[index] =
+        map3_project_command(job->unary, job->fixed_edge, job->varying_edge, job->results);
+  }
+  record_batch_submission(context, count);
+  return accel_submit_batch(context->batch_commands, count, &context->batch_result);
+}
+
 static void accel_set_statistics(void *opaque, pbqp_statistics_t *statistics) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   context->statistics = statistics;
@@ -168,5 +270,10 @@ void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,
   kernel->min3_argmin_batch = accel_min3_batch;
   kernel->min2_value = accel_min2_value;
   kernel->min2_value_batch = accel_min2_value_batch;
+  kernel->cost_add_vector = accel_cost_add_vector;
+  kernel->minplus_project = accel_minplus_project;
+  kernel->minplus_map3_project = accel_map3_project;
+  kernel->project_add_batch = accel_project_add_batch;
+  kernel->map3_project_batch = accel_map3_project_batch;
   kernel->set_statistics = accel_set_statistics;
 }

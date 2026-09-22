@@ -2,16 +2,17 @@
 
 ## Architecture specification
 
-Revision 0.6
+Revision 1.0 (ISA v1)
 
 ## 1. Scope
 
 The Programmable Cost Algebra Accelerator (PCAA) is a memory-mapped block for
-regular arithmetic over runtime-sized vectors of costs. Its execution model is
-map followed by reduction:
+regular arithmetic over runtime-sized vectors of costs. Its primitives are
+elementwise cost addition and min-plus map/reduction, with scalar or vector
+outputs:
 
 ```text
-guest memory → elementwise cost operation → reduction → guest memory
+guest memory → cost operation / reduction → guest memory
 ```
 
 PCAA is intended for the regular kernels found in PBQP and cost-function
@@ -138,7 +139,8 @@ struct accel_command {
 };
 ```
 
-The baseline layout is 56 bytes and naturally aligned to 8 bytes. The field
+ISA v1 grows every descriptor to 80 bytes, naturally aligned to 8 bytes. The
+original 56-byte prefix keeps its offsets and semantics for opcodes 1–5. The field
 offsets are fixed:
 
 | Offset | Field | Meaning |
@@ -153,13 +155,26 @@ offsets are fixed:
 | `0x20` | `src1` | second source vector physical address |
 | `0x28` | `src2` | third source vector physical address when required |
 | `0x30` | `dst` | result physical address |
+| `0x38` | `src0_stride` | inner element stride of source 0 |
+| `0x3c` | `src1_stride` | inner element stride of source 1 |
+| `0x40` | `src2_stride` | inner element stride of source 2 |
+| `0x44` | `dst_stride` | output element stride |
+| `0x48` | `src0_outer_stride` | outer element stride of source 0 |
+| `0x4c` | `src2_outer_stride` | outer element stride of source 2 |
 
 For all baseline commands, `n` must be non-zero, and `src0`, `src1`, and
 `dst` must be non-zero. Commands requiring `src2` additionally require a
 non-zero `src2`.
 
-Reserved fields preserve descriptor compatibility as the operation set grows.
-Their current value has no effect.
+For opcodes 1–5, appended stride fields, `m`, `k`, and reserved fields are
+ignored, preserving their semantics. For opcodes 6–8, `flags`, `k`, and
+`reserved` must be zero. `n` is the vector length for opcode 6 and the
+reduction length for opcodes 7–8; `m` is zero for opcode 6 and the output
+length for opcodes 7–8. Required addresses, dimensions, and inner strides
+must be nonzero. Outer stride zero is valid only for a one-output projection.
+Unused stride fields are ignored. All strides count elements of the addressed
+type (32-bit costs, or 8-byte result records for MAP3), not bytes. No lane or
+layout-mode bit appears in the descriptor.
 
 ## 6. MMIO control interface
 
@@ -214,6 +229,10 @@ The descriptor is owned by the host until doorbell submission and by PCAA
 until completion. The host must not modify the descriptor or referenced input
 and output regions while the command is outstanding. Overlap between source
 and destination regions is not defined for the baseline commands.
+Opcode 6 permits exact full-view `dst` aliasing with either input, but
+otherwise rejects overlapping output and input spans. Opcode 7 and 8 outputs
+must not overlap their inputs. New vector commands preflight all additions
+before writing outputs, so arithmetic underflow leaves output untouched.
 
 ## 8. Baseline operations
 
@@ -287,14 +306,40 @@ Opcode: `5`
 `n` is a non-zero count of child `accel_command_t` descriptors at guest physical
 address `src0`. `dst` points to `accel_batch_result_t`. The block fetches and
 executes child descriptors strictly in ascending array order using the same
-primitive semantics as standalone commands. Children may use only opcodes 1–4;
+primitive semantics as standalone commands. Children may use opcodes 1–4 and 6–8;
 nested batches are invalid.
+
+All writes by a successful child are visible to the next child through guest
+memory before that next child begins. Thus a batch may produce a temporary
+projection and consume it with a vector add.
 
 On success, `{ completed = n, failed_index = UINT32_MAX }` is stored and status
 is `DONE`. If child `i` cannot be read, is invalid, or fails, descriptors before
 it remain completed, descriptors after it are not executed, and
 `{ completed = i, failed_index = i }` is stored before status becomes `ERROR`.
 Batch execution is fail-stop and non-transactional.
+
+### 8.6 `COST_ADD_VECTOR` (opcode 6)
+
+For `0 <= i < n`, `dst[i * dst_stride] =
+cost_add(src0[i * src0_stride], src1[i * src1_stride])`.
+`m` must be zero. Exact full-view output aliasing with either input is legal.
+
+### 8.7 `MINPLUS_PROJECT` (opcode 7)
+
+For each `0 <= i < m`, write a 32-bit cost to `dst[i * dst_stride]` equal to
+`min_{0 <= j < n} cost_add(src0[i * src0_outer_stride + j * src0_stride],
+src1[j * src1_stride])`. This is an affine matrix view, not a layout mode.
+
+### 8.8 `MINPLUS_MAP3_PROJECT` (opcode 8)
+
+For each `0 <= i < m`, write one `accel_min_argmin_result_t` to
+`dst[i * dst_stride]`. Its value/index are the minimum and first minimizing
+`j` of `cost_add(cost_add(src0[j * src0_stride],
+src1[j * src1_stride]), src2[i * src2_outer_stride + j * src2_stride])`
+for `0 <= j < n`. The tie rule is local to each output; there is no tie
+ordering across output coordinates. One external coordinate is fixed by
+software, the other is vectorized by `i`.
 
 ## 9. Error behavior
 
@@ -312,8 +357,11 @@ malformed cases are:
 A well-formed command also completes with `ERROR` if a finite cost addition
 underflows below `INT32_MIN`, including either addition of an ADD3 primitive.
 
-An `ERROR` completion does not specify a result at `dst`. A subsequent valid
+Apart from the opcode 6–8 arithmetic-underflow no-write guarantee above, an
+`ERROR` completion does not specify a result at `dst`. A subsequent valid
 submission is permitted and is independent of the preceding error.
+For opcodes 6–8, invalid dimensions/strides, arithmetic address-span
+overflow, or forbidden output/input overlap also cause `ERROR`.
 
 ## 10. L1 timing model
 

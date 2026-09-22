@@ -9,12 +9,33 @@
 
 #include <cstring>
 #include <iostream>
+#include <limits>
 
 #include <tlm_core/tlm_2/tlm_generic_payload/tlm_gp.h>
 namespace {
 constexpr uint64_t kLow32Mask = 0x00000000ffffffffULL;
 constexpr uint64_t kHigh32Mask = 0xffffffff00000000ULL;
 constexpr int kPhysicalAddressLowBits = 32;
+
+bool span(uint64_t base, uint32_t rows, uint32_t columns, uint32_t outer_stride,
+          uint32_t inner_stride, uint64_t element_bytes, uint64_t *end) {
+  if (base == 0 || rows == 0 || columns == 0 || inner_stride == 0 ||
+      (rows > 1 && outer_stride == 0))
+    return false;
+  const uint64_t outer = uint64_t(rows - 1) * outer_stride;
+  const uint64_t inner = uint64_t(columns - 1) * inner_stride;
+  if (outer > std::numeric_limits<uint64_t>::max() - inner ||
+      base > std::numeric_limits<uint64_t>::max() - element_bytes ||
+      outer + inner > (std::numeric_limits<uint64_t>::max() - base - element_bytes) / element_bytes)
+    return false;
+  const uint64_t last = outer + inner;
+  *end = base + (last + 1) * element_bytes;
+  return true;
+}
+
+bool overlaps(uint64_t first, uint64_t first_end, uint64_t second, uint64_t second_end) {
+  return first < second_end && second < first_end;
+}
 }  // namespace
 
 bool Accelerator::is_valid_mmio_transaction(const tlm::tlm_generic_payload &transaction) const {
@@ -110,6 +131,50 @@ bool Accelerator::is_valid_command(const accel_command_t &command) const {
     return false;
   }
 
+  if (command.opcode >= ACCEL_OPCODE_COST_ADD_VECTOR &&
+      command.opcode <= ACCEL_OPCODE_MINPLUS_MAP3_PROJECT) {
+    if (command.flags != 0 || command.k != 0 || command.reserved != 0)
+      return false;
+    const bool add = command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR;
+    const bool map3 = command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+    if (add && command.m != 0)
+      return false;
+    const uint32_t rows = add ? 1 : command.m;
+    const uint32_t columns = command.n;
+    if (rows == 0 || (map3 && command.src2 == 0))
+      return false;
+    uint64_t first_end = 0;
+    uint64_t second_end = 0;
+    uint64_t third_end = 0;
+    uint64_t destination_end = 0;
+    const uint64_t result_bytes = map3 ? sizeof(accel_min_argmin_result_t) : sizeof(int32_t);
+    if (!span(command.src0, map3 ? 1 : rows, columns, add || map3 ? 0 : command.src0_outer_stride,
+              command.src0_stride, sizeof(int32_t), &first_end) ||
+        !span(command.src1, 1, columns, 0, command.src1_stride, sizeof(int32_t), &second_end) ||
+        !span(command.dst, 1, add ? columns : rows, 0, command.dst_stride, result_bytes,
+              &destination_end))
+      return false;
+    if (map3 && !span(command.src2, rows, columns, command.src2_outer_stride, command.src2_stride,
+                      sizeof(int32_t), &third_end))
+      return false;
+    if (!map3 && command.src2 != 0)
+      return false;
+    if (add) {
+      const bool first_alias =
+          command.dst == command.src0 && command.dst_stride == command.src0_stride;
+      const bool second_alias =
+          command.dst == command.src1 && command.dst_stride == command.src1_stride;
+      if ((overlaps(command.dst, destination_end, command.src0, first_end) && !first_alias) ||
+          (overlaps(command.dst, destination_end, command.src1, second_end) && !second_alias))
+        return false;
+    } else if (overlaps(command.dst, destination_end, command.src0, first_end) ||
+               overlaps(command.dst, destination_end, command.src1, second_end) ||
+               (map3 && overlaps(command.dst, destination_end, command.src2, third_end))) {
+      return false;
+    }
+    return true;
+  }
+
   switch (command.opcode) {
     case ACCEL_OPCODE_MAP_ADD_REDUCE_MIN:
     case ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN:
@@ -183,6 +248,13 @@ bool Accelerator::execute_command(const accel_command_t &command, sc_core::sc_ti
   if (!is_valid_command(command) || command.opcode == ACCEL_OPCODE_EXECUTE_BATCH) {
     return false;
   }
+  if (command.opcode >= ACCEL_OPCODE_COST_ADD_VECTOR &&
+      command.opcode <= ACCEL_OPCODE_MINPLUS_MAP3_PROJECT) {
+    const bool written = execute_vector_command(command);
+    if (written && timing_.mode != AccelTimingMode::kUntimed)
+      accel_accumulate_command_timing(command, timing_, &timing_statistics_);
+    return written;
+  }
 
   int32_t minimum = ACCEL_INF;
   uint32_t argmin = 0;
@@ -235,4 +307,69 @@ bool Accelerator::execute_command(const accel_command_t &command, sc_core::sc_ti
               << " value=" << minimum << '\n';
   }
   return written;
+}
+
+bool Accelerator::vector_output(const accel_command_t &command, uint32_t output,
+                                accel_min_argmin_result_t *result) {
+  const bool add = command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR;
+  const bool map3 = command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  result->value = ACCEL_INF;
+  result->index = 0;
+  const uint32_t count = add ? 1 : command.n;
+  for (uint32_t inner = 0; inner < count; ++inner) {
+    const uint32_t vector_index = add ? output : inner;
+    const uint64_t first_index = add ? uint64_t(output) * command.src0_stride
+                                     : uint64_t(map3 ? 0 : output) * command.src0_outer_stride +
+                                           uint64_t(inner) * command.src0_stride;
+    int32_t first = 0;
+    int32_t second = 0;
+    if (!read_i32(command.src0 + first_index * sizeof(int32_t), &first) ||
+        !read_i32(command.src1 +
+                      uint64_t(map3 ? inner : vector_index) * command.src1_stride * sizeof(int32_t),
+                  &second))
+      return false;
+    int32_t value = 0;
+    if (accel_cost_add_checked(first, second, &value) != 0)
+      return false;
+    if (map3) {
+      int32_t third = 0;
+      const uint64_t third_index =
+          uint64_t(output) * command.src2_outer_stride + uint64_t(inner) * command.src2_stride;
+      if (!read_i32(command.src2 + third_index * sizeof(int32_t), &third) ||
+          accel_cost_add_checked(value, third, &value) != 0)
+        return false;
+    }
+    if (inner == 0 || value < result->value) {
+      result->value = value;
+      result->index = inner;
+    }
+  }
+  return true;
+}
+
+bool Accelerator::execute_vector_command(const accel_command_t &command) {
+  const bool add = command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR;
+  const bool map3 = command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  const uint32_t outputs = add ? command.n : command.m;
+  // Preflight all arithmetic before writing any output. This also makes exact
+  // src/dst aliases of COST_ADD_VECTOR safe on arithmetic failure.
+  for (uint32_t output = 0; output < outputs; ++output) {
+    accel_min_argmin_result_t result{};
+    if (!vector_output(command, output, &result))
+      return false;
+  }
+  for (uint32_t output = 0; output < outputs; ++output) {
+    accel_min_argmin_result_t result{};
+    if (!vector_output(command, output, &result))
+      return false;
+    const uint64_t address = command.dst + uint64_t(output) * command.dst_stride *
+                                               (map3 ? sizeof(result) : sizeof(int32_t));
+    if (map3) {
+      if (!memory_.write(address, &result, sizeof(result)))
+        return false;
+    } else if (!write_i32(address, result.value)) {
+      return false;
+    }
+  }
+  return true;
 }

@@ -77,7 +77,7 @@ typedef enum {
   PBQP_RN_MIN_WORK,
 } pbqp_rn_policy_t;
 
-/* Whether one RN score submits each edge separately or the whole node at once. */
+/* Vector RN/R2 path versus retained scalar jobs; per-edge controls RN batch scope. */
 typedef enum {
   PBQP_RN_BATCH_PER_NODE,
   PBQP_RN_BATCH_PER_EDGE,
@@ -154,6 +154,31 @@ typedef struct {
   size_t length;
   size_t stride;
 } pbqp_vector_view_t;
+
+/* Matrix element (row, column) is base[row * row_stride + column * column_stride]. */
+typedef struct {
+  const int32_t *base;
+  size_t rows;
+  size_t columns;
+  size_t row_stride;
+  size_t column_stride;
+} pbqp_matrix_view_t;
+
+/* One ordered MINPLUS_PROJECT -> COST_ADD_VECTOR chain. */
+typedef struct {
+  pbqp_matrix_view_t matrix;
+  pbqp_vector_view_t unary;
+  int32_t *temporary;
+  int32_t *scores;
+} pbqp_project_add_job_t;
+
+/* One fixed-first-neighbor R2 slice, producing one vector of value/argmin pairs. */
+typedef struct {
+  pbqp_vector_view_t unary;
+  pbqp_vector_view_t fixed_edge;
+  pbqp_matrix_view_t varying_edge;
+  accel_min_argmin_result_t *results;
+} pbqp_map3_project_job_t;
 
 /* One already-scheduled two-input primitive reduction and its caller-owned output. */
 typedef struct {
@@ -242,6 +267,11 @@ typedef struct {
   uint64_t slice_accumulate_bytes;
   uint64_t map3_reduce_elements;
   unsigned map3_reduce_descriptors;
+  unsigned scalar_project_descriptors;
+  unsigned vector_project_descriptors;
+  unsigned vector_add_descriptors;
+  unsigned scalar_map3_descriptors;
+  unsigned partial_map3_descriptors;
   uint64_t map3_reduce_bytes;
   uint64_t argmin_vector_elements;
   unsigned argmin_vector_descriptors;
@@ -256,7 +286,7 @@ typedef struct {
   /* exact-branch-reduce only: branches whose lower bound already met or
      exceeded the incumbent when reached, so they were not explored further. */
   unsigned search_nodes_pruned;
-  unsigned primitive_submissions[5];
+  unsigned primitive_submissions[9];
   unsigned *vector_length_histogram;
   uint64_t logical_map_elements;
   uint64_t logical_bytes_read;
@@ -285,6 +315,15 @@ typedef struct {
   int (*min3_argmin_batch)(void *context, const pbqp_min3_job_t *jobs, size_t count);
   int (*min2_value)(void *context, pbqp_vector_view_t a, pbqp_vector_view_t b, int32_t *result);
   int (*min2_value_batch)(void *context, const pbqp_min2_value_job_t *jobs, size_t count);
+  int (*cost_add_vector)(void *context, pbqp_vector_view_t a, pbqp_vector_view_t b,
+                         int32_t *result);
+  int (*minplus_project)(void *context, pbqp_matrix_view_t matrix, pbqp_vector_view_t vector,
+                         int32_t *result);
+  int (*minplus_map3_project)(void *context, pbqp_vector_view_t unary,
+                              pbqp_vector_view_t fixed_edge, pbqp_matrix_view_t varying_edge,
+                              accel_min_argmin_result_t *result);
+  int (*project_add_batch)(void *context, const pbqp_project_add_job_t *jobs, size_t count);
+  int (*map3_project_batch)(void *context, const pbqp_map3_project_job_t *jobs, size_t count);
   /* Redirects backend-only accounting while the solver evaluates a graph snapshot. */
   void (*set_statistics)(void *context, pbqp_statistics_t *statistics);
 } pbqp_cost_kernel_t;

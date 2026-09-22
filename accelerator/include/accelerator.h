@@ -51,6 +51,9 @@ class Accelerator : public sc_core::sc_module {
   bool write_register(uint64_t address, uint32_t value, sc_core::sc_time *delay);
   bool execute(sc_core::sc_time *delay);
   bool execute_command(const accel_command_t &command, sc_core::sc_time *delay);
+  bool execute_vector_command(const accel_command_t &command);
+  bool vector_output(const accel_command_t &command, uint32_t output,
+                     accel_min_argmin_result_t *result);
   bool execute_batch(const accel_command_t &command, sc_core::sc_time *delay);
   bool is_valid_command(const accel_command_t &command) const;
   bool read_i32(uint64_t address, int32_t *value);
