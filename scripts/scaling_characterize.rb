@@ -80,7 +80,7 @@ options = { runner: "build/pcaa_graph_run", generator: "build/pbqp_graph_generat
             graph_size_nodes: DEFAULT_GRAPH_SIZE_NODES.dup, graph_size_domains: DEFAULT_GRAPH_SIZE_DOMAINS,
             domain_size_nodes: DEFAULT_DOMAIN_SIZE_NODES.dup, domain_size_domains: DEFAULT_DOMAIN_SIZE_DOMAINS,
             policies: RN_POLICIES, corpus_dir: nil, corpus_family: "llvm-regalloc",
-            corpus_policy: "min-degree" }
+            corpus_policy: "min-degree", rn_batching: "per-node" }
 nodes_for_overrides = []
 domain_nodes_for_overrides = []
 
@@ -126,6 +126,10 @@ OptionParser.new do |parser|
   end
   parser.on("--corpus-policy NAME", "RN policy used for --corpus-dir rows (default: min-degree)") do |v|
     options[:corpus_policy] = v
+  end
+  parser.on("--rn-batching MODE", %w[per-node per-edge],
+            "RN scalar-job batching mode (default: per-node)") do |v|
+    options[:rn_batching] = v
   end
   parser.on("--timeout SECONDS", Integer, "Kill and record a run as time-limit past this wall clock (default: 180)") do |v|
     options[:timeout] = v
@@ -303,15 +307,18 @@ def graph_stats(text)
     cost_table_bytes: (unary_elements + matrix_elements) * 4 }
 end
 
+# Integer captures stay integers; a capture containing a decimal point (only
+# rn_cascade_mean today) is kept as a Float rather than truncated.
 def metrics(text, pattern)
   match = text.match(pattern)
-  match && match.captures.map(&:to_i)
+  match && match.captures.map { |value| value.include?(".") ? value.to_f : value.to_i }
 end
 
 REDUCTIONS_RE = /reductions R0=(\d+) R1=(\d+) R2=(\d+) RN=(\d+) projections=(\d+) projection_primitives=(\d+) commits=(\d+)/
 RN_CORE_RE = /RN core first=(\d+) nodes\/(\d+) edges max=(\d+) nodes\/(\d+) edges episodes=(\d+) degree=(\d+)\.\.(\d+) after-RN R0=(\d+) R1=(\d+) R2=(\d+) cascade-total=(\d+) cascade-max=(\d+)/
 CASCADES_RE = /rn_cascades rn_episodes=(\d+) rn_cascade_r0_total=(\d+) rn_cascade_r1_total=(\d+) rn_cascade_r2_total=(\d+) rn_cascade_exact_total=(\d+) rn_cascade_mean=([0-9.]+) rn_cascade_max=(\d+)/
 OPERATION_MIX_RE = /operation mix project-elements=(\d+) project-accumulate-elements=(\d+) slice-elements=(\d+) map3-elements=(\d+) argmin-elements=(\d+) descriptors=(\d+) batches=(\d+) operand-bytes=(\d+) result-bytes=(\d+) bytes=(\d+)/
+VIEWS_RE = /views contiguous=(\d+) strided=(\d+)/
 LOCAL_SEARCH_RE = /local search evaluations=(\d+) sweeps=(\d+) accepted-moves=(\d+) slices=(\d+) slice-elements=(\d+) argmin=(\d+)/
 
 HEADER = %w[sweeps family profile seed nodes domain policy strategy status wall_time_seconds
@@ -323,11 +330,12 @@ HEADER = %w[sweeps family profile seed nodes domain policy strategy status wall_
             rn_episodes cascade_r0_total cascade_r1_total cascade_r2_total cascade_exact_total
             cascade_mean cascade_max
             project_elements project_accumulate_elements slice_elements map3_elements argmin_elements
-            descriptors batches operand_bytes result_bytes total_bytes total_elements
+            descriptors batches operand_bytes result_bytes total_bytes contiguous_views strided_views total_elements
             elements_per_rn_episode
             ls_evaluations ls_sweeps ls_moves ls_slice_ops ls_slice_elements ls_argmin_elements
             ls_a_epochs ls_a_median_elements ls_a_p90_elements
-            ls_b_epochs ls_b_median_elements ls_b_p90_elements].freeze
+            ls_b_epochs ls_b_median_elements ls_b_p90_elements
+            pre_rn_reductions model_c_epochs elements_per_model_c_epoch].freeze
 
 # Groups a local-search JSONL trace's LOCAL_SCORE events into LS-A
 # (node-score granularity: one epoch per event) and LS-B (sweep
@@ -385,7 +393,7 @@ def run_point(options, job, key)
     file.flush
     trace_path = needs_trace ? "#{file.path}.trace.jsonl" : nil
     command = [options[:runner], "--solver", "local", "--strategy", strategy, "--rn-policy", policy,
-               "--verbose", file.path]
+               "--rn-batching", options[:rn_batching], "--verbose", file.path]
     command += ["--trace", trace_path] if trace_path
     stdout_text, stderr_text, status = invoke_with_timeout(command, options[:timeout])
     elapsed = Time.now - start_time
@@ -409,7 +417,8 @@ def run_point(options, job, key)
     rn_core = metrics(stderr_text, RN_CORE_RE)
     cascades = metrics(stderr_text, CASCADES_RE)
     mix = metrics(stderr_text, OPERATION_MIX_RE)
-    unless reductions && rn_core && cascades && mix
+    views = metrics(stderr_text, VIEWS_RE)
+    unless reductions && rn_core && cascades && mix && views
       return row_prefix + ["missing-diagnostics", format("%.3f", elapsed)] + state + Array.new(HEADER.length - filled)
     end
 
@@ -427,11 +436,22 @@ def run_point(options, job, key)
       File.delete(trace_path)
     end
 
+    # Model C (hw-sw-boundary-characterization.md): one epoch per RN pick plus
+    # its exact cascade, and one more autonomous epoch for any exact
+    # reductions that ran before the first RN (or for the whole solve when it
+    # needs no RN). hw_sw_characterize.rb's C-rn-cascade grouping uses the
+    # same rule, so these counts match its trace-derived epochs.
+    pre_rn_reductions = reductions[0, 3].sum - rn_core[7, 3].sum
+    model_c_epochs = rn_episodes + (pre_rn_reductions.positive? ? 1 : 0)
+    elements_per_model_c_epoch =
+      model_c_epochs.positive? ? format("%.2f", total_elements.to_f / model_c_epochs) : ""
+
     row_prefix + ["ok", format("%.3f", elapsed)] + state +
       reductions + [rn_core[0], rn_core[1], rn_core[2], rn_core[3], rn_core[5], rn_core[6],
                     rn_core[7], rn_core[8], rn_core[9]] +
-      cascades + mix + [total_elements, elements_per_episode] +
-      local_search + ls_a_stats + ls_b_stats
+      cascades + mix + views + [total_elements, elements_per_episode] +
+      local_search + ls_a_stats + ls_b_stats +
+      [pre_rn_reductions, model_c_epochs, elements_per_model_c_epoch]
   end
 end
 

@@ -56,6 +56,17 @@ add_custom_target(scaling_characterization
   BYPRODUCTS ${PROJECT_BINARY_DIR}/scaling-runs.csv
   COMMENT "Recording supported PBQP scaling points and capacity limits")
 
+add_custom_target(fork_parallelism_characterization
+  COMMAND ${RUBY_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/fork_parallelism_characterize.rb
+    --runner $<TARGET_FILE:pcaa_graph_run>
+    --generator $<TARGET_FILE:pbqp_graph_generate>
+    --scaling-csv ${PROJECT_BINARY_DIR}/scaling-runs.csv
+    --corpus-dir ${PROJECT_SOURCE_DIR}/examples/regalloc
+    --output ${PROJECT_BINARY_DIR}/fork-parallelism.csv
+  DEPENDS pcaa_graph_run pbqp_graph_generate
+  BYPRODUCTS ${PROJECT_BINARY_DIR}/fork-parallelism.csv
+  COMMENT "Characterizing exact-search fork domains against Model-C epoch work")
+
 pcaa_add_format_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run_launcher.cpp

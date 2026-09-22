@@ -77,6 +77,12 @@ typedef enum {
   PBQP_RN_MIN_WORK,
 } pbqp_rn_policy_t;
 
+/* Whether one RN score submits each edge separately or the whole node at once. */
+typedef enum {
+  PBQP_RN_BATCH_PER_NODE,
+  PBQP_RN_BATCH_PER_EDGE,
+} pbqp_rn_batching_t;
+
 /* Stable solver-event categories for external workload characterization. */
 typedef enum {
   PBQP_TRACE_R0,
@@ -121,6 +127,8 @@ typedef struct {
   uint64_t argmin_vector_elements;
   unsigned primitive_descriptors;
   unsigned structural_operations;
+  /* Non-zero only for BRANCH_SELECT; absent meaning in older JSONL consumers is zero. */
+  unsigned branch_domain;
   uint64_t operand_bytes;
   uint64_t result_bytes;
 } pbqp_solver_event_t;
@@ -133,6 +141,7 @@ typedef struct {
 typedef struct {
   pbqp_solver_strategy_t strategy;
   pbqp_rn_policy_t rn_policy;
+  pbqp_rn_batching_t rn_batching;
   unsigned maximum_search_nodes;
   const pbqp_trace_sink_t *trace_sink;
   /* Optional snapshot/scratch allocator; an empty value uses the problem allocator. */

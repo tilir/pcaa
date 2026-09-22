@@ -198,10 +198,15 @@ bool Accelerator::execute_command(const accel_command_t &command, sc_core::sc_ti
       return false;
     }
 
-    int32_t value = accel_cost_add(left, right);
+    int32_t value = 0;
+    if (accel_cost_add_checked(left, right, &value) != 0) {
+      return false;
+    }
     if (command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN ||
         command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN) {
-      value = accel_cost_add(value, third);
+      if (accel_cost_add_checked(value, third, &value) != 0) {
+        return false;
+      }
     }
     if (i == 0 || value < minimum) {
       minimum = value;

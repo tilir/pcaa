@@ -77,9 +77,13 @@ line-oriented `nodes`/`node`/`edge` format and its `INF` literal unless a
 versioned user-facing format migration is explicitly requested. It must submit
 through the SystemC target socket rather than bypassing the accelerator. It
 requires an explicit `--solver bare-metal|local` choice: bare-metal rejects
-graphs outside its fixed arenas, while local sizes the same shared solver
-through the hosted allocator. Strategy is orthogonal to mode: every shared
-strategy may be selected in either mode when its storage fits that environment.
+graphs outside its fixed arenas and initializes the graph with the fixed
+`PBQP_MAX_*` capacities, so `pbqp_max_finite_cost` admits exactly the RV64 cost
+range, while local sizes the same shared solver through the hosted allocator.
+Only exact-search workspace remains host-heap-backed in bare-metal mode,
+since its arena size is chosen per RV64 program, not by the solver. Strategy
+is orthogonal to mode: every shared strategy may be selected in either mode
+when its storage fits that environment.
 Only `EXACT_CORE_ENUMERATION` and `EXACT_BRANCH_REDUCE` may label a completed
 result exact; `LOCAL_SEARCH` must label its result a local optimum.
 The runner default is `HEURISTIC_RN`.
@@ -121,6 +125,9 @@ accumulation must remain distinct from shared conditioning/commit, which
 applies the selected matrix slice exactly once. Account generic conditioning
 traffic separately from RN-only commits: each updated element reads matrix and
 unary then writes unary (12 logical bytes).
+Submit all scalar RN projections for one selected node in one ordered batch by
+default; retain the per-edge mode as a characterization control, with identical
+projection ordering, scores, and child descriptors.
 For RN projection, fix the selected node's coordinate and minimize across its
 neighbor; use `ConditionedEdgeView`, not the R1/R2-oriented `EdgeView`. Keep
 asymmetric, rectangular, and `INF` orientation regressions in the unit tests.
@@ -151,8 +158,10 @@ runtime constructs child primitive descriptors and the accelerator drains them
 in order. Do not add dependency discovery, reordering, graph awareness, or
 batching across PBQP reductions. Within one software-built batch, cache packed
 strided views by `(base, length, stride)` and keep their storage valid through
-completion. Keep statistics for primitive descriptors separate from top-level
-MMIO submissions.
+completion; this applies to the RV64 adapter and to the host runner's guest
+staging area alike (R2 repeats one unary and 2·D slices across D² primitives).
+Keep statistics for primitive descriptors separate from top-level MMIO
+submissions.
 
 When changing freestanding PBQP working storage, calculate the complete call
 chain's stack use. The bare-metal startup reserve is 1 MiB and PBQP ELFs must

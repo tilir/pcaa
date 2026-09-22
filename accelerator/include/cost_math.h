@@ -10,8 +10,11 @@
 extern "C" {
 #endif
 
-/* Adds two costs, propagating ACCEL_INF and saturating positive overflow to INF. */
+/* Adds two costs for host-side bounded algorithms; negative underflow clamps for compatibility. */
 int32_t accel_cost_add(int32_t left, int32_t right);
+
+/* Command-path addition: returns non-zero instead of silently tying negative underflows. */
+int accel_cost_add_checked(int32_t left, int32_t right, int32_t *result);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -2,7 +2,7 @@
 
 ## Architecture specification
 
-Revision 0.5
+Revision 0.6
 
 ## 1. Scope
 
@@ -88,15 +88,28 @@ The cost addition used by currently defined commands has the following
 semantics:
 
 ```text
-INF + x   = INF
-x + INF   = INF
-finite sum >= INF = INF
-finite sum < INT32_MIN = INT32_MIN
-otherwise = exact signed sum
+INF + x                    = INF
+x + INF                    = INF
+finite sum >= INF          = INF
+finite sum < INT32_MIN     = command ERROR
+otherwise                  = exact signed sum
 ```
 
-The last two rules make overflow behavior deterministic. `INF` is a value in
-the data representation, not an out-of-band validity flag.
+`INF` is the absorbing element of cost addition: the implementation in
+`accelerator/src/cost_math.cpp` checks either operand for `INF` before it
+forms a sum, so `INF + x = INF` for every signed value of `x`. This is a
+deliberate algebraic rule, not ordinary saturation, and `INF` remains a value
+in the data representation rather than an out-of-band validity flag.
+
+Positive and negative range excess are intentionally asymmetric. A finite sum
+at or above `INF` becomes `INF`: all such costs are forbidden/unreachable, so
+their ordering is immaterial. A finite sum below `INT32_MIN` has no analogous
+negative-infinity meaning. Clamping two distinct sums there would create a
+false tie and could change first-index argmin, so any command encountering
+negative underflow fails with `ERROR` and does not produce a result. The
+checked command-path helper is `accel_cost_add_checked`; bounded host
+algorithms may use `accel_cost_add` only when their input contract proves that
+negative underflow cannot occur.
 
 ### 4.2 Tie breaking
 
@@ -293,8 +306,11 @@ malformed cases are:
 * unsupported opcode;
 * `n == 0`;
 * zero required source or destination address;
-* zero `src2` for opcodes `2` and `4`.
+* zero `src2` for opcodes `2` and `4`;
 * `EXECUTE_BATCH` with a nested batch child.
+
+A well-formed command also completes with `ERROR` if a finite cost addition
+underflows below `INT32_MIN`, including either addition of an ADD3 primitive.
 
 An `ERROR` completion does not specify a result at `dst`. A subsequent valid
 submission is permitted and is independent of the preceding error.
@@ -341,6 +357,11 @@ projections, and normalization. Extensions retain the following invariants:
 Structural batched descriptors, in which the block generates an inner
 iteration space, and stride-aware operand descriptors remain unresolved future
 choices. Neither is defined by this revision.
+
+Any future primitive that produces several independently reduced outputs in
+one descriptor must apply first-index argmin separately within each output
+element's own reduction domain. It must not introduce a cross-output
+tie-break: none exists in the currently characterized algorithms or workloads.
 
 ## 13. Exclusions
 

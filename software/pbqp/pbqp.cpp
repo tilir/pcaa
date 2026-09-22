@@ -418,7 +418,7 @@ class Solver {
   void Emit(Graph &graph, pbqp_trace_event_type_t type, pbqp_trace_phase_t phase, int node,
             int choice, uint64_t project, uint64_t project_accumulate, uint64_t slice,
             uint64_t map3, uint64_t argmin, unsigned descriptors, unsigned structural,
-            uint64_t operand_bytes, uint64_t result_bytes) const {
+            uint64_t operand_bytes, uint64_t result_bytes, unsigned branch_domain = 0) const {
     if (config_.trace_sink == nullptr || config_.trace_sink->emit == nullptr)
       return;
     pbqp_solver_event_t event{};
@@ -443,6 +443,7 @@ class Solver {
     event.argmin_vector_elements = argmin;
     event.primitive_descriptors = descriptors;
     event.structural_operations = structural;
+    event.branch_domain = branch_domain;
     event.operand_bytes = operand_bytes;
     event.result_bytes = result_bytes;
     config_.trace_sink->emit(config_.trace_sink->context, &event);
@@ -701,10 +702,16 @@ class Solver {
   pbqp_status_t ReduceRN(Graph &graph, unsigned node_index) const {
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
+    const unsigned degree = graph.NeighborCount(node_index, nullptr);
+    if (node.domain != 0 && degree > SIZE_MAX / node.domain)
+      return PBQP_CAPACITY_ERROR;
+    const size_t node_job_count = static_cast<size_t>(degree) * node.domain;
+    const size_t job_capacity =
+        config_.rn_batching == PBQP_RN_BATCH_PER_NODE ? node_job_count : node.domain;
     const pbqp_allocator_t allocator = WorkspaceAllocator(problem, config_);
     Array<int32_t> scores_storage(allocator, node.domain);
-    Array<pbqp_min2_value_job_t> jobs_storage(allocator, node.domain);
-    Array<int32_t> results_storage(allocator, node.domain);
+    Array<pbqp_min2_value_job_t> jobs_storage(allocator, job_capacity);
+    Array<int32_t> results_storage(allocator, job_capacity);
     if (scores_storage.Get() == nullptr || jobs_storage.Get() == nullptr ||
         results_storage.Get() == nullptr)
       return PBQP_CAPACITY_ERROR;
@@ -720,7 +727,6 @@ class Solver {
       scores[value] = node.unary[value];
     }
 
-    const unsigned degree = graph.NeighborCount(node_index, nullptr);
     ++problem.statistics.rn_count;
     problem.statistics.rn_degree_total += degree;
     if (problem.statistics.rn_count == 1 || degree < problem.statistics.rn_degree_min) {
@@ -731,6 +737,7 @@ class Solver {
     }
     ++problem.statistics.rn_degree_histogram[degree];
 
+    size_t job_offset = 0;
     for (unsigned edge_index = 0; edge_index < problem.edge_capacity; ++edge_index) {
       const pbqp_edge_t &edge = problem.edges[edge_index];
       if (!edge.active || (edge.first != node_index && edge.second != node_index)) {
@@ -742,7 +749,9 @@ class Solver {
         const pbqp_vector_view_t matrix_slice =
             ConditionedEdgeView(edge, node_index, value, neighbor.domain);
         const pbqp_vector_view_t unary = {neighbor.unary, neighbor.domain, 1};
-        jobs[value] = {matrix_slice, unary, &results[value]};
+        const size_t job_index =
+            config_.rn_batching == PBQP_RN_BATCH_PER_NODE ? job_offset + value : value;
+        jobs[job_index] = {matrix_slice, unary, &results[job_index]};
         RecordView(&problem.statistics, matrix_slice);
         RecordView(&problem.statistics, unary);
         RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, neighbor.domain, 2,
@@ -754,17 +763,27 @@ class Solver {
         problem.statistics.rn_projection_result_bytes += sizeof(int32_t);
       }
       ++problem.statistics.rn_projection_count;
-      if (kernel_.Min2ValueBatch(jobs, node.domain) != 0) {
-        return PBQP_ARGUMENT_ERROR;
-      }
-      for (unsigned value = 0; value < node.domain; ++value) {
-        scores[value] = accel_cost_add(scores[value], results[value]);
+      if (config_.rn_batching == PBQP_RN_BATCH_PER_EDGE) {
+        if (kernel_.Min2ValueBatch(jobs, node.domain) != 0)
+          return PBQP_ARGUMENT_ERROR;
+        for (unsigned value = 0; value < node.domain; ++value)
+          scores[value] = accel_cost_add(scores[value], results[value]);
+      } else {
+        job_offset += node.domain;
       }
       problem.statistics.rn_score_accumulation_elements += node.domain;
       problem.statistics.project_accumulate_elements += node.domain;
       problem.statistics.project_accumulate_bytes += 3 * node.domain * sizeof(int32_t);
       problem.statistics.operation_mix_operand_bytes += 2 * node.domain * sizeof(int32_t);
       problem.statistics.operation_mix_result_bytes += node.domain * sizeof(int32_t);
+    }
+    if (config_.rn_batching == PBQP_RN_BATCH_PER_NODE) {
+      if (job_offset != node_job_count || kernel_.Min2ValueBatch(jobs, job_offset) != 0)
+        return PBQP_ARGUMENT_ERROR;
+      for (size_t edge_offset = 0; edge_offset < job_offset; edge_offset += node.domain) {
+        for (unsigned value = 0; value < node.domain; ++value)
+          scores[value] = accel_cost_add(scores[value], results[edge_offset + value]);
+      }
     }
 
     unsigned choice = 0;
@@ -1193,8 +1212,9 @@ class Solver {
     const int branch_node = graph.SelectRnNode(config_.rn_policy);
     if (branch_node < 0)
       return PBQP_IRREDUCIBLE;
+    const unsigned domain = state->nodes[branch_node].domain;
     Emit(graph, PBQP_TRACE_BRANCH_SELECT, PBQP_TRACE_EXACT_SEARCH, branch_node, -1, 0, 0, 0, 0, 0,
-         0, 0, 0, 0);
+         0, 0, 0, 0, domain);
     const pbqp_allocator_t allocator = WorkspaceAllocator(*state, config_);
     Array<unsigned> best_assignment(allocator, state->node_count);
     if (best_assignment.Get() == nullptr) {
@@ -1205,7 +1225,6 @@ class Solver {
     pbqp_solution_t best;
     pbqp_solution_init(&best, best_assignment.Get(), state->node_count);
     bool has_best = false;
-    const unsigned domain = state->nodes[branch_node].domain;
     const pbqp_statistics_t base_statistics = state->statistics;
     pbqp_statistics_t aggregate_statistics = base_statistics;
     for (unsigned value = 0; value < domain; ++value) {
@@ -1337,8 +1356,10 @@ int SoftwareMin2(void *, pbqp_vector_view_t first, pbqp_vector_view_t second,
   result->value = ACCEL_INF;
   result->index = 0;
   for (size_t index = 0; index < first.length; ++index) {
-    const int32_t value =
-        accel_cost_add(first.base[index * first.stride], second.base[index * second.stride]);
+    int32_t value = 0;
+    if (accel_cost_add_checked(first.base[index * first.stride], second.base[index * second.stride],
+                               &value) != 0)
+      return -1;
     if (index == 0 || value < result->value) {
       result->value = value;
       result->index = static_cast<uint32_t>(index);
@@ -1352,9 +1373,12 @@ int SoftwareMin3(void *, pbqp_vector_view_t first, pbqp_vector_view_t second,
   result->value = ACCEL_INF;
   result->index = 0;
   for (size_t index = 0; index < first.length; ++index) {
-    const int32_t sum =
-        accel_cost_add(first.base[index * first.stride], second.base[index * second.stride]);
-    const int32_t value = accel_cost_add(sum, third.base[index * third.stride]);
+    int32_t sum = 0;
+    int32_t value = 0;
+    if (accel_cost_add_checked(first.base[index * first.stride], second.base[index * second.stride],
+                               &sum) != 0 ||
+        accel_cost_add_checked(sum, third.base[index * third.stride], &value) != 0)
+      return -1;
     if (index == 0 || value < result->value) {
       result->value = value;
       result->index = static_cast<uint32_t>(index);
@@ -1375,8 +1399,10 @@ int SoftwareMin2Value(void *, pbqp_vector_view_t first, pbqp_vector_view_t secon
                       int32_t *result) {
   *result = ACCEL_INF;
   for (size_t index = 0; index < first.length; ++index) {
-    const int32_t value =
-        accel_cost_add(first.base[index * first.stride], second.base[index * second.stride]);
+    int32_t value = 0;
+    if (accel_cost_add_checked(first.base[index * first.stride], second.base[index * second.stride],
+                               &value) != 0)
+      return -1;
     if (index == 0 || value < *result)
       *result = value;
   }
@@ -1520,7 +1546,12 @@ void pbqp_make_software_kernel(pbqp_cost_kernel_t *kernel, pbqp_statistics_t *st
 }
 
 pbqp_solver_config_t pbqp_solver_default_config(void) {
-  return {PBQP_STRATEGY_EXACT_CORE_ENUMERATION, PBQP_RN_MIN_DEGREE, 0, nullptr, {}};
+  return {PBQP_STRATEGY_EXACT_CORE_ENUMERATION,
+          PBQP_RN_MIN_DEGREE,
+          PBQP_RN_BATCH_PER_NODE,
+          0,
+          nullptr,
+          {}};
 }
 
 pbqp_status_t pbqp_solver_create(pbqp_solver_t *solver, pbqp_mode_t mode,
@@ -1534,6 +1565,7 @@ pbqp_status_t pbqp_solver_create_with_config(pbqp_solver_t *solver, pbqp_mode_t 
                                              const pbqp_solver_config_t *config) {
   if (solver == nullptr || kernel == nullptr || kernel->min2_argmin == nullptr ||
       kernel->min3_argmin == nullptr || config == nullptr ||
+      config->rn_batching > PBQP_RN_BATCH_PER_EDGE ||
       ((config->workspace_allocator.allocate == nullptr) !=
        (config->workspace_allocator.deallocate == nullptr))) {
     return PBQP_ARGUMENT_ERROR;

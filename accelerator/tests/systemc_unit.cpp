@@ -159,6 +159,8 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(ACCEL_INF, -100) == ACCEL_INF);
   CHECK(accel_cost_add(ACCEL_INF - 1, 2) == ACCEL_INF);
   CHECK(accel_cost_add(INT32_MIN, -1) == INT32_MIN);
+  int32_t checked_sum = 0;
+  CHECK(accel_cost_add_checked(INT32_MIN, -1, &checked_sum) != 0);
 
   TestMemory memory(kTestMemorySize);
   AccelTimingConfig timing;
@@ -243,6 +245,16 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   expect_done(initiator, memory, command);
   CHECK(memory.read(kTieResultAddress, &argmin_result, sizeof(argmin_result)));
   CHECK(argmin_result.value == -4 && argmin_result.index == 0);
+
+  // Without a reported underflow these two different exact sums both clamp
+  // to INT32_MIN and falsely tie, making first-index argmin select index 0
+  // even though index 1 is strictly smaller.
+  const std::array<int32_t, 2> underflow_a = {INT32_MIN, INT32_MIN + 10};
+  const std::array<int32_t, 2> underflow_b = {-1, -20};
+  CHECK(memory.write(kTieFirstInputAddress, underflow_a.data(), sizeof(underflow_a)));
+  CHECK(memory.write(kTieSecondInputAddress, underflow_b.data(), sizeof(underflow_b)));
+  command.n = 2;
+  expect_error(initiator, memory, command);
 
   std::vector<int32_t> large_a(kLargeVectorLength, 10);
   std::vector<int32_t> large_b(kLargeVectorLength, 1);

@@ -38,6 +38,17 @@ add_test(NAME pcaa_graph_run_local_wide_domain COMMAND pcaa_graph_run --solver l
   --strategy heuristic-rn ${CMAKE_CURRENT_SOURCE_DIR}/examples/wide-domain.pbqp)
 set_tests_properties(pcaa_graph_run_local_wide_domain
   PROPERTIES PASS_REGULAR_EXPRESSION "strategy HEURISTIC_RN")
+add_test(NAME pcaa_graph_run_local_r2_staging COMMAND pcaa_graph_run --solver local
+  --strategy heuristic-rn ${CMAKE_CURRENT_SOURCE_DIR}/tools/testdata/r2-domain-48.pbqp)
+set_tests_properties(pcaa_graph_run_local_r2_staging
+  PROPERTIES PASS_REGULAR_EXPRESSION "optimum -30")
+add_test(NAME pcaa_graph_run_bare_cost_range COMMAND pcaa_graph_run --solver bare-metal
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/testdata/bare-cost-range.pbqp)
+set_tests_properties(pcaa_graph_run_bare_cost_range PROPERTIES WILL_FAIL TRUE)
+add_test(NAME pcaa_graph_run_local_cost_range COMMAND pcaa_graph_run --solver local
+  ${CMAKE_CURRENT_SOURCE_DIR}/tools/testdata/bare-cost-range.pbqp)
+set_tests_properties(pcaa_graph_run_local_cost_range
+  PROPERTIES PASS_REGULAR_EXPRESSION "optimum 258112")
 add_test(NAME pcaa_graph_run_invalid_numeric COMMAND pcaa_graph_run --solver local
   ${CMAKE_CURRENT_SOURCE_DIR}/tools/testdata/invalid-numeric.pbqp)
 set_tests_properties(pcaa_graph_run_invalid_numeric
@@ -70,6 +81,11 @@ add_test(NAME pcaa_graph_run_cascade_statistics COMMAND pcaa_graph_run --verbose
   --strategy heuristic-rn ${CMAKE_CURRENT_SOURCE_DIR}/examples/chvatal.pbqp)
 set_tests_properties(pcaa_graph_run_cascade_statistics
   PROPERTIES PASS_REGULAR_EXPRESSION "pcaa: rn_cascades rn_episodes=[1-9][0-9]*")
+add_test(NAME pcaa_graph_run_rn_batching_regression
+  COMMAND ${RUBY_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/rn_batching_regression.rb
+    $<TARGET_FILE:pcaa_graph_run>
+    ${CMAKE_CURRENT_SOURCE_DIR}/examples
+    ${CMAKE_CURRENT_SOURCE_DIR}/examples/regalloc)
 
 set_source_files_properties(software/pbqp/pbqp_unit.c PROPERTIES LANGUAGE CXX)
 add_executable(pbqp_unit software/pbqp/pbqp_unit.c)

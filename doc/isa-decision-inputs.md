@@ -1,8 +1,8 @@
 # ISA-decision data-gathering: index
 
-This is a pure index over the six work items in the ISA-decision
-data-gathering pass (`prompt-gather.md`). It points at each item's data and
-report and lists the open questions that item raised but did not answer.
+This is a pure index over the first six work items (`prompt-gather.md`) and
+round 3's seven follow-ups (`prompt-arch.md`). It points at each item's data
+and report and lists the open questions that item raised but did not answer.
 It contains no synthesis or recommendation — the ISA decision itself is a
 separate, later conversation, using this data as input.
 
@@ -57,10 +57,10 @@ separate, later conversation, using this data as input.
   `software/tests/pbqp_rn.c`.
 - **Report**: [doc/branch-bound-characterization.md](branch-bound-characterization.md).
 - **Open questions**:
-  - True peak concurrent frontier width was not measured exactly — only a
-    branches/depth average-branching-factor proxy — because the trace
-    schema carries no depth field; extending it was scoped out as a real
-    instrumentation change deserving its own review (§5 of that report).
+  - Level (parallel) frontier width was not measured: the trace carries no
+    per-event depth. Only depth and the exact depth-first open-node bound
+    `1 + depth * (D_max - 1)` are reported; tree sizes (up to ~178k visited
+    nodes) leave level width unbounded by the data.
   - Pruning effectiveness on real graphs with RN 4-8 was highly
     graph-dependent (0.5%-86.4% pruned in a 7-graph sample) and not
     predictable from RN count alone; the underlying cause (cost-value
@@ -108,7 +108,7 @@ separate, later conversation, using this data as input.
 
 ## Item 6: generality probe (Bellman-Ford)
 
-- **Data**: `probes/src/bellman_ford.cpp`, tested by `probes_unit` (5
+- **Data**: `probes/src/bellman_ford.cpp`, tested by `probes_unit` (8
   GoogleTest cases, in the main CTest suite).
 - **Report**: [doc/generality-probe.md](generality-probe.md).
 - **Open questions**:
@@ -118,6 +118,116 @@ separate, later conversation, using this data as input.
   - All-pairs shortest path was named as needing a structurally different,
     matrix-output-tier primitive, but not implemented — whether that
     tier is worth building is unaddressed.
+  - Saturation at `INT32_MIN` makes negative-cycle detection impossible
+    with PCAA arithmetic alone (the probe uses an exact 64-bit shadow);
+    whether a future ISA should expose a wider cost type, an overflow
+    flag, or rely on per-workload input-range contracts is unaddressed.
   - This is one workload; whether opcode 3's fit generalizes across a
-    wider set of non-PBQP min-plus problems, or whether Bellman-Ford
-    happened to be an unusually good fit, is untested with only one probe.
+  wider set of non-PBQP min-plus problems, or whether Bellman-Ford
+  happened to be an unusually good fit, is untested with only one probe.
+
+## Round 3, Item A: RN batch restructuring
+
+- **Data**: `build/isa-round3-scaling.csv` (per-node),
+  `build/isa-round3-per-edge.csv` (control), and the corresponding
+  `build/vector-cycle-*.csv` timed subsets. Code: `ReduceRN` and
+  `--rn-batching per-node|per-edge`.
+- **Report**: [doc/batch-restructuring-study.md](batch-restructuring-study.md).
+- **Open questions**:
+  - The L1 model prices each removed top-level batch descriptor at five
+    cycles but contains no host/device round-trip latency; measured hardware
+    may value the 78-88% submission reduction differently.
+  - Per-node batching increases peak solver/adapter workspace. The fixed RV64
+    configuration is covered, but a future smaller embedded arena may prefer
+    chunking rather than the legacy per-edge extreme.
+
+## Round 3, Item B: vector-output cycle projection
+
+- **Data**: `build/vector-cycle-projection.csv`, generated from 180 synthetic
+  D=2..32 points and all 491 LLVM graphs by
+  `scripts/vector_cycle_project.rb`.
+- **Report**:
+  [doc/vector-primitive-cycle-projection.md](vector-primitive-cycle-projection.md).
+- **Open questions**:
+  - The projection assumes perfect descriptor-local reuse and today's
+    four-lane throughput; control, buffering, and stride-unit costs need an
+    actual microarchitecture before the 2.5-4x model ratios can be validated.
+  - Whether partial-D MAP3 is materially cheaper to build than full-D² MAP3
+    is an area/routing question, not answered by service-cycle formulas.
+
+## Round 3, Item C: fork-level parallelism
+
+- **Data**: `build/fork-parallelism.csv`; schema/code:
+  `pbqp_solver_event_t::branch_domain`, the JSON writer, and
+  `scripts/fork_parallelism_characterize.rb`.
+- **Report**:
+  [doc/fork-parallelism-characterization.md](fork-parallelism-characterization.md).
+- **Open questions**:
+  - Branching factor times a per-graph Model-C epoch is a work proxy, not the
+    true cost or overlap of exact child bounds.
+  - Peak concurrent frontier width, snapshot bandwidth, and profitable worker
+    count remain unknown because depth/parent tracking intentionally remains
+    outside the trace.
+
+## Round 3, Item D: fixed-point versus FP32 evidence
+
+- **Data**: DIMACS NY graph/coordinate analysis via
+  `scripts/cost_representation_analyze.rb`; published every-100,000th-arc
+  samples in `probes_unit`; direct source audit of PBQP, accelerator, and probe
+  arithmetic.
+- **Report**: [doc/cost-representation-study.md](cost-representation-study.md).
+- **Open questions**:
+  - A scale/rebasing policy belongs to each future non-PBQP workload; the
+    descriptor ABI has no representation metadata today.
+  - Historical literature gives only a rough int32/FP32 cost ratio. PCAA's
+    eventual target, exception policy, and pipeline need their own synthesis.
+  - Variable-length PBQP folds remain in host software; their numerical order
+    contract must be chosen before any are parallelized in hardware.
+
+## Round 3, Item E: arithmetic and future tie semantics
+
+- **Specification diff**: [doc/arch.md](arch.md) §4.1 names `INF` as the
+  unconditional absorbing element (`INF + x = INF` for either sign), and §12
+  requires every output of a future vector-reduction primitive to apply its
+  own local first-index tie break.
+- **Open questions**:
+  - No vector-output opcode exists, so output layout and how local argmins are
+    represented remain future descriptor-design work.
+
+## Round 3, Item F: negative underflow is an error
+
+- **Data/code**: `accelerator/src/cost_math.cpp` exposes the checked
+  command-path addition used by `accelerator/src/accelerator.cpp` and the
+  software primitive kernel in `software/pbqp/pbqp.cpp`; regression:
+  `accelerator/tests/systemc_unit.cpp`.
+- **Specification diff**: [doc/arch.md](arch.md) §4.1 and §9.
+- **Resolution**: negative saturation was replaced by command `ERROR`.
+  Keeping the clamp would merge distinct very-negative sums and create a
+  false argmin tie. A global input-bound contract was rejected because the
+  descriptor ABI permits results to be fed into later commands and has no
+  graph-wide accumulation bound; reporting the underflow at the operation
+  that observes it is smaller and unambiguous. Positive saturation remains
+  `INF`, whose absorbing semantics make that collapse sound.
+- **Open questions**:
+  - The host-only Bellman-Ford probe deliberately retains a wider exact
+    shadow for cycle detection; whether a future non-PBQP API should expose
+    checked arithmetic directly rather than treat command failure as the
+    only signal remains undecided.
+
+## Round 3, Item G: contiguous and strided matrix views
+
+- **Data**: `contiguous_views` and `strided_views` in verbose output and the
+  existing scaling/RN CSVs; full results are in
+  `build/isa-round3-scaling.csv`.
+- **Report**:
+  [doc/matrix-access-pattern-study.md](matrix-access-pattern-study.md).
+- **Design note**: if a future matrix/vector-output primitive is introduced,
+  give every operand an explicit stride (using the descriptor's reserved
+  `m`/`k` extension route) rather than a row/column layout mode. Current
+  storage has one row-major padded representation; rows and columns are the
+  same view type with different stride values, not different layouts.
+- **Open questions**:
+  - Existing counters are global per solve and cannot attribute shape to
+    RN/PROJECT versus R2/MAP3 without new instrumentation.
+  - Frequency alone says nothing about stride-unit latency, packing reuse,
+    banking, or memory-system throughput.

@@ -14,6 +14,7 @@
 #include <cstring>
 #include <exception>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -40,7 +41,7 @@
 
 namespace {
 
-constexpr size_t kGuestMemoryBytes = 1024 * 1024;
+constexpr size_t kInitialGuestMemoryBytes = 1024 * 1024;
 constexpr size_t kMaximumHostDomain = 64 * 1024;
 constexpr unsigned kTimedRunnerLanes = 4;
 constexpr int kTimedRunnerCyclePeriodNanoseconds = 1;
@@ -69,6 +70,23 @@ struct RunnerSolution {
   int32_t optimum = ACCEL_INF;
   std::vector<unsigned> assignment;
   bool exact = false;
+};
+
+struct CycleBreakdown {
+  uint64_t descriptor = 0;
+  uint64_t operands = 0;
+  uint64_t compute = 0;
+  uint64_t result = 0;
+  uint64_t total = 0;
+  uint64_t descriptors = 0;
+};
+
+struct VectorCycleProjection {
+  CycleBreakdown project_scalar;
+  CycleBreakdown project_vector;
+  CycleBreakdown map3_scalar;
+  CycleBreakdown map3_partial;
+  CycleBreakdown map3_full;
 };
 
 const char *trace_type_name(pbqp_trace_event_type_t type) {
@@ -112,6 +130,7 @@ struct TraceWriter {
                    << ",\"argmin\":" << event->argmin_vector_elements
                    << ",\"primitive_descriptors\":" << event->primitive_descriptors
                    << ",\"structural_operations\":" << event->structural_operations
+                   << ",\"branch_domain\":" << event->branch_domain
                    << ",\"operand_bytes\":" << event->operand_bytes
                    << ",\"result_bytes\":" << event->result_bytes << "}\n";
   }
@@ -129,6 +148,8 @@ void print_usage(std::ostream &output) {
             "                              Select the solving algorithm (default: heuristic-rn).\n"
             "  --rn-policy min-degree|max-degree|min-work\n"
             "                              Select RN node choice (default: min-degree).\n"
+            "  --rn-batching per-node|per-edge\n"
+            "                              Batch all RN-node jobs or retain the legacy path.\n"
             "  --maximum-search-nodes N   Bound an exact search; zero leaves the limit unset.\n"
             "  --verbose                   Trace model activity to standard error.\n"
             "  --trace FILE                Write stable JSONL solver events to FILE.\n"
@@ -156,7 +177,7 @@ const char *strategy_name(pbqp_solver_strategy_t strategy) {
 
 class GuestMemory final : public MemoryInterface {
  public:
-  GuestMemory() : bytes_(kGuestMemoryBytes) {}
+  GuestMemory() : bytes_(kInitialGuestMemoryBytes) {}
 
   bool read(uint64_t address, void *destination, size_t size) override {
     if (!contains(address, size)) {
@@ -176,10 +197,21 @@ class GuestMemory final : public MemoryInterface {
 
   uint64_t allocate(size_t size, size_t alignment = kAllocationAlignment) {
     const uint64_t aligned = (next_address_ + alignment - 1) / alignment * alignment;
-    if (!contains(aligned, size)) {
+    if (aligned > std::numeric_limits<uint64_t>::max() - size) {
       return 0;
     }
-    next_address_ = aligned + size;
+    const uint64_t end = aligned + size;
+    if (end > std::numeric_limits<size_t>::max()) {
+      return 0;
+    }
+    if (end > bytes_.size()) {
+      try {
+        bytes_.resize(static_cast<size_t>(end));
+      } catch (const std::exception &) {
+        return 0;
+      }
+    }
+    next_address_ = end;
     return aligned;
   }
 
@@ -226,7 +258,109 @@ class ModelKernel {
     return accelerator_.timing_statistics();
   }
 
+  const VectorCycleProjection &vector_cycle_projection() const {
+    return vector_cycle_projection_;
+  }
+
  private:
+  struct ViewKey {
+    const int32_t *base;
+    size_t length;
+    size_t stride;
+  };
+
+  struct ViewKeyLess {
+    bool operator()(const ViewKey &left, const ViewKey &right) const {
+      if (left.base != right.base) {
+        return std::less<const int32_t *>{}(left.base, right.base);
+      }
+      if (left.length != right.length) {
+        return left.length < right.length;
+      }
+      return left.stride < right.stride;
+    }
+  };
+
+  static uint64_t divide_round_up(uint64_t value, uint64_t divisor) {
+    return (value + divisor - 1) / divisor;
+  }
+
+  static void record_cycles(CycleBreakdown *breakdown, uint64_t operand_elements,
+                            uint64_t compute_chunks, uint64_t result_bytes) {
+    const uint64_t descriptor = divide_round_up(sizeof(accel_command_t), kTimedRunnerBytesPerCycle);
+    const uint64_t operands =
+        divide_round_up(operand_elements * sizeof(int32_t), kTimedRunnerBytesPerCycle);
+    const uint64_t result = divide_round_up(result_bytes, kTimedRunnerBytesPerCycle);
+    breakdown->descriptor += descriptor;
+    breakdown->operands += operands;
+    breakdown->compute += compute_chunks;
+    breakdown->result += result;
+    breakdown->total += descriptor + std::max(operands, compute_chunks) + result;
+    ++breakdown->descriptors;
+  }
+
+  void record_project_cycle_projection(const pbqp_min2_value_job_t *jobs, size_t count) {
+    struct Group {
+      uint64_t operand_elements = 0;
+      uint64_t compute_chunks = 0;
+      uint64_t outputs = 0;
+    };
+    std::map<ViewKey, Group, ViewKeyLess> groups;
+    for (size_t index = 0; index < count; ++index) {
+      const pbqp_vector_view_t matrix = jobs[index].a;
+      const pbqp_vector_view_t unary = jobs[index].b;
+      record_cycles(&vector_cycle_projection_.project_scalar, 2 * matrix.length,
+                    divide_round_up(matrix.length, kTimedRunnerLanes), sizeof(int32_t));
+      Group &group = groups[{unary.base, unary.length, unary.stride}];
+      if (group.outputs == 0) {
+        group.operand_elements = unary.length;
+      }
+      group.operand_elements += matrix.length;
+      group.compute_chunks += divide_round_up(matrix.length, kTimedRunnerLanes);
+      ++group.outputs;
+    }
+    for (const auto &entry : groups) {
+      const Group &group = entry.second;
+      record_cycles(&vector_cycle_projection_.project_vector, group.operand_elements,
+                    group.compute_chunks, group.outputs * sizeof(int32_t));
+    }
+  }
+
+  void record_map3_cycle_projection(const pbqp_min3_job_t *jobs, size_t count) {
+    if (count == 0) {
+      return;
+    }
+    std::map<ViewKey, size_t, ViewKeyLess> first_slices;
+    std::map<ViewKey, size_t, ViewKeyLess> second_slices;
+    for (size_t index = 0; index < count; ++index) {
+      const size_t length = jobs[index].a.length;
+      record_cycles(&vector_cycle_projection_.map3_scalar, 3 * length,
+                    divide_round_up(length, kTimedRunnerLanes), sizeof(accel_min_argmin_result_t));
+      first_slices.emplace(ViewKey{jobs[index].b.base, jobs[index].b.length, jobs[index].b.stride},
+                           length);
+      second_slices.emplace(ViewKey{jobs[index].c.base, jobs[index].c.length, jobs[index].c.stride},
+                            length);
+    }
+    const uint64_t reduction_chunks = divide_round_up(jobs[0].a.length, kTimedRunnerLanes);
+    uint64_t second_elements = 0;
+    for (const auto &entry : second_slices) {
+      second_elements += entry.second;
+    }
+    for (const auto &entry : first_slices) {
+      const uint64_t operand_elements = jobs[0].a.length + entry.second + second_elements;
+      record_cycles(&vector_cycle_projection_.map3_partial, operand_elements,
+                    second_slices.size() * reduction_chunks,
+                    second_slices.size() * sizeof(accel_min_argmin_result_t));
+    }
+    uint64_t first_elements = 0;
+    for (const auto &entry : first_slices) {
+      first_elements += entry.second;
+    }
+    record_cycles(&vector_cycle_projection_.map3_full,
+                  jobs[0].a.length + first_elements + second_elements, count * reduction_chunks,
+                  count * sizeof(accel_min_argmin_result_t));
+  }
+
   static int min2(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
                   accel_min_argmin_result_t *result) {
     const pbqp_min2_job_t job = {first, second, result};
@@ -251,7 +385,8 @@ class ModelKernel {
 
   static int min2_value_batch(void *opaque, const pbqp_min2_value_job_t *jobs, size_t count) {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
-    kernel->memory_.reset();
+    kernel->record_project_cycle_projection(jobs, count);
+    kernel->begin_batch();
     std::vector<accel_command_t> commands;
     std::vector<uint64_t> result_addresses;
     commands.reserve(count);
@@ -279,7 +414,7 @@ class ModelKernel {
 
   static int min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
-    kernel->memory_.reset();
+    kernel->begin_batch();
     std::vector<accel_command_t> commands;
     std::vector<uint64_t> result_addresses;
     commands.reserve(count);
@@ -310,7 +445,8 @@ class ModelKernel {
 
   static int min3_batch(void *opaque, const pbqp_min3_job_t *jobs, size_t count) {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
-    kernel->memory_.reset();
+    kernel->record_map3_cycle_projection(jobs, count);
+    kernel->begin_batch();
     std::vector<accel_command_t> commands;
     std::vector<uint64_t> result_addresses;
     commands.reserve(count);
@@ -340,7 +476,22 @@ class ModelKernel {
     return 0;
   }
 
+  // Starts a new staging-area lifetime: every view copied below stays valid
+  // until the next batch, so identical views within one batch share one copy.
+  void begin_batch() {
+    memory_.reset();
+    view_cache_.clear();
+  }
+
+  // Copies a strided view into guest memory once per batch. R2 alone submits
+  // D^2 primitives that repeat one unary and 2*D matrix slices, so copying
+  // each operand separately would exhaust the staging area at moderate D.
   uint64_t copy_view(pbqp_vector_view_t view) {
+    const ViewKey key{view.base, view.length, view.stride};
+    const auto cached = view_cache_.find(key);
+    if (cached != view_cache_.end()) {
+      return cached->second;
+    }
     const uint64_t address = memory_.allocate(view.length * sizeof(int32_t));
     if (address == 0) {
       return 0;
@@ -351,6 +502,7 @@ class ModelKernel {
         return 0;
       }
     }
+    view_cache_.emplace(key, address);
     return address;
   }
 
@@ -433,6 +585,8 @@ class ModelKernel {
   }
 
   GuestMemory memory_;
+  std::map<ViewKey, uint64_t, ViewKeyLess> view_cache_;
+  VectorCycleProjection vector_cycle_projection_;
   Accelerator accelerator_;
   Initiator initiator_;
   pbqp_statistics_t *statistics_ = nullptr;
@@ -535,7 +689,10 @@ bool build_problem(const InputProblem &input, bool fixed_capacity, pbqp_problem_
       input.edges.size() >= std::numeric_limits<unsigned>::max()) {
     return false;
   }
-  const unsigned node_capacity = static_cast<unsigned>(input.nodes.size());
+  // Bare-metal mode must accept exactly what the RV64 configuration accepts:
+  // pbqp_max_finite_cost depends on the capacities, so use the fixed ones.
+  const unsigned node_capacity =
+      fixed_capacity ? PBQP_MAX_NODES : static_cast<unsigned>(input.nodes.size());
   size_t maximum_domain = 0;
   for (const InputNode &node : input.nodes)
     maximum_domain = std::max(maximum_domain, node.unary.size());
@@ -543,8 +700,10 @@ bool build_problem(const InputProblem &input, bool fixed_capacity, pbqp_problem_
     return false;
   const unsigned domain_capacity =
       fixed_capacity ? PBQP_MAX_DOMAIN : static_cast<unsigned>(maximum_domain);
-  // R2 may need one fill slot before it retires its two incident edges.
-  const unsigned edge_capacity = static_cast<unsigned>(input.edges.size()) + 1;
+  // R2 may need one fill slot before it retires its two incident edges; the
+  // fixed configuration already reserves every simple edge.
+  const unsigned edge_capacity =
+      fixed_capacity ? PBQP_MAX_EDGES : static_cast<unsigned>(input.edges.size()) + 1;
   if (pbqp_init(problem, pbqp_heap_allocator(), node_capacity, edge_capacity, domain_capacity) !=
       PBQP_OK) {
     return false;
@@ -667,6 +826,16 @@ int sc_main(int argc, char **argv) {
         solver_config.rn_policy = PBQP_RN_MIN_WORK;
       } else {
         std::cerr << "unknown RN policy: " << policy << '\n';
+        return 2;
+      }
+    } else if (argument == "--rn-batching" && index + 1 < argc) {
+      const std::string batching = argv[++index];
+      if (batching == "per-node") {
+        solver_config.rn_batching = PBQP_RN_BATCH_PER_NODE;
+      } else if (batching == "per-edge") {
+        solver_config.rn_batching = PBQP_RN_BATCH_PER_EDGE;
+      } else {
+        std::cerr << "unknown RN batching mode: " << batching << '\n';
         return 2;
       }
     } else if (argument == "--maximum-search-nodes" && index + 1 < argc) {
@@ -858,6 +1027,8 @@ int sc_main(int argc, char **argv) {
               << " operand-bytes=" << statistics->operation_mix_operand_bytes
               << " result-bytes=" << statistics->operation_mix_result_bytes
               << " bytes=" << operation_bytes << '\n';
+    std::cerr << "pcaa: views contiguous=" << statistics->contiguous_views
+              << " strided=" << statistics->strided_views << '\n';
     std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited
               << " branches=" << statistics->search_branches_created
               << " max-depth=" << statistics->search_maximum_depth
@@ -866,11 +1037,23 @@ int sc_main(int argc, char **argv) {
   }
 #if defined(PCAA_GRAPH_RUN_TIMED)
   const AccelTimingStatistics &timing = model.timing_statistics();
+  const VectorCycleProjection &projection = model.vector_cycle_projection();
   std::cout << "timing cycles=" << timing.total_service_cycles
             << " descriptor=" << timing.descriptor_cycles
             << " operands=" << timing.operand_read_cycles << " compute=" << timing.compute_cycles
             << " result=" << timing.result_write_cycles << " primitives=" << timing.primitive_count
             << " batches=" << timing.batch_count << '\n';
+  const auto print_projection = [](const char *name, const CycleBreakdown &cycles) {
+    std::cout << "projection " << name << " cycles=" << cycles.total
+              << " descriptor=" << cycles.descriptor << " operands=" << cycles.operands
+              << " compute=" << cycles.compute << " result=" << cycles.result
+              << " descriptors=" << cycles.descriptors << '\n';
+  };
+  print_projection("project-scalar", projection.project_scalar);
+  print_projection("project-vector", projection.project_vector);
+  print_projection("map3-scalar", projection.map3_scalar);
+  print_projection("map3-partial", projection.map3_partial);
+  print_projection("map3-full", projection.map3_full);
   if (timing.primitive_count == 0) {
     std::cout << "timing note=no accelerator primitives were issued; the PBQP core was solved "
                  "in software\n";

@@ -6,6 +6,7 @@
 #include "pbqp/pbqp.h"
 
 #include <stdint.h>
+#include <string.h>
 #include <string>
 #include <vector>
 
@@ -108,6 +109,40 @@ static void build_rn_transposed_orientation_problem(pbqp_problem_t* problem) {
     }
   }
 }
+
+struct BatchRecordingKernel {
+  pbqp_cost_kernel_t inner;
+  unsigned min2_value_batch_calls = 0;
+  std::vector<int32_t> rn_projected_terms;
+
+  static int min2_value_batch(void* opaque, const pbqp_min2_value_job_t* jobs, size_t count) {
+    BatchRecordingKernel* recording = static_cast<BatchRecordingKernel*>(opaque);
+    ++recording->min2_value_batch_calls;
+    const int status = recording->inner.min2_value_batch(recording->inner.context, jobs, count);
+    if (status == 0) {
+      for (size_t index = 0; index < count; ++index)
+        recording->rn_projected_terms.push_back(*jobs[index].result);
+    }
+    return status;
+  }
+};
+
+static void make_batch_recording_kernel(pbqp_cost_kernel_t* kernel,
+                                        BatchRecordingKernel* recording,
+                                        pbqp_statistics_t* statistics) {
+  pbqp_make_software_kernel(&recording->inner, statistics);
+  *kernel = recording->inner;
+  kernel->context = recording;
+  kernel->min2_value_batch = BatchRecordingKernel::min2_value_batch;
+}
+
+struct TraceCapture {
+  std::vector<pbqp_solver_event_t> events;
+
+  static void emit(void* opaque, const pbqp_solver_event_t* event) {
+    static_cast<TraceCapture*>(opaque)->events.push_back(*event);
+  }
+};
 
 static void check_cost_range(void) {
   pbqp_problem_t problem;
@@ -279,6 +314,48 @@ TEST(PbqpSolver, RnProjectsTheConditionedNodeAxis) {
   CHECK(pbqp_evaluate(&original, solution.assignment) == solution.optimum);
 }
 
+TEST(PbqpSolver, PerNodeRnBatchingMatchesLegacyPerEdgePath) {
+  pbqp_problem_t original;
+  pbqp_problem_t per_node;
+  pbqp_problem_t per_edge;
+  pbqp_solution_t per_node_solution;
+  pbqp_solution_t per_edge_solution;
+  pbqp_cost_kernel_t kernel;
+  pbqp_solver_t solver;
+  pbqp_solver_config_t config = pbqp_solver_default_config();
+  BatchRecordingKernel recording;
+
+  build_irreducible_core(&original);
+  init_solution(&per_node_solution);
+  init_solution(&per_edge_solution);
+  config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
+
+  clone_problem(&per_node, &original);
+  make_batch_recording_kernel(&kernel, &recording, &per_node.statistics);
+  config.rn_batching = PBQP_RN_BATCH_PER_NODE;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &per_node, &per_node_solution) == PBQP_OK);
+  CHECK(recording.min2_value_batch_calls == per_node.statistics.rn_count);
+  const std::vector<int32_t> per_node_terms = recording.rn_projected_terms;
+
+  recording = {};
+  clone_problem(&per_edge, &original);
+  make_batch_recording_kernel(&kernel, &recording, &per_edge.statistics);
+  config.rn_batching = PBQP_RN_BATCH_PER_EDGE;
+  CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
+  CHECK(pbqp_solver_solve(&solver, &per_edge, &per_edge_solution) == PBQP_OK);
+  CHECK(recording.min2_value_batch_calls == per_edge.statistics.rn_projection_count);
+
+  // Projected terms appear in the same edge/value order. Since both paths
+  // fold them into the same unary vector in that order, every RN score bit
+  // pattern (not merely the chosen minimum) is identical.
+  CHECK(per_node_terms == recording.rn_projected_terms);
+  CHECK(per_node_solution.optimum == per_edge_solution.optimum);
+  CHECK(memcmp(per_node_solution.assignment, per_edge_solution.assignment,
+               original.node_count * sizeof(unsigned)) == 0);
+  CHECK(pbqp_evaluate(&original, per_node_solution.assignment) == per_node_solution.optimum);
+}
+
 TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
   pbqp_problem_t original;
   pbqp_problem_t enumerated;
@@ -288,6 +365,8 @@ TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
   pbqp_cost_kernel_t kernel;
   pbqp_solver_t solver;
   pbqp_solver_config_t config = pbqp_solver_default_config();
+  TraceCapture trace;
+  const pbqp_trace_sink_t trace_sink = {&trace, TraceCapture::emit};
 
   build_irreducible_core(&original);
   init_solution(&enumeration_solution);
@@ -301,6 +380,7 @@ TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
   clone_problem(&branched, &original);
   pbqp_make_software_kernel(&kernel, &branched.statistics);
   config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+  config.trace_sink = &trace_sink;
   CHECK(pbqp_solver_create_with_config(&solver, PBQP_MODE_SOFTWARE, &kernel, &config) == PBQP_OK);
   CHECK(pbqp_solver_solve(&solver, &branched, &branch_solution) == PBQP_OK);
   CHECK(branch_solution.optimum == enumeration_solution.optimum);
@@ -310,6 +390,16 @@ TEST(PbqpSolver, ExactBranchReduceReappliesReductions) {
   CHECK(branched.statistics.condition_count != 0);
   CHECK(branched.statistics.condition_elements != 0);
   CHECK(branched.statistics.rn_count == 0);
+  bool saw_branch = false;
+  for (const pbqp_solver_event_t& event : trace.events) {
+    if (event.type == PBQP_TRACE_BRANCH_SELECT) {
+      saw_branch = true;
+      CHECK(event.branch_domain == 2);
+    } else {
+      CHECK(event.branch_domain == 0);
+    }
+  }
+  CHECK(saw_branch);
 }
 
 TEST(PbqpSolver, LocalSearchHybridNeverWorsensRn) {

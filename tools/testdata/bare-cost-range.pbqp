@@ -1,0 +1,4 @@
+# One above the RV64 finite-cost bound (ACCEL_INF-1)/(64+2016) = 258111:
+# bare-metal mode must reject it, local mode (input-sized capacities) accepts it.
+nodes 1
+node 1 258112

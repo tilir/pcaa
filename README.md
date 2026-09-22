@@ -40,7 +40,9 @@ using accelerator operations.
 Choose the solver mode explicitly:
 
 - `--solver bare-metal` accepts graphs with at most 64 vertices, 6 choices per
-  vertex, and 2,016 edges. It matches the solver available to RV64 programs.
+  vertex, and 2,016 edges, and finite costs within ±258,111 (the range the
+  RV64 configuration derives from those capacities). It matches the solver
+  available to RV64 programs; exact-search snapshots still use host memory.
 - `--solver local` uses allocator-backed graph, reconstruction, and search
   storage. Its graph size is limited by host memory; the parser accepts up to
   65,536 choices per vertex.
@@ -55,6 +57,9 @@ default is `heuristic-rn`.
   but that assignment is a heuristic result rather than a proof of optimum.
   `--rn-policy min-degree`, `max-degree`, or `min-work` chooses which eligible
   core node is fixed; equal candidates are resolved deterministically.
+  RN scoring normally submits one batch per selected node;
+  `--rn-batching per-edge` retains the older one-batch-per-edge path for
+  comparison.
 - `reduce-only` applies only exact low-degree reductions. Its answer is exact
   if it finishes; otherwise it reports `IRREDUCIBLE`, meaning that the input
   has a remaining general core and no assignment is returned. It is useful for
@@ -62,9 +67,10 @@ default is `heuristic-rn`.
 - `exact-core-enumeration` applies exact reductions once, then enumerates all
   assignments of the residual core. It is an exact small-instance oracle.
 - `exact-branch-reduce` branches on a remaining node and re-applies exact
-  reductions below every branch, pruning a branch once its own reductions
-  already cost at least as much as the best complete answer found so far
-  (a true branch-and-bound, not exhaustive branch-and-reduce). A completed
+  reductions below every branch, pruning a branch once a lower bound on its
+  cost (reductions already applied plus the cheapest entry of every
+  remaining node and edge) is no better than the best complete answer found
+  so far (a true branch-and-bound, not exhaustive branch-and-reduce). A completed
   answer is exact; use `--maximum-search-nodes N` to put an explicit bound
   on the search. It is suitable for small cores.
   `N` is a non-negative whole number; zero leaves the search-node limit unset.
@@ -96,7 +102,9 @@ edge 1 2 1 3 -2 4
 
 A *choice* is one possible assignment for a vertex (its PBQP domain). The
 limits above belong to the solver implementations, not the accelerator. Costs
-may be finite PCAA costs or `INF`.
+may be finite PCAA costs or `INF`. `INF` absorbs addition, positive sums reaching
+it saturate to it, and a command that would underflow below `INT32_MIN` reports
+`ERROR` rather than returning a silently tied minimum.
 
 ## Examples
 

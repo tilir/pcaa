@@ -26,6 +26,16 @@ def work?(event)
   ELEMENT_FIELDS.any? { |field| event.fetch(field).positive? }
 end
 
+# Graph decisions that bound Model B/C epochs even with zero accelerator
+# arithmetic: R0 is a host-side graph action with no cost-algebra elements,
+# but it is still one reduction the host (Model B) or the autonomous cascade
+# (Model C) performs, so it must not vanish from the epoch count.
+STRUCTURAL_TYPES = %w[R0 R1 R2 RN_SELECT RN_SCORE RN_COMMIT].freeze
+
+def epoch_event?(event)
+  work?(event) || STRUCTURAL_TYPES.include?(event["type"])
+end
+
 def merge(events, model)
   result = { "model" => model, "events" => events.length }
   (ELEMENT_FIELDS + %w[primitive_descriptors structural_operations operand_bytes result_bytes r0 r1 r2 rn]).each do |field|
@@ -47,7 +57,7 @@ def epochs(events, model)
         groups << current unless current.empty?
         current = []
       end
-      current << event if work?(event)
+      current << event if epoch_event?(event)
       if %w[R0 R1 R2 RN_COMMIT].include?(event["type"])
         groups << current unless current.empty?
         current = []
@@ -56,16 +66,20 @@ def epochs(events, model)
     groups << current unless current.empty?
     groups.map { |group| merge(group, model) }
   when "C-rn-cascade"
+    # One epoch per RN pick plus its following exact cascade, and one more for
+    # any exact reductions before the first RN (or for a whole RN-free solve).
+    # scaling_characterize.rb's model_c_epochs column applies the same rule.
     groups = [[]]
     events.each do |event|
       if event["type"] == "RN_SELECT" && !groups.last.empty?
         groups << []
       end
-      groups.last << event if work?(event)
+      groups.last << event if epoch_event?(event)
     end
     groups.reject(&:empty?).map { |group| merge(group, model) }
   when "D-heuristic"
-    work_events.empty? ? [] : [merge(work_events, model)]
+    solve_events = events.select { |event| epoch_event?(event) }
+    solve_events.empty? ? [] : [merge(solve_events, model)]
   when "LS-A-node"
     events.select { |event| event["type"] == "LOCAL_SCORE" }.map { |event| merge([event], model) }
   when "LS-B-sweep"

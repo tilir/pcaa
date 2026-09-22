@@ -141,7 +141,7 @@ bound while host interactions never change.
 
 | N | total elements | PROJECT | MAP3 | bytes | RN decisions | Model C epochs | mean elements/epoch | init/max active edges |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 20 | 5,674 | 3,405 | 1,434 | 57,632 | 15 | 15 | 378 | 58 / 56 |
+| 20 | 5,674 | 3,405 | 1,434 | 57,632 | 15 | 15.6 | 367 | 58 / 56 |
 | 50 | 30,320 | 23,859 | 512 | 280,877 | 47 | 47 | 645 | 375 / 375 |
 | 100 | 120,752 | 96,205 | 512 | 1,112,851 | 97 | 97 | 1,245 | 1,505 / 1,505 |
 | 200 | 480,272 | 383,821 | 512 | 4,420,435 | 197 | 197 | 2,438 | 5,999 / 5,999 |
@@ -155,9 +155,10 @@ linearly (`≈N`), so mean elements/episode also grows roughly linearly
 amortization even though this family never reaches degree-4's constant-RN
 regime.
 
-"init/max active edges" are identical at every measured point for all
-three families (see §8): under min-degree/min-work RN policy, no run in
-this sweep produced additional fill-in beyond the initial edge set.
+"max active edges" never exceeds the initial edge count at any measured
+point (see §9): under min-degree/min-work RN policy, no run in this sweep
+grows the active edge count above its initial value. At mixed-degree N=20,
+exact reductions before the first RN shrink the mean from 58 to 56.
 
 ## 4. Domain-size scaling (fixed N=100)
 
@@ -252,17 +253,18 @@ only fires under local search, which `heuristic-rn` does not use.
 
 ## 7. Host-interaction / HW-SW epoch scaling
 
-Model C epoch count is taken directly as `rn_episodes` (the RN core has
-one episode per RN pick, matching the hw-sw-boundary study's C-rn-cascade
-grouping by construction, since both group on `RN_SELECT` boundaries).
-Elements/episode below is the 5-seed mean of each run's own
-`total_elements / rn_episodes`:
+Model C has one epoch per RN pick and one additional epoch when exact
+reductions run before the first RN (or when an RN-free solve consists only
+of exact reductions). The scaling script derives that initial epoch as
+`R0+R1+R2 - (R0+R1+R2 after RN)`, matching the trace grouping in the
+HW/SW-boundary study. Elements/epoch below is the 5-seed mean of each run's
+own `total_elements / model_c_epochs`:
 
 | Family (D=8) | N=20 el./episode | N=1000 (or N=500) el./episode | growth |
 |---|---:|---:|---:|
 | degree-3 | 1,584 | 1,772 | 1.1x |
 | degree-4 | 4,408 | 255,288 | 58x |
-| mixed-degree | 383 | 6,027 (N=500) | 16x |
+| mixed-degree | 367 | 6,027 (N=500) | 16x |
 
 This is the key accelerator-granularity metric from the prompt: degree-4
 shows the strongest granularity growth (Regime 2), mixed-degree grows
@@ -289,18 +291,18 @@ measured: mean 1,826, median 1,680, p90 2,636).
 
 | Family, point | policy | RN decisions | Model C epochs | total elements | mean el./epoch | cascade mean/max |
 |---|---|---:|---:|---:|---:|---:|
-| degree-3, N=100/D=4 | min-degree | 25 | 25 | 6,488 | 260 | 3.0 / 3 |
-| | max-degree | 25 | 25 | 6,488 | 260 | 3.0 / 3 |
-| | min-work | 25 | 25 | 6,488 | 260 | 3.0 / 3 |
-| degree-4, N=100/D=4 | min-degree | 2 | 2 | 6,328 | 3,164 | 49.0 / 98 |
-| | max-degree | 33 | 33 | 7,344 | 223 | 2.0 / 5 |
-| | min-work | 2 | 2 | 6,328 | 3,164 | 49.0 / 98 |
-| degree-4, N=200/D=8 | min-degree | 2 | 2 | 100,976 | 50,488 | 99.0 / 198 |
-| | max-degree | 67 | 67 | 88,496 | 1,321 | 1.0 / 3 |
-| | min-work | 2 | 2 | 100,976 | 50,488 | 99.0 / 198 |
-| mixed-degree, N=200/D=8 | min-degree | 197 | 197 | 480,272 | 2,438 | 0.0 / 3 |
-| | max-degree | 173 | 173 | 490,048 | 2,826 | 0.0 / 6 |
-| | min-work | 197 | 197 | 480,272 | 2,438 | 0.0 / 3 |
+| degree-3, N=100/D=4 | min-degree | 25 | 25 | 6,488 | 260 | 3.000 / 3 |
+| | max-degree | 25 | 25 | 6,488 | 260 | 3.000 / 3 |
+| | min-work | 25 | 25 | 6,488 | 260 | 3.000 / 3 |
+| degree-4, N=100/D=4 | min-degree | 2 | 2 | 6,328 | 3,164 | 49.000 / 98 |
+| | max-degree | 33 | 33 | 7,344 | 223 | 2.030 / 5 |
+| | min-work | 2 | 2 | 6,328 | 3,164 | 49.000 / 98 |
+| degree-4, N=200/D=8 | min-degree | 2 | 2 | 100,976 | 50,488 | 99.000 / 198 |
+| | max-degree | 67 | 67 | 88,496 | 1,321 | 1.985 / 3 |
+| | min-work | 2 | 2 | 100,976 | 50,488 | 99.000 / 198 |
+| mixed-degree, N=200/D=8 | min-degree | 197 | 197 | 480,272 | 2,438 | 0.015 / 3 |
+| | max-degree | 173 | 173 | 490,048 | 2,826 | 0.153 / 7 |
+| | min-work | 197 | 197 | 480,272 | 2,438 | 0.015 / 3 |
 
 Two findings stand out:
 
@@ -330,11 +332,13 @@ does not change the qualitative picture.
 ## 9. Graph-state and fill-in scaling
 
 Every `(family, N, D)` point measured under min-degree/min-work in this
-sweep shows **initial active edges == maximum active edges observed at RN
-entry** (see the graph-size tables in §3: "init/max active edges" columns
-are equal at every row, for all three families, all the way to
-N=1000/mixed-degree N=500). No fill edges were created before the graph
-reached its irreducible RN core in any of these 367 runs. This is
+sweep shows **maximum active edges observed at RN entry <= initial active
+edges** (see the graph-size tables in §3). The counts are equal except at
+the smallest mixed-degree point, where initial exact reductions remove
+edges before the first RN. No point grows past its initial edge count, all
+the way to N=1000/mixed-degree N=500. This does not say that individual R2
+steps create no fill edges; it says any such fill never causes net
+active-edge expansion beyond the input graph. This is
 consistent with the two structured families' bandwidth-bounded and
 dense-random-adjacent-hop topologies respectively: R1/R2 eliminate nodes
 whose neighbors are already adjacent (degree-3/degree-4), or R0/R1 barely
@@ -478,10 +482,11 @@ fixed-degree families throughout this report shows up again here.
   stays flat while max-degree's grows with N (§8). min-degree and min-work
   are identical at every N tested here.
 * **At what measured ranges does Model C materially improve granularity
-  over Model B?** This report does not re-measure Model B directly (only
-  `rn_episodes` from the shared solver, i.e. Model C boundaries); the
+  over Model B?** This report does not re-measure Model B directly (it
+  derives Model C boundaries from `rn_episodes` plus an initial exact
+  epoch); the
   existing N=20 HW/SW-boundary study already shows Model C reducing
-  handoffs 19→5 (degree-3) and 19→2 (degree-4) relative to Model B at that
+  handoffs 20→5 (degree-3) and 20→2 (degree-4) relative to Model B at that
   size. Given degree-4's RN count stays at 2 through N=1000, that
   advantage over Model B's presumably N-scaling reduction count should
   only widen with N; confirming this quantitatively for Model B at scale

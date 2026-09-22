@@ -7,6 +7,10 @@
 #include "accel_protocol.h"
 #include "cost_math.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+
 namespace pcaa::probes {
 namespace {
 
@@ -38,6 +42,7 @@ ShortestPathResult BellmanFord(int vertex_count, const std::vector<Edge> &edges,
   result.distance.assign(vertex_count > 0 ? static_cast<size_t>(vertex_count) : 0, ACCEL_INF);
   result.predecessor.assign(vertex_count > 0 ? static_cast<size_t>(vertex_count) : 0, -1);
   result.has_negative_cycle = false;
+  result.distance_saturated = false;
   if (vertex_count <= 0 || source < 0 || source >= vertex_count) {
     return result;
   }
@@ -80,18 +85,39 @@ ShortestPathResult BellmanFord(int vertex_count, const std::vector<Edge> &edges,
     }
   }
 
-  // One extra round: if anything still relaxes, a negative cycle is
-  // reachable from the source.
-  for (int v = 0; v < vertex_count && !result.has_negative_cycle; ++v) {
-    for (int edge_index : incoming[static_cast<size_t>(v)]) {
-      const Edge &edge = edges[static_cast<size_t>(edge_index)];
-      if (result.distance[static_cast<size_t>(edge.from)] == ACCEL_INF) {
+  // Exact shadow of the same relaxation in 64 bits. The int32 check above
+  // cannot see a reachable negative cycle whose vertices already sit at the
+  // saturated INT32_MIN floor: cost_add keeps them there, so nothing appears
+  // to relax further. Edges with ACCEL_INF weight never relax, as in cost_add.
+  constexpr int64_t kUnreached = std::numeric_limits<int64_t>::max();
+  std::vector<int64_t> exact(static_cast<size_t>(vertex_count), kUnreached);
+  exact[static_cast<size_t>(source)] = 0;
+  const auto relax_exact = [&]() {
+    bool relaxed = false;
+    for (const Edge &edge : edges) {
+      const int64_t from = exact[static_cast<size_t>(edge.from)];
+      if (from == kUnreached || edge.weight == ACCEL_INF) {
         continue;
       }
-      if (accel_cost_add(result.distance[static_cast<size_t>(edge.from)], edge.weight) <
-          result.distance[static_cast<size_t>(v)]) {
-        result.has_negative_cycle = true;
-        break;
+      const int64_t candidate = from + edge.weight;
+      if (candidate < exact[static_cast<size_t>(edge.to)]) {
+        exact[static_cast<size_t>(edge.to)] = candidate;
+        relaxed = true;
+      }
+    }
+    return relaxed;
+  };
+  for (int round = 0; round < vertex_count - 1; ++round) {
+    if (!relax_exact()) {
+      break;
+    }
+  }
+  result.has_negative_cycle = relax_exact();
+  result.distance_saturated = false;
+  if (!result.has_negative_cycle) {
+    for (int64_t value : exact) {
+      if (value != kUnreached && value < std::numeric_limits<int32_t>::min()) {
+        result.distance_saturated = true;
       }
     }
   }

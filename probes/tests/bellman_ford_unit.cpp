@@ -7,6 +7,8 @@
 
 #include "accel_protocol.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -54,6 +56,52 @@ TEST(BellmanFordTest, DetectsReachableNegativeCycle) {
   };
   const ShortestPathResult result = BellmanFord(3, edges, 0);
   EXPECT_TRUE(result.has_negative_cycle);
+}
+
+// Review regression: once 1 and 2 saturate at INT32_MIN, cost_add keeps
+// them there, so an int32-only check sees no further relaxation even though
+// the reachable cycle 1->2->1 has weight -2.
+TEST(BellmanFordTest, DetectsNegativeCycleAfterSaturation) {
+  const std::vector<Edge> edges = {
+      {0, 1, std::numeric_limits<int32_t>::min()},
+      {1, 2, -1},
+      {2, 1, -1},
+  };
+  const ShortestPathResult result = BellmanFord(3, edges, 0);
+  EXPECT_TRUE(result.has_negative_cycle);
+}
+
+TEST(BellmanFordTest, ReportsSaturatedDistanceWithoutCycle) {
+  const std::vector<Edge> edges = {
+      {0, 1, std::numeric_limits<int32_t>::min()},
+      {1, 2, -1},
+  };
+  const ShortestPathResult result = BellmanFord(3, edges, 0);
+  EXPECT_FALSE(result.has_negative_cycle);
+  EXPECT_TRUE(result.distance_saturated);
+  EXPECT_EQ(result.distance[2], std::numeric_limits<int32_t>::min());
+}
+
+TEST(BellmanFordTest, OrdinaryDistancesAreNotSaturated) {
+  const std::vector<Edge> edges = {{0, 1, -5}, {1, 2, 3}};
+  const ShortestPathResult result = BellmanFord(3, edges, 0);
+  EXPECT_FALSE(result.has_negative_cycle);
+  EXPECT_FALSE(result.distance_saturated);
+  EXPECT_EQ(result.distance[2], -2);
+}
+
+TEST(BellmanFordTest, AcceptsFixedPointRoadDistancesFromPublishedCorpus) {
+  // Millimetre-scaled great-circle distances derived from every 100,000th
+  // arc of the DIMACS 9 USA-road-d.NY graph and its published coordinates.
+  // The sampling rule and scale are documented in cost-representation-study.md.
+  const std::vector<Edge> edges = {
+      {0, 1, 80384},  {1, 2, 115347}, {2, 3, 19472}, {3, 4, 181062},
+      {4, 5, 100910}, {5, 6, 65003},  {6, 7, 90256}, {7, 8, 87238},
+  };
+  const ShortestPathResult result = BellmanFord(9, edges, 0);
+  EXPECT_FALSE(result.has_negative_cycle);
+  EXPECT_FALSE(result.distance_saturated);
+  EXPECT_EQ(result.distance[8], 739672);
 }
 
 TEST(BellmanFordTest, TieBreaksToFirstMinimalIncomingEdge) {

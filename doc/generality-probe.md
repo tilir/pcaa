@@ -21,12 +21,13 @@ specifically because it maps directly onto PCAA's existing reduce-to-a-scalar
 shape instead of needing per-edge synchronization. `ACCEL_INF`
 (`accel_protocol.h`) represents an unreached vertex; `accel_cost_add`
 (`pcaa_cost_math`, the same function PBQP's own solver uses) does the
-add-with-saturation. Five GoogleTest cases (`probes_unit`, in the main
+add-with-saturation. Eight GoogleTest cases (`probes_unit`, in the main
 CTest suite) check a negative-weight detour, an unreachable vertex, a
-reachable negative cycle, and — deliberately constructed so the tie is
-presented to a single argmin call rather than resolved by relaxation-round
-ordering — a genuine tie, confirming PCAA's "first equal minimum" rule
-produces a valid predecessor.
+reachable negative cycle (also one whose vertices already sit at the
+`INT32_MIN` floor), saturated-but-acyclic distances, and — deliberately
+constructed so the tie is presented to a single argmin call rather than
+resolved by relaxation-round ordering — a genuine tie, confirming PCAA's
+"first equal minimum" rule produces a valid predecessor.
 
 ## 2. Which of opcodes 1-4 it could use as-is
 
@@ -59,6 +60,20 @@ scoring's "one scalar-shaped op per graph decision" pattern (see
 of the current opcode set's per-vertex granularity, not of PBQP itself:
 any min-plus DP with an irregular, per-node fan-in (Viterbi/HMM decoding
 has the same shape) would hit the same one-vertex-at-a-time limit.
+
+**The cost representation, not the opcode shape, is where this probe hit a
+real limit.** PCAA's `cost_add` saturates finite sums at `INT32_MIN`. For
+PBQP this is harmless: `pbqp_max_finite_cost` restricts inputs so no
+reduction can reach the floor. Shortest paths have no such guarantee — a
+negative cycle keeps lowering distances — and once a cycle's vertices sit
+at `INT32_MIN`, saturating addition leaves them there, so a relaxation
+built only from PCAA arithmetic cannot tell "still decreasing" from
+"converged". The probe therefore answers negative-cycle detection (and
+flags distances below `INT32_MIN` as `distance_saturated`) with a separate
+exact 64-bit relaxation, outside anything PCAA would compute. A non-PBQP
+workload with unbounded negative accumulation needs either an input-range
+contract like PBQP's or a wider cost type/overflow flag; the current
+architecture offers neither.
 
 ## 4. Would it benefit from the item-5 vector-output primitive, or needs something structurally different?
 

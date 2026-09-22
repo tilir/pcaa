@@ -59,32 +59,32 @@ software/accelerator kernels report identical pruning and identical
 optima — passes under Spike. Separately, every file in `examples/*.pbqp`
 was cross-checked: `exact-branch-reduce`'s optimum matches
 `exact-core-enumeration`'s on every one, with and without this change. The
-full existing test suite (23 CTest cases including `pbqp_unit`, both
+full existing test suite (27 CTest cases including `pbqp_unit`, both
 `build` and `build-release`) and the required bare-metal ELF/Spike list
 from AGENTS.md all still pass.
 
-## 3. Synthetic families: depth, pruning, and branching factor
+## 3. Synthetic families: depth, pruning, and tree size
 
 Small points only — exact search is exponential in the irreducible core's
 domain size, so these stay in the tens-of-nodes range (`--maximum-search-nodes
-2000000`, 30s cap; nothing hit either limit). Two seeds per point; "branches
-/ depth" is `search_branches_created / search_maximum_depth`, an average
-branching-factor proxy for how wide the tree tends to be (see the frontier
-width caveat in §5).
+2000000`, 30s cap; nothing hit either limit). Two seeds per point at
+degree-3 N=20/30 (D=2,4) and N=50 (D=2); degree-4 N=20/50 (D=2,4) and
+N=100 (D=2); mixed-degree N=15/20/25 (D=2). All columns are measured
+solver statistics; "DFS open bound" is derived from them in §5.
 
-| Family | depth (min/median/max) | pruned (median/min/max %) | branches/depth (median/max) |
-|---|---:|---:|---:|
-| degree-3 | 5 / 7 / 12 | 49.9 / 41.9 / 74.9 | 166 / 2,598 |
-| degree-4 | 2 / 2 / 2 | 42.9 / 0.0 / 66.7 | 3.0 / 10.0 |
-| mixed-degree | 5 / 17 / 22 | 50.0 / 47.4 / 50.0 | 1,863 / 8,123 |
+| Family | depth (min/median/max) | nodes visited (min/median/max) | pruned (median/min/max %) | DFS open bound (max) |
+|---|---:|---:|---:|---:|
+| degree-3 | 5 / 7 / 12 | 43 / 647 / 18,189 | 49.9 / 41.9 / 74.9 | 22 |
+| degree-4 | 2 / 2 / 2 | 7 / 7 / 21 | 42.9 / 0.0 / 66.7 | 7 |
+| mixed-degree | 5 / 17 / 22 | 57 / 28,012 / 178,701 | 50.0 / 47.4 / 50.0 | 23 |
 
 This matches the graph-topology regimes already established in
 [scaling-characterization.md](scaling-characterization.md#2-headline-finding-graph-topology-decides-the-regime-not-just-n-or-d):
 degree-4's RN core stays tiny (depth pinned at 2, matching its
 constant-RN-count finding) so there is almost nothing to prune or widen;
 degree-3 and mixed-degree have larger, N-growing irreducible cores, so both
-depth and branching factor grow with N — mixed-degree dramatically so
-(depth 22, tree width in the thousands at just N=25). Pruning removes
+depth and total tree size grow with N — mixed-degree dramatically so
+(depth 22 and 178,701 visited nodes at just N=25, with D=2). Pruning removes
 roughly half the visited nodes for degree-3/mixed-degree at these sizes,
 consistently across seeds and N.
 
@@ -123,38 +123,36 @@ values are, which this small sample cannot predict from RN alone.
 
 ## 5. Is frontier width large enough to matter?
 
-**Depth** is measured exactly (`search_maximum_depth`): small on the real
-corpus (median 2, max 7 in this sample) and small-to-moderate on synthetic
-families (2-22 depending on family/size). None of these are so deep that a
-hardware-side stack or frontier-tracking structure would need to be large.
+An earlier revision of this report divided `search_branches_created` by
+`search_maximum_depth` and called the result an "average branching factor
+proxy". That quantity is neither a branching factor nor a bound on frontier
+width (for a complete binary tree of depth `d` it grows like `2^(d+1)/d`
+while every node has two children), so it has been removed, together with
+the "tens-to-low-hundreds" conclusion drawn from it. What the data does
+support:
 
-**True peak concurrent frontier width** (the prompt's "how many independent
-bound computations could run in parallel") was **not measured exactly** in
-this pass. `exact-branch-reduce` is strictly sequential DFS — only one path
-is ever active — and the existing JSONL trace schema
-(`pbqp_solver_event_t`) carries no depth or per-level domain field, so
-reconstructing a true per-instant open-node count from the trace would
-require extending that schema, which was treated as out of scope for a
-data-gathering pass (a real, not cosmetic, instrumentation change,
-deserving its own review). Instead, `branches/depth` — this solve's total
-branch count divided by its max depth, i.e. an *average* branching factor —
-is reported as a coarse proxy. On synthetic families this ranges from 3
-(degree-4, matching its always-domain-≤4, depth-2 tree) up to several
-thousand (mixed-degree at N=25); on the real corpus sample it ranges from
-about 5 to several thousand as well (median 22).
+**Depth** is measured exactly (`search_maximum_depth`): median 2, max 7 on
+the real-corpus sample; 2-22 on the synthetic points.
 
-Given the shallow depths measured directly, and that even the *proxy*
-branching-factor stays in the tens-to-low-thousands range rather than
-exploding, the honest answer is: **frontier width plausibly stays in the
-tens-to-low-hundreds range for the real corpus and small synthetic points
-tested, but this sample cannot rule out much wider frontiers on graphs with
-higher RN and larger domain** — precisely the RN 4-8 real-graph subset in
-§4 that already showed 44,000+ visited nodes and did not always finish.
-Whether that translates into a *concurrently open* frontier worth
-architecting for, versus just a long sequential tail, requires the
-depth-tagged trace this pass did not build. **This question is left open**,
-not answered small-or-large, and is the most concrete follow-up item this
-report raises.
+**Open nodes of the search as implemented** are bounded exactly by depth
+and domain. `exact-branch-reduce` is a sequential depth-first search: at
+any instant the open (created, not yet finished or pruned) nodes are the
+current node plus the not-yet-tried sibling values of each ancestor on the
+current path, so their number is at most `1 + sum over path levels
+(D_level - 1) <= 1 + depth * (D_max - 1)`. With the measured depths this
+gives at most 7 (degree-4), 22 (degree-3), 23 (mixed-degree, D=2) and
+`1 + 7 * 16 = 113` for the deepest real-corpus sample (D up to 17); for the
+median real graph (depth 2, D=16) it is 31.
+
+**Independent bound computations available to a parallel search** are a
+different quantity — the width of a tree level (or of any antichain) — and
+are bounded only by the tree itself: at most `min(D^k, nodes visited)` at
+level `k`. Those trees reach tens of thousands of nodes on the
+mixed-degree points and on some real RN 4-8 graphs (§4), so the measured
+data neither shows that this width stays small nor that it is large; the
+current trace carries no per-event depth, so level widths were not
+recorded. **This question remains open.** Answering it needs a trace or
+counter of open nodes per depth, not a derived ratio.
 
 ## 6. Limitations
 
@@ -172,8 +170,8 @@ report raises.
   characterize with exact search — that is expected and consistent with
   `heuristic-rn`/`local-search` existing as the strategies actually used at
   scale.
-- Frontier width is a depth/branches-per-solve proxy, not a per-instant
-  reconstruction — see §5.
+- Level (parallel) frontier width was not measured; §5 gives only the exact
+  depth-first open-node bound and states why it does not bound level width.
 - No change to reduction rules, RN scoring, or the accelerator ISA. The
   only solver-visible change is the new `search_nodes_pruned` statistic and
   the internal `PBQP_PRUNED` status, which never escapes

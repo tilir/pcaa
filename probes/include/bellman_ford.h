@@ -29,8 +29,12 @@ struct ShortestPathResult {
   // source or an unreached vertex.
   std::vector<int> predecessor;
   // True if a negative-weight cycle is reachable from the source, in which
-  // case distance/predecessor are not shortest-path values.
+  // case distance/predecessor are not shortest-path values. Decided with exact
+  // 64-bit arithmetic, not PCAA's saturating int32 cost_add (see below).
   bool has_negative_cycle;
+  // True if some reachable shortest-path cost is below INT32_MIN, so the
+  // matching distance[] entry is PCAA's saturated floor, not the exact value.
+  bool distance_saturated;
 };
 
 // Single-source shortest paths via Bellman-Ford. Each relaxation round does
@@ -38,6 +42,11 @@ struct ShortestPathResult {
 // incoming edges: cost-add each predecessor's current distance with the
 // edge weight, take the minimum and the edge that achieved it. Ties resolve
 // to the first minimal incoming edge, matching PCAA's own argmin tie-break.
+// PCAA's cost_add saturates at INT32_MIN, which hides further decrease along
+// a negative cycle once its vertices reach that floor, so cycle detection
+// and saturation reporting use a separate exact 64-bit relaxation. It cannot
+// overflow while vertex_count * edges.size() < 2^32: every value it holds is
+// the weight of a walk of at most that many 32-bit-weighted edges.
 ShortestPathResult BellmanFord(int vertex_count, const std::vector<Edge> &edges, int source);
 
 }  // namespace pcaa::probes
