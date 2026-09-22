@@ -861,7 +861,8 @@ int sc_main(int argc, char **argv) {
     std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited
               << " branches=" << statistics->search_branches_created
               << " max-depth=" << statistics->search_maximum_depth
-              << " limit-hits=" << statistics->search_limit_hits << '\n';
+              << " limit-hits=" << statistics->search_limit_hits
+              << " pruned=" << statistics->search_nodes_pruned << '\n';
   }
 #if defined(PCAA_GRAPH_RUN_TIMED)
   const AccelTimingStatistics &timing = model.timing_statistics();

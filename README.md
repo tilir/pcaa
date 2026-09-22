@@ -62,10 +62,13 @@ default is `heuristic-rn`.
 - `exact-core-enumeration` applies exact reductions once, then enumerates all
   assignments of the residual core. It is an exact small-instance oracle.
 - `exact-branch-reduce` branches on a remaining node and re-applies exact
-  reductions below every branch. A completed answer is exact; use
-  `--maximum-search-nodes N` to put an explicit bound on the search. It is
-  suitable for small cores.
+  reductions below every branch, pruning a branch once its own reductions
+  already cost at least as much as the best complete answer found so far
+  (a true branch-and-bound, not exhaustive branch-and-reduce). A completed
+  answer is exact; use `--maximum-search-nodes N` to put an explicit bound
+  on the search. It is suitable for small cores.
   `N` is a non-negative whole number; zero leaves the search-node limit unset.
+  `--verbose` reports how many branches were pruned this way.
 - `local-search` starts from all zeroes and deterministic single-coordinate
   restarts, then repeatedly takes strict coordinate improvements. It reports a
   `local-optimum`, not a proof of global optimality.
@@ -108,6 +111,14 @@ may be finite PCAA costs or `INF`.
   batched bare-metal path or local-mode comparison.
 - `wide-domain.pbqp` — a seven-choice input for trying the local mode and the
   bare-metal capacity diagnostic.
+
+[`examples/regalloc`](examples/regalloc) holds 491 real PBQP graphs
+extracted from LLVM's `RegAllocPBQP` allocator (four real translation
+units, `-O2`/x86-64) via a small, always-off-by-default `llc` flag added to
+a local LLVM checkout — not part of this repo's own build. See
+[doc/llvm-corpus-characterization.md](doc/llvm-corpus-characterization.md)
+for how they were produced and how they compare to the synthetic families
+above.
 
 For example:
 
@@ -176,7 +187,13 @@ below N=1000 because its `O(N^2)` edge count makes large instances slow to
 solve, while degree-3/degree-4 reach N=1000 quickly) and supports resuming
 an interrupted run; invoke `ruby scripts/scaling_characterize.rb --help`
 directly to pick sweeps, node/domain lists per family, seeds, policies, or
-a per-run timeout. See [the scaling report](doc/scaling-characterization.md).
+a per-run timeout. `--corpus-dir DIR` feeds a directory of pre-generated
+`.pbqp` files (e.g. `examples/regalloc`) to the runner as one more family
+instead of generating one. `--sweeps local-search` (opt-in; much slower per
+point) additionally sweeps `local-search`/`heuristic-rn-local-search` and
+reports LS-A/LS-B epoch-size percentiles from a `--trace` capture. See
+[the scaling report](doc/scaling-characterization.md) and
+[the LLVM-corpus report](doc/llvm-corpus-characterization.md).
 
 To create a deterministic synthetic input yourself, use the host-only graph
 generator and pass its output back to the runner:

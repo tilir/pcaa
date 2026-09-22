@@ -57,8 +57,12 @@ Document public ABI structs directly where they are declared: state their purpos
 * `software/pbqp`: allocator-aware C ABI and freestanding C++17 PBQP implementation.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
 * `workload`: host-only C++ graph generation and logical workload characterization.
+* `probes`: host-only, non-PBQP cost-algebra workloads (e.g. Bellman-Ford) used only to
+  stress-test opcode generality; never PBQP-specific and never RTL/ABI/SystemC.
 * `tools/pbqp_run.cpp`: host-side PBQP text-format runner through the SystemC model.
 * `examples`: user-facing PBQP text inputs for the host runner.
+* `examples/regalloc`: real PBQP graphs extracted from LLVM's RegAllocPBQP allocator; see
+  `doc/llvm-corpus-characterization.md`.
 
 Host tests use GoogleTest. Keep SystemC tests behind the required `sc_main` entry point, which
 initializes and runs GoogleTest; bare-metal ELFs remain freestanding and do not use GoogleTest.
@@ -102,6 +106,14 @@ core; exact branch-and-reduce must condition one branch and re-run R0/R1/R2 at
 every search node. Snapshots come from the configured workspace allocator,
 never graph-sized stack copies, and allocator exhaustion reports
 `PBQP_SEARCH_LIMIT`. The hybrid must never worsen its RN seed.
+Exact branch-and-reduce prunes a branch once its accumulated
+`objective_offset` plus a sum-of-per-node/per-edge-minima lower bound over
+its still-active graph already meets or exceeds the best complete answer
+found so far; keep that bound sign-agnostic (PBQP costs may be negative), as
+a bound assuming non-negative costs would be unsound. A pruned branch
+returns the solver-internal `PBQP_PRUNED` status, consumed only by its
+immediate caller; it must never escape `pbqp_solver_solve`. Count prunes in
+`pbqp_statistics_t.search_nodes_pruned`, separate from `search_limit_hits`.
 RN scoring projects each incident matrix against its neighbor unary through the
 kernel using the value-only minimum primitive; argmin is reserved for phases
 that need reconstruction or a chosen coordinate. Its software-only score

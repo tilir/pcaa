@@ -359,14 +359,95 @@ R2 elimination) is much larger than the static cost table — 6.6MB for
 degree-4/N=1000/D=8 and 27.6MB for mixed-degree/N=500/D=8 — because it
 counts repeated accesses to the same state, not additional state.
 
-## 10. Local search
+## 10. Local search at scale
 
-Not measured in this pass. The prompt asks for it as a smaller secondary
-study (LS-A/LS-B granularity at a handful of N/D points); the existing
-`hw_sw_characterize.rb` 20-node corpus already reports LS-A/LS-B epoch
-shapes (see `doc/hw-sw-boundary-characterization.md`, "Local search and
-exact search"), but extending that to this scaling grid was out of scope
-for this run and is left as follow-up work using the same script.
+`scripts/scaling_characterize.rb --sweeps local-search` extends the same
+job/dedup/timeout machinery to `local-search` and
+`heuristic-rn-local-search`, at a smaller, separately calibrated N range
+per family (local search evaluates every node's every candidate value each
+sweep, so it does not scale like the reduction/RN sweeps above): N up to
+100 for degree-3/degree-4, up to 50 for mixed-degree, at D=2,4,8, 5 seeds.
+270 points, all completed in 121s total. For local-search-strategy runs
+the script also requests a `--trace` JSONL and groups it into LS-A
+(node-score granularity: one epoch per node evaluation) and LS-B (sweep
+granularity: one epoch per full pass over all nodes) exactly as
+`hw-sw-boundary-characterization.md` defines them, reporting epoch-size
+percentiles the same way the N=20 corpus there does — this is the
+extension across N/D that report's "Local search and exact search" section
+left as future work.
+
+### Sweep count: the hybrid converges in a handful of sweeps; local search alone does not
+
+| Family (D=4) | N | local-search sweeps | hybrid sweeps | local-search evaluations | hybrid evaluations |
+|---|---:|---:|---:|---:|---:|
+| degree-3 | 20 | 128.2 | 1.2 | 2,564 | 24 |
+| degree-3 | 50 | 313.6 | 1.6 | 15,680 | 80 |
+| degree-3 | 100 | 627.6 | 2.4 | 62,760 | 240 |
+| degree-4 | 20 | 129.6 | 1.4 | 2,592 | 28 |
+| degree-4 | 50 | 325.6 | 1.2 | 16,280 | 60 |
+| degree-4 | 100 | 639.6 | 1.0 | 63,960 | 100 |
+| mixed-degree | 15 | 93.4 | 1.4 | 1,401 | 21 |
+| mixed-degree | 20 | 128.8 | 2.0 | 2,576 | 40 |
+| mixed-degree | 50 | 320.6 | 3.4 | 16,030 | 170 |
+
+Seeding local descent from the RN heuristic's result (`heuristic-rn-local-search`)
+cuts sweep count by roughly 50-300x versus starting from all zeros across
+every family and N tested here, and the gap widens as N grows (degree-3:
+128 -> 1.2 sweeps at N=20 is 107x; 628 -> 2.4 at N=100 is 261x). Pure
+`local-search` sweep count also grows essentially linearly in N at fixed D
+(degree-3: 128, 314, 628 at N=20/50/100 — ratios 6.4, 6.28, 6.28 sweeps per
+node, stable), while the hybrid's sweep count stays small and roughly flat
+(1-3.4 sweeps) across the whole tested N range: RN gives local descent a
+starting point close enough to a local optimum that only a few full passes
+are needed regardless of graph size, on this corpus.
+
+### LS-A/LS-B epoch size: LS-A tracks D only; LS-B tracks N x D
+
+| Family | N | D | LS-A median elements | LS-B median elements |
+|---|---:|---:|---:|---:|
+| degree-3 | 50 | 2 | 8.0 | 400.0 |
+| degree-3 | 50 | 4 | 16.0 | 800.0 |
+| degree-3 | 50 | 8 | 32.0 | 1,600.0 |
+| degree-4 | 50 | 2 | 10.0 | 500.0 |
+| degree-4 | 50 | 4 | 20.0 | 1,000.0 |
+| degree-4 | 50 | 8 | 40.0 | 2,000.0 |
+| mixed-degree | 50 | 2 | 31.8 | 1,599.2 |
+| mixed-degree | 50 | 4 | 63.6 | 3,198.4 |
+| mixed-degree | 50 | 8 | 127.2 | 6,396.8 |
+
+For degree-3/degree-4, LS-A's median elements/node-evaluation is
+**independent of N** (16.0 at D=4 for both N=20, N=50, and N=100 —
+degree-3's fixed degree-3 neighborhood makes each node-score evaluation a
+constant-size operation regardless of graph size) and scales linearly with
+D alone. LS-B is exactly `LS-A median x N` in every row checked (e.g.
+degree-3 N=50/D=4: 16.0 x 50 = 800.0, matching exactly, since one sweep
+touches every node once) — so LS-B inherits both the D-driven per-node
+growth and an additional N-driven factor from sweeping the whole graph.
+This is the same node-granularity-vs-sweep-granularity split
+`hw-sw-boundary-characterization.md` found at N=20, now confirmed to hold
+up to N=100: LS-B is the only one of the two that grows with graph size at
+all.
+
+mixed-degree does **not** hold LS-A constant across N (20.8, 26.0, 63.6
+elements at N=15, 20, 50 and D=4 — not shown in the D-only table above but
+present in the raw CSV `sweeps=local-search` rows) because each node's
+degree itself grows with N for this family (scaling-characterization.md
+§3), so a node-score evaluation's slice-accumulate cost grows too — the
+same topology distinction that separates mixed-degree from the two
+fixed-degree families throughout this report shows up again here.
+
+### Limitations specific to this section
+
+- N is capped well below the main reduction/RN sweep's range specifically
+  because local search's cost (evaluations = sweeps x N, each touching a
+  node's full degree x D slice) grows much faster with N than RN's does;
+  this is expected, not a defect, and mirrors the calibrate-first approach
+  used for mixed-degree in the main sweep.
+- `RN+local-search` is reported only as the whole-run sweep/evaluation
+  counts above; its RN-seed phase's own epoch shape is unchanged from the
+  `heuristic-rn` sections earlier in this report (the hybrid's RN phase is
+  identical to a plain `heuristic-rn` run, followed by local descent from
+  that seed).
 
 ## 11. Architectural interpretation
 

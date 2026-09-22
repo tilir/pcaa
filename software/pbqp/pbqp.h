@@ -30,6 +30,11 @@ typedef enum {
   PBQP_COST_RANGE_ERROR = -3,
   PBQP_IRREDUCIBLE = -4,
   PBQP_SEARCH_LIMIT = -5,
+  /* Internal to exact-branch-reduce: this branch's lower bound already meets
+     or exceeds the caller's incumbent, so it was not fully explored. Never
+     returned by pbqp_solver_solve(); consumed by the caller that issued the
+     branch. */
+  PBQP_PRUNED = -6,
 } pbqp_status_t;
 
 /*
@@ -239,6 +244,9 @@ typedef struct {
   uint64_t search_branches_created;
   unsigned search_maximum_depth;
   unsigned search_limit_hits;
+  /* exact-branch-reduce only: branches whose lower bound already met or
+     exceeded the incumbent when reached, so they were not explored further. */
+  unsigned search_nodes_pruned;
   unsigned primitive_submissions[5];
   unsigned *vector_length_histogram;
   uint64_t logical_map_elements;

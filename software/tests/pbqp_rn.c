@@ -13,6 +13,7 @@ enum {
   kExitBuildFailure = 1,
   kExitSolverFailure = 2,
   kExitMismatch = 3,
+  kExitNoPruning = 4,
   kProblemStorageBytes = 512 * 1024,
   kWorkspaceStorageBytes = 4 * 1024 * 1024,
 };
@@ -61,6 +62,43 @@ static int build_problem(pbqp_problem_t *problem) {
   return 0;
 }
 
+/*
+ * The 12-vertex, 4-regular Chvatal graph (same structure as
+ * examples/chvatal.pbqp): its irreducible RN core needs several sequential
+ * branch decisions, so exact-branch-reduce's incumbent bound from an
+ * earlier sibling must prune a later one before that sibling fully
+ * resolves. Host-side runs confirmed pruning fires under every RN policy;
+ * this is the regression for software/pbqp/pbqp.cpp's
+ * SolveBranchAndReduce pruning that would fail without it.
+ */
+static int build_pruning_problem(pbqp_problem_t *problem) {
+  static const int32_t unary[] = {0, 0};
+  static const int32_t edge[] = {0, 1, 1, 0};
+  static const unsigned edges[24][2] = {
+      {0, 1}, {0, 2},  {0, 3},  {0, 4}, {1, 7},  {1, 10}, {1, 11}, {2, 6},
+      {2, 9}, {2, 11}, {3, 8},  {3, 9}, {3, 11}, {4, 5},  {4, 8},  {4, 10},
+      {5, 6}, {5, 7},  {5, 11}, {6, 8}, {6, 10}, {7, 8},  {7, 9},  {9, 10},
+  };
+  unsigned node;
+  unsigned edge_index;
+
+  if (pbqp_init(problem, reset_allocator(&original_arena, original_storage, kProblemStorageBytes),
+                PBQP_MAX_NODES, PBQP_MAX_EDGES, PBQP_MAX_DOMAIN) != PBQP_OK) {
+    return -1;
+  }
+  for (node = 0; node < 12; ++node) {
+    if (pbqp_add_node(problem, 2, unary) != PBQP_OK) {
+      return -1;
+    }
+  }
+  for (edge_index = 0; edge_index < 24; ++edge_index) {
+    if (pbqp_add_edge(problem, edges[edge_index][0], edges[edge_index][1], edge) != PBQP_OK) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
 static int equal_trace(const pbqp_problem_t *software, const pbqp_problem_t *accelerator) {
   unsigned index;
   if (software->statistics.r0_count != accelerator->statistics.r0_count ||
@@ -73,6 +111,7 @@ static int equal_trace(const pbqp_problem_t *software, const pbqp_problem_t *acc
       software->statistics.search_nodes_visited != accelerator->statistics.search_nodes_visited ||
       software->statistics.search_branches_created !=
           accelerator->statistics.search_branches_created ||
+      software->statistics.search_nodes_pruned != accelerator->statistics.search_nodes_pruned ||
       software->statistics.rn_projection_primitives !=
           accelerator->statistics.rn_projection_primitives) {
     return 0;
@@ -162,6 +201,51 @@ int main(void) {
            accelerator_problem.statistics.top_level_submissions == 0)) {
         finish(kExitMismatch);
       }
+    }
+  }
+
+  if (build_pruning_problem(&original_problem) != 0) {
+    finish(kExitBuildFailure);
+  }
+  for (policy = PBQP_RN_MIN_DEGREE; policy <= PBQP_RN_MIN_WORK; ++policy) {
+    config = pbqp_solver_default_config();
+    config.strategy = PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
+    config.rn_policy = policy;
+    if (pbqp_problem_clone(
+            &software_problem, &original_problem,
+            reset_allocator(&software_arena, software_storage, kProblemStorageBytes)) != PBQP_OK ||
+        pbqp_problem_clone(&accelerator_problem, &original_problem,
+                           reset_allocator(&accelerator_arena, accelerator_storage,
+                                           kProblemStorageBytes)) != PBQP_OK) {
+      finish(kExitBuildFailure);
+    }
+    pbqp_make_software_kernel(&software_kernel, &software_problem.statistics);
+    pbqp_make_accelerator_kernel(&accelerator_kernel, &accelerator_context,
+                                 &accelerator_problem.statistics);
+    config.workspace_allocator =
+        reset_allocator(&solver_workspace_arena, solver_workspace, kWorkspaceStorageBytes);
+    if (pbqp_solver_create_with_config(&software_solver, PBQP_MODE_SOFTWARE, &software_kernel,
+                                       &config) != PBQP_OK)
+      finish(kExitSolverFailure);
+    if (pbqp_solver_create_with_config(&accelerator_solver, PBQP_MODE_ACCELERATOR,
+                                       &accelerator_kernel, &config) != PBQP_OK ||
+        pbqp_solver_solve(&software_solver, &software_problem, &software_solution) != PBQP_OK ||
+        pbqp_solver_solve(&accelerator_solver, &accelerator_problem, &accelerator_solution) !=
+            PBQP_OK) {
+      finish(kExitSolverFailure);
+    }
+    if (software_solution.optimum != accelerator_solution.optimum ||
+        pbqp_reference_evaluate(&original_problem, software_solution.assignment) !=
+            software_solution.optimum ||
+        pbqp_reference_evaluate(&original_problem, accelerator_solution.assignment) !=
+            accelerator_solution.optimum) {
+      finish(kExitMismatch);
+    }
+    if (software_problem.statistics.search_nodes_pruned == 0 ||
+        accelerator_problem.statistics.search_nodes_pruned == 0 ||
+        software_problem.statistics.search_nodes_pruned !=
+            accelerator_problem.statistics.search_nodes_pruned) {
+      finish(kExitNoPruning);
     }
   }
   finish(kExitSuccess);

@@ -1086,6 +1086,7 @@ class Solver {
     uint64_t branches_created = 0;
     unsigned maximum_depth = 0;
     unsigned limit_hits = 0;
+    unsigned nodes_pruned = 0;
   };
 
   static void RecordSearchStatistics(pbqp_statistics_t *statistics, const SearchControl &search) {
@@ -1093,10 +1094,54 @@ class Solver {
     statistics->search_branches_created = search.branches_created;
     statistics->search_maximum_depth = search.maximum_depth;
     statistics->search_limit_hits = search.limit_hits;
+    statistics->search_nodes_pruned = search.nodes_pruned;
+  }
+
+  // A cheap, sign-agnostic relaxation lower bound for the still-active part
+  // of `state`: the sum of each active node's own cheapest unary choice plus
+  // each active edge's cheapest matrix entry. For any real assignment, each
+  // node/edge contributes at least its own minimum, so this never
+  // overestimates the true remaining cost -- unlike a bound that assumed
+  // non-negative costs, which PBQP does not guarantee (see pbqp_max_finite_cost).
+  static int32_t RemainingCoreLowerBound(const pbqp_problem_t &state) {
+    int32_t bound = 0;
+    for (unsigned index = 0; index < state.node_capacity; ++index) {
+      const pbqp_node_t &node = state.nodes[index];
+      if (!node.active)
+        continue;
+      int32_t minimum = node.unary[0];
+      for (unsigned choice = 1; choice < node.domain; ++choice) {
+        if (node.unary[choice] < minimum)
+          minimum = node.unary[choice];
+      }
+      bound = accel_cost_add(bound, minimum);
+    }
+    for (unsigned index = 0; index < state.edge_capacity; ++index) {
+      const pbqp_edge_t &edge = state.edges[index];
+      if (!edge.active)
+        continue;
+      // Row-major with a fixed problem-wide stride (pbqp_storage.cpp sets
+      // stride to domain_capacity, not this edge's own second-node domain),
+      // so only the first `second.domain` columns of each row are this
+      // edge's actual cost entries; the rest is unrelated padding.
+      const unsigned rows = state.nodes[edge.first].domain;
+      const unsigned cols = state.nodes[edge.second].domain;
+      int32_t minimum = edge.cost[0];
+      for (unsigned row = 0; row < rows; ++row) {
+        for (unsigned col = 0; col < cols; ++col) {
+          const int32_t value = edge.cost[static_cast<size_t>(row) * edge.stride + col];
+          if (value < minimum)
+            minimum = value;
+        }
+      }
+      bound = accel_cost_add(bound, minimum);
+    }
+    return bound;
   }
 
   pbqp_status_t SolveBranchAndReduce(pbqp_problem_t *state, pbqp_solution_t *solution,
-                                     unsigned depth, SearchControl *search = nullptr) const {
+                                     unsigned depth, SearchControl *search = nullptr,
+                                     int32_t best_known = ACCEL_INF) const {
     kernel_.SetStatistics(&state->statistics);
     SearchControl root_search;
     if (search == nullptr) {
@@ -1124,6 +1169,20 @@ class Solver {
                         : ReduceR2(graph, static_cast<unsigned>(node), edges[0], edges[1]);
       if (status != PBQP_OK)
         return status;
+    }
+    // Bound-and-prune: state->objective_offset is the cost already locked in
+    // by reductions on this path (root down to here), and
+    // RemainingCoreLowerBound is a valid lower bound on whatever the
+    // still-active graph can contribute (see that function's comment on why
+    // it stays valid despite PBQP allowing negative costs). If even that
+    // optimistic total cannot beat the caller's incumbent, there is nothing
+    // left worth exploring on this path, including the graph.ActiveNodeCount()
+    // == 0 case just below (its bound is exactly objective_offset).
+    if (best_known != ACCEL_INF &&
+        accel_cost_add(state->objective_offset, RemainingCoreLowerBound(*state)) >= best_known) {
+      ++search->nodes_pruned;
+      RecordSearchStatistics(&state->statistics, *search);
+      return PBQP_PRUNED;
     }
     if (graph.ActiveNodeCount() == 0) {
       solution->optimum = state->objective_offset;
@@ -1186,14 +1245,22 @@ class Solver {
       pbqp_solution_t candidate;
       pbqp_solution_init(&candidate, candidate_assignment.Get(), state->node_count);
       ++search->branches_created;
-      const pbqp_status_t status = SolveBranchAndReduce(&child, &candidate, depth + 1, search);
-      if (status != PBQP_OK) {
+      // Use whichever incumbent is tighter: one found among this node's own
+      // earlier children, or one this whole call was already given by its
+      // caller (found in an unrelated part of the tree). Both are valid
+      // global upper bounds, so the smaller one prunes at least as much.
+      int32_t child_best_known = has_best ? best.optimum : ACCEL_INF;
+      if (best_known < child_best_known)
+        child_best_known = best_known;
+      const pbqp_status_t status =
+          SolveBranchAndReduce(&child, &candidate, depth + 1, search, child_best_known);
+      if (status != PBQP_OK && status != PBQP_PRUNED) {
         RecordSearchStatistics(&state->statistics, *search);
         return status;
       }
       AddBranchStatistics(&aggregate_statistics, base_statistics, child.statistics,
                           child.domain_capacity);
-      if (!has_best || candidate.optimum < best.optimum) {
+      if (status == PBQP_OK && (!has_best || candidate.optimum < best.optimum)) {
         best.optimum = candidate.optimum;
         memcpy(best.assignment, candidate.assignment,
                static_cast<size_t>(state->node_count) * sizeof(unsigned));
@@ -1201,6 +1268,13 @@ class Solver {
       }
     }
     state->statistics = aggregate_statistics;
+    if (!has_best) {
+      // Every branch value was pruned against the caller's incumbent: this
+      // whole subtree cannot improve on it either, so propagate the same
+      // signal up rather than reporting a solution that was never computed.
+      RecordSearchStatistics(&state->statistics, *search);
+      return PBQP_PRUNED;
+    }
     RecordSearchStatistics(&state->statistics, *search);
     solution->optimum = best.optimum;
     memcpy(solution->assignment, best.assignment,

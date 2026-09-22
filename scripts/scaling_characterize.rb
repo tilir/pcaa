@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 PCAA contributors
 # Records deterministic PBQP scaling points (graph-size sweep, domain-size
-# sweep, a joint N x D grid, and an RN-policy comparison) through the public
-# graph generator and solver CLI tools. Every row comes from one real solver
-# invocation; this script only drives the sweep and parses its diagnostics.
+# sweep, a joint N x D grid, an RN-policy comparison, and a local-search
+# sweep with LS-A/LS-B epoch percentiles from --trace) through the public
+# graph generator and solver CLI tools, plus an optional real-corpus sweep
+# (--corpus-dir) that feeds pre-generated .pbqp files, such as
+# examples/regalloc, straight to the runner instead of the generator. Every
+# row comes from one real solver invocation; this script only drives the
+# sweep and parses its diagnostics.
 
 require "csv"
+require "json"
 require "open3"
 require "optparse"
 require "set"
@@ -37,6 +42,15 @@ DEFAULT_POLICY_POINTS = [["degree-3", 100, 4], ["degree-3", 200, 8],
                           ["mixed-degree", 100, 4], ["mixed-degree", 200, 8]].freeze
 RN_POLICIES = %w[min-degree max-degree min-work].freeze
 
+# Local search evaluates every node's every candidate value each sweep, so
+# it is calibrated to a smaller N range than the main graph-size sweep
+# (mixed-degree N=100 alone already takes ~15s per seed).
+DEFAULT_LOCAL_SEARCH_NODES = { "degree-3" => [20, 50, 100], "degree-4" => [20, 50, 100],
+                                "mixed-degree" => [15, 20, 50] }.freeze
+DEFAULT_LOCAL_SEARCH_DOMAINS = [2, 4, 8].freeze
+DEFAULT_LOCAL_SEARCH_STRATEGIES = %w[local-search heuristic-rn-local-search].freeze
+LOCAL_SEARCH_ELEMENT_FIELDS = %w[project project_accumulate slice map3 argmin].freeze
+
 DEFAULT_SEEDS = (1001..1005).to_a.freeze
 DEFAULT_TIMEOUT = 180
 
@@ -65,7 +79,8 @@ options = { runner: "build/pcaa_graph_run", generator: "build/pbqp_graph_generat
             families: DEFAULT_FAMILY_PROFILES.dup,
             graph_size_nodes: DEFAULT_GRAPH_SIZE_NODES.dup, graph_size_domains: DEFAULT_GRAPH_SIZE_DOMAINS,
             domain_size_nodes: DEFAULT_DOMAIN_SIZE_NODES.dup, domain_size_domains: DEFAULT_DOMAIN_SIZE_DOMAINS,
-            policies: RN_POLICIES }
+            policies: RN_POLICIES, corpus_dir: nil, corpus_family: "llvm-regalloc",
+            corpus_policy: "min-degree" }
 nodes_for_overrides = []
 domain_nodes_for_overrides = []
 
@@ -73,7 +88,9 @@ OptionParser.new do |parser|
   parser.banner = "Usage: ruby scripts/scaling_characterize.rb [options] OUTPUT.csv"
   parser.on("--runner PATH", "pcaa_graph_run executable") { |v| options[:runner] = v }
   parser.on("--generator PATH", "pbqp_graph_generate executable") { |v| options[:generator] = v }
-  parser.on("--sweeps LIST", "Comma-separated subset of graph-size,domain-size,grid,policy") do |v|
+  parser.on("--sweeps LIST", "Comma-separated subset of graph-size,domain-size,grid,policy," \
+                              "local-search (default: graph-size,domain-size,grid,policy; " \
+                              "local-search is opt-in, it is much slower per point)") do |v|
     options[:sweeps] = v.split(",")
   end
   parser.on("--families LIST", "Comma-separated family[:profile] list (default: degree-3,degree-4,mixed-degree)") do |v|
@@ -100,6 +117,16 @@ OptionParser.new do |parser|
   parser.on("--policies LIST", "Comma-separated RN policies to compare (default: min-degree,max-degree,min-work)") do |v|
     options[:policies] = v.split(",")
   end
+  parser.on("--corpus-dir DIR", "Feed every *.pbqp file in DIR to the runner as an extra family, " \
+                                 "instead of generating one (e.g. examples/regalloc)") do |v|
+    options[:corpus_dir] = v
+  end
+  parser.on("--corpus-family NAME", "Family name recorded for --corpus-dir rows (default: llvm-regalloc)") do |v|
+    options[:corpus_family] = v
+  end
+  parser.on("--corpus-policy NAME", "RN policy used for --corpus-dir rows (default: min-degree)") do |v|
+    options[:corpus_policy] = v
+  end
   parser.on("--timeout SECONDS", Integer, "Kill and record a run as time-limit past this wall clock (default: 180)") do |v|
     options[:timeout] = v
   end
@@ -124,10 +151,10 @@ options[:domain_size_nodes] = DEFAULT_DOMAIN_SIZE_NODES.merge(parse_nodes_for(do
 # because mixed-degree runs are expensive enough that repeating them is wasteful.
 jobs = {}
 
-def add_job(jobs, tag, family, profile, nodes, domain, policy, strategy, seeds)
+def add_job(jobs, tag, family, profile, nodes, domain, policy, strategy, seeds, path: nil)
   seeds.each do |seed|
     key = [family, nodes, domain, policy, strategy, seed]
-    (jobs[key] ||= { profile: profile, tags: Set.new }).tap { |job| job[:tags] << tag }
+    (jobs[key] ||= { profile: profile, tags: Set.new, path: path }).tap { |job| job[:tags] << tag }
   end
 end
 
@@ -171,6 +198,33 @@ if options[:sweeps].include?("policy")
     profile = options[:families][family] || DEFAULT_FAMILY_PROFILES.fetch(family)
     options[:policies].each do |policy|
       add_job(jobs, "policy", family, profile, nodes, domain, policy, "heuristic-rn", options[:seeds])
+    end
+  end
+end
+
+# Real-corpus sweep: every pre-generated .pbqp file in --corpus-dir is fed to
+# the runner directly (run_point below skips the generator when job[:path] is
+# set). nodes/domain stay 0 in the key/row since there is no swept target;
+# the actual measured node count and domain sizes are still in
+# initial_nodes/domain_min/domain_mean/domain_max.
+if options[:corpus_dir]
+  Dir.glob(File.join(options[:corpus_dir], "*.pbqp")).sort.each_with_index do |path, index|
+    add_job(jobs, "corpus", options[:corpus_family], File.basename(path), 0, 0,
+            options[:corpus_policy], "heuristic-rn", [index + 1], path: path)
+  end
+end
+
+if options[:sweeps].include?("local-search")
+  options[:families].each do |family, profile|
+    next unless DEFAULT_LOCAL_SEARCH_NODES.key?(family)
+
+    DEFAULT_LOCAL_SEARCH_NODES.fetch(family).each do |nodes|
+      DEFAULT_LOCAL_SEARCH_DOMAINS.each do |domain|
+        DEFAULT_LOCAL_SEARCH_STRATEGIES.each do |strategy|
+          add_job(jobs, "local-search", family, profile, nodes, domain, "min-degree", strategy,
+                  options[:seeds])
+        end
+      end
     end
   end
 end
@@ -258,6 +312,7 @@ REDUCTIONS_RE = /reductions R0=(\d+) R1=(\d+) R2=(\d+) RN=(\d+) projections=(\d+
 RN_CORE_RE = /RN core first=(\d+) nodes\/(\d+) edges max=(\d+) nodes\/(\d+) edges episodes=(\d+) degree=(\d+)\.\.(\d+) after-RN R0=(\d+) R1=(\d+) R2=(\d+) cascade-total=(\d+) cascade-max=(\d+)/
 CASCADES_RE = /rn_cascades rn_episodes=(\d+) rn_cascade_r0_total=(\d+) rn_cascade_r1_total=(\d+) rn_cascade_r2_total=(\d+) rn_cascade_exact_total=(\d+) rn_cascade_mean=([0-9.]+) rn_cascade_max=(\d+)/
 OPERATION_MIX_RE = /operation mix project-elements=(\d+) project-accumulate-elements=(\d+) slice-elements=(\d+) map3-elements=(\d+) argmin-elements=(\d+) descriptors=(\d+) batches=(\d+) operand-bytes=(\d+) result-bytes=(\d+) bytes=(\d+)/
+LOCAL_SEARCH_RE = /local search evaluations=(\d+) sweeps=(\d+) accepted-moves=(\d+) slices=(\d+) slice-elements=(\d+) argmin=(\d+)/
 
 HEADER = %w[sweeps family profile seed nodes domain policy strategy status wall_time_seconds
             initial_nodes initial_edges max_degree domain_min domain_mean domain_max
@@ -269,14 +324,53 @@ HEADER = %w[sweeps family profile seed nodes domain policy strategy status wall_
             cascade_mean cascade_max
             project_elements project_accumulate_elements slice_elements map3_elements argmin_elements
             descriptors batches operand_bytes result_bytes total_bytes total_elements
-            elements_per_rn_episode].freeze
+            elements_per_rn_episode
+            ls_evaluations ls_sweeps ls_moves ls_slice_ops ls_slice_elements ls_argmin_elements
+            ls_a_epochs ls_a_median_elements ls_a_p90_elements
+            ls_b_epochs ls_b_median_elements ls_b_p90_elements].freeze
+
+# Groups a local-search JSONL trace's LOCAL_SCORE events into LS-A
+# (node-score granularity: one epoch per event) and LS-B (sweep
+# granularity: one epoch per full pass over all nodes, starting a new one
+# each time node==0 recurs) per hw-sw-boundary-characterization.md's
+# definitions, and returns [count, median, p90] logical-element sizes for
+# each grouping.
+def local_search_epoch_stats(trace_path)
+  events = File.readlines(trace_path, chomp: true).reject(&:empty?).map { |line| JSON.parse(line) }
+  scores = events.select { |event| event["type"] == "LOCAL_SCORE" }
+  element_count = ->(event) { LOCAL_SEARCH_ELEMENT_FIELDS.sum { |field| event.fetch(field, 0) } }
+  ls_a = scores.map(&element_count)
+  sweeps = [[]]
+  scores.each do |event|
+    sweeps << [] if event["node"].zero? && !sweeps.last.empty?
+    sweeps.last << event
+  end
+  ls_b = sweeps.reject(&:empty?).map { |group| group.sum(&element_count) }
+  [ls_a, ls_b]
+end
+
+def percentile_stats(values)
+  return ["", "", ""] if values.empty?
+
+  sorted = values.sort
+  middle = sorted.length / 2
+  median = sorted.length.odd? ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2.0
+  p90 = sorted[((0.9 * (sorted.length - 1)).round)]
+  [values.length, median, p90]
+end
 
 def run_point(options, job, key)
   family, nodes, domain, policy, strategy, seed = key
   profile = job[:profile]
-  graph, _diag, generated = invoke(options[:generator], "--family", family, "--profile", profile,
-                                    "--nodes", nodes.to_s, "--seed", seed.to_s, "--domain-size", domain.to_s)
-  unless generated.success?
+  if job[:path]
+    graph = File.read(job[:path])
+    generated_ok = true
+  else
+    graph, _diag, generated = invoke(options[:generator], "--family", family, "--profile", profile,
+                                      "--nodes", nodes.to_s, "--seed", seed.to_s, "--domain-size", domain.to_s)
+    generated_ok = generated.success?
+  end
+  unless generated_ok
     return [job[:tags].to_a.sort.join("|"), family, profile, seed, nodes, domain, policy, strategy,
             "generator-error", nil] + (Array.new(HEADER.length - 10))
   end
@@ -285,11 +379,14 @@ def run_point(options, job, key)
   row_prefix = [job[:tags].to_a.sort.join("|"), family, profile, seed, nodes, domain, policy, strategy]
   start_time = Time.now
 
+  needs_trace = DEFAULT_LOCAL_SEARCH_STRATEGIES.include?(strategy)
   Tempfile.create(["pcaa-scaling-", ".pbqp"]) do |file|
     file.write(graph)
     file.flush
+    trace_path = needs_trace ? "#{file.path}.trace.jsonl" : nil
     command = [options[:runner], "--solver", "local", "--strategy", strategy, "--rn-policy", policy,
                "--verbose", file.path]
+    command += ["--trace", trace_path] if trace_path
     stdout_text, stderr_text, status = invoke_with_timeout(command, options[:timeout])
     elapsed = Time.now - start_time
 
@@ -320,10 +417,21 @@ def run_point(options, job, key)
     rn_episodes = cascades[0]
     elements_per_episode = rn_episodes.positive? ? format("%.2f", total_elements.to_f / rn_episodes) : ""
 
+    local_search = metrics(stderr_text, LOCAL_SEARCH_RE) || Array.new(6, "")
+    ls_a_stats = ["", "", ""]
+    ls_b_stats = ["", "", ""]
+    if trace_path && File.exist?(trace_path)
+      ls_a, ls_b = local_search_epoch_stats(trace_path)
+      ls_a_stats = percentile_stats(ls_a)
+      ls_b_stats = percentile_stats(ls_b)
+      File.delete(trace_path)
+    end
+
     row_prefix + ["ok", format("%.3f", elapsed)] + state +
       reductions + [rn_core[0], rn_core[1], rn_core[2], rn_core[3], rn_core[5], rn_core[6],
                     rn_core[7], rn_core[8], rn_core[9]] +
-      cascades + mix + [total_elements, elements_per_episode]
+      cascades + mix + [total_elements, elements_per_episode] +
+      local_search + ls_a_stats + ls_b_stats
   end
 end
 
