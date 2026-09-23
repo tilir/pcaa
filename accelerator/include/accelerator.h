@@ -8,6 +8,7 @@
 #include "pcaa.h"
 #include "timing_model.h"
 
+#include <stddef.h>
 #include <cstdint>
 #include <map>
 #include <vector>
@@ -51,6 +52,7 @@ class Accelerator : public sc_core::sc_module {
   bool read_register(uint64_t address, uint32_t *value) const;
   bool write_register(uint64_t address, uint32_t value, sc_core::sc_time *delay);
   bool execute(sc_core::sc_time *delay);
+  bool read_command(uint64_t address, size_t available, pcaa_command_t *command, size_t *bytes);
   bool execute_command(const pcaa_command_t &command, sc_core::sc_time *delay);
   bool execute_vector_command(const pcaa_command_t &command);
   bool vector_output(const pcaa_command_t &command, uint32_t output,

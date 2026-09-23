@@ -27,12 +27,11 @@ extern "C" {
 #define ACCEL_MMIO_BASE 0x10002000UL
 #endif
 void accel_init(void);
-int accel_submit(const accel_command_t *command);
+/* Low-level transport for already encoded command bytes. */
+int accel_submit_encoded(const void *bytes, size_t encoded_bytes);
 int accel_submit_command(const pcaa_command_t *command);
 int accel_wait(void);
-/* Submits an ordered primitive descriptor array and waits for its batch result. */
-int accel_submit_batch(const accel_command_t *commands, size_t count, accel_batch_result_t *result);
-/* Caller owns encoded workspace[count] until completion; this function waits. */
+/* Caller owns max-sized encoded workspace[count] until completion; this function waits. */
 int accel_submit_command_batch(const pcaa_command_t *commands, size_t count,
                                pcaa_encoded_slot_t *encoded_workspace,
                                accel_batch_result_t *result);

@@ -8,8 +8,8 @@
 #include "pbqp/pbqp.h"
 #include "pcaa.h"
 #include "pcaa_device.h"
+#include "pcaa_codec.h"
 #include "pcaa_host_error.h"
-#include "pcaa_submission.h"
 #include "pcaa_systemc_device.h"
 #include "timing_model.h"
 
@@ -50,6 +50,7 @@ constexpr size_t kMaximumHostDomain = 64 * 1024;
 constexpr unsigned kTimedRunnerLanes = 4;
 constexpr int kTimedRunnerCyclePeriodNanoseconds = 1;
 constexpr unsigned kTimedRunnerBytesPerCycle = 16;
+constexpr size_t kLegacyDescriptorBytes = 80;
 constexpr pcaa_guest_address_t kFirstAllocationAddress = 0x100;
 constexpr size_t kAllocationAlignment = 8;
 
@@ -298,10 +299,10 @@ class ModelKernel {
     return (value + divisor - 1) / divisor;
   }
 
-  static void record_cycles(CycleBreakdown *breakdown, uint64_t operand_elements,
-                            uint64_t compute_chunks, uint64_t result_bytes) {
-    const uint64_t descriptor =
-        divide_round_up(pcaa_encoded_command_bytes(), kTimedRunnerBytesPerCycle);
+  static void record_cycles(CycleBreakdown *breakdown, size_t descriptor_bytes,
+                            uint64_t operand_elements, uint64_t compute_chunks,
+                            uint64_t result_bytes) {
+    const uint64_t descriptor = divide_round_up(descriptor_bytes, kTimedRunnerBytesPerCycle);
     const uint64_t operands =
         divide_round_up(operand_elements * sizeof(int32_t), kTimedRunnerBytesPerCycle);
     const uint64_t result = divide_round_up(result_bytes, kTimedRunnerBytesPerCycle);
@@ -323,7 +324,7 @@ class ModelKernel {
     for (size_t index = 0; index < count; ++index) {
       const pbqp_vector_view_t matrix = jobs[index].a;
       const pbqp_vector_view_t unary = jobs[index].b;
-      record_cycles(&vector_cycle_projection_.project_scalar, 2 * matrix.length,
+      record_cycles(&vector_cycle_projection_.project_scalar, 32, 2 * matrix.length,
                     divide_round_up(matrix.length, kTimedRunnerLanes), sizeof(int32_t));
       Group &group = groups[{unary.base, unary.length, unary.stride}];
       if (group.outputs == 0) {
@@ -335,7 +336,7 @@ class ModelKernel {
     }
     for (const auto &entry : groups) {
       const Group &group = entry.second;
-      record_cycles(&vector_cycle_projection_.project_vector, group.operand_elements,
+      record_cycles(&vector_cycle_projection_.project_vector, 48, group.operand_elements,
                     group.compute_chunks, group.outputs * sizeof(int32_t));
     }
   }
@@ -348,7 +349,7 @@ class ModelKernel {
     std::map<ViewKey, size_t, ViewKeyLess> second_slices;
     for (size_t index = 0; index < count; ++index) {
       const size_t length = jobs[index].a.length;
-      record_cycles(&vector_cycle_projection_.map3_scalar, 3 * length,
+      record_cycles(&vector_cycle_projection_.map3_scalar, 48, 3 * length,
                     divide_round_up(length, kTimedRunnerLanes), sizeof(accel_min_argmin_result_t));
       first_slices.emplace(ViewKey{jobs[index].b.base, jobs[index].b.length, jobs[index].b.stride},
                            length);
@@ -362,7 +363,7 @@ class ModelKernel {
     }
     for (const auto &entry : first_slices) {
       const uint64_t operand_elements = jobs[0].a.length + entry.second + second_elements;
-      record_cycles(&vector_cycle_projection_.map3_partial, operand_elements,
+      record_cycles(&vector_cycle_projection_.map3_partial, 64, operand_elements,
                     second_slices.size() * reduction_chunks,
                     second_slices.size() * sizeof(accel_min_argmin_result_t));
     }
@@ -370,7 +371,7 @@ class ModelKernel {
     for (const auto &entry : first_slices) {
       first_elements += entry.second;
     }
-    record_cycles(&vector_cycle_projection_.map3_full,
+    record_cycles(&vector_cycle_projection_.map3_full, 64,
                   jobs[0].a.length + first_elements + second_elements, count * reduction_chunks,
                   count * sizeof(accel_min_argmin_result_t));
   }
@@ -381,10 +382,10 @@ class ModelKernel {
       const uint64_t rows = jobs[index].matrix.rows;
       const uint64_t chunks = divide_round_up(columns, kTimedRunnerLanes);
       for (size_t row = 0; row < rows; ++row)
-        record_cycles(&vector_cycle_projection_.project_scalar, 2 * columns, chunks,
+        record_cycles(&vector_cycle_projection_.project_scalar, 32, 2 * columns, chunks,
                       sizeof(int32_t));
-      record_cycles(&vector_cycle_projection_.project_vector, columns * (rows + 1), rows * chunks,
-                    rows * sizeof(int32_t));
+      record_cycles(&vector_cycle_projection_.project_vector, 48, columns * (rows + 1),
+                    rows * chunks, rows * sizeof(int32_t));
     }
   }
 
@@ -397,16 +398,17 @@ class ModelKernel {
       const uint64_t rows = jobs[index].varying_edge.rows;
       const uint64_t chunks = divide_round_up(columns, kTimedRunnerLanes);
       for (size_t row = 0; row < rows; ++row)
-        record_cycles(&vector_cycle_projection_.map3_scalar, 3 * columns, chunks,
+        record_cycles(&vector_cycle_projection_.map3_scalar, 48, 3 * columns, chunks,
                       sizeof(accel_min_argmin_result_t));
-      record_cycles(&vector_cycle_projection_.map3_partial, columns * (rows + 2), rows * chunks,
+      record_cycles(&vector_cycle_projection_.map3_partial, 64, columns * (rows + 2), rows * chunks,
                     rows * sizeof(accel_min_argmin_result_t));
       full_operands += columns * (rows + 1);
       full_chunks += rows * chunks;
       full_results += rows * sizeof(accel_min_argmin_result_t);
     }
     if (count != 0)
-      record_cycles(&vector_cycle_projection_.map3_full, full_operands, full_chunks, full_results);
+      record_cycles(&vector_cycle_projection_.map3_full, 64, full_operands, full_chunks,
+                    full_results);
   }
 
   static int min2(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
@@ -446,10 +448,9 @@ class ModelKernel {
       if (first == 0 || second == 0 || result == 0)
         return -1;
       pcaa_command_t command{};
-      if (pcaa_make_reduce2(
-              pcaa_cost_vector(first, static_cast<uint32_t>(jobs[index].a.length), 1),
-              pcaa_cost_vector(second, static_cast<uint32_t>(jobs[index].b.length), 1), result, 0,
-              &command) != 0)
+      if (pcaa_make_reduce2(pcaa_cost_vector(first, jobs[index].a.length, 1),
+                            pcaa_cost_vector(second, jobs[index].b.length, 1), result, 0,
+                            &command) != 0)
         return -1;
       commands.push_back(command);
       result_addresses.push_back(result);
@@ -479,10 +480,9 @@ class ModelKernel {
         return -1;
       }
       pcaa_command_t command{};
-      if (pcaa_make_reduce2(
-              pcaa_cost_vector(first, static_cast<uint32_t>(jobs[index].a.length), 1),
-              pcaa_cost_vector(second, static_cast<uint32_t>(jobs[index].b.length), 1), result, 1,
-              &command) != 0)
+      if (pcaa_make_reduce2(pcaa_cost_vector(first, jobs[index].a.length, 1),
+                            pcaa_cost_vector(second, jobs[index].b.length, 1), result, 1,
+                            &command) != 0)
         return -1;
       commands.push_back(command);
       result_addresses.push_back(result);
@@ -516,11 +516,10 @@ class ModelKernel {
         return -1;
       }
       pcaa_command_t command{};
-      if (pcaa_make_reduce3(
-              pcaa_cost_vector(first, static_cast<uint32_t>(jobs[index].a.length), 1),
-              pcaa_cost_vector(second, static_cast<uint32_t>(jobs[index].b.length), 1),
-              pcaa_cost_vector(third, static_cast<uint32_t>(jobs[index].c.length), 1), result, 1,
-              &command) != 0)
+      if (pcaa_make_reduce3(pcaa_cost_vector(first, jobs[index].a.length, 1),
+                            pcaa_cost_vector(second, jobs[index].b.length, 1),
+                            pcaa_cost_vector(third, jobs[index].c.length, 1), result, 1,
+                            &command) != 0)
         return -1;
       commands.push_back(command);
       result_addresses.push_back(result);
@@ -558,18 +557,15 @@ class ModelKernel {
         return -1;
       pcaa_command_t project{};
       if (pcaa_make_minplus_project(
-              pcaa_cost_matrix(matrix, static_cast<uint32_t>(rows),
-                               static_cast<uint32_t>(job.matrix.columns),
-                               static_cast<uint32_t>(job.matrix.columns), 1),
-              pcaa_cost_vector(unary, static_cast<uint32_t>(job.unary.length), 1),
-              pcaa_cost_output(temporary, static_cast<uint32_t>(rows), 1), &project) != 0)
+              pcaa_cost_matrix(matrix, rows, job.matrix.columns, job.matrix.columns, 1),
+              pcaa_cost_vector(unary, job.unary.length, 1), pcaa_cost_output(temporary, rows, 1),
+              &project) != 0)
         return -1;
       commands.push_back(project);
       pcaa_command_t add{};
-      if (pcaa_make_cost_add_vector(pcaa_cost_vector(temporary, static_cast<uint32_t>(rows), 1),
-                                    pcaa_cost_vector(scores, static_cast<uint32_t>(rows), 1),
-                                    pcaa_cost_output(scores, static_cast<uint32_t>(rows), 1),
-                                    &add) != 0)
+      if (pcaa_make_cost_add_vector(pcaa_cost_vector(temporary, rows, 1),
+                                    pcaa_cost_vector(scores, rows, 1),
+                                    pcaa_cost_output(scores, rows, 1), &add) != 0)
         return -1;
       commands.push_back(add);
     }
@@ -600,13 +596,11 @@ class ModelKernel {
         return -1;
       pcaa_command_t command{};
       if (pcaa_make_minplus_map3_project(
-              pcaa_cost_vector(unary, static_cast<uint32_t>(job.unary.length), 1),
-              pcaa_cost_vector(fixed, static_cast<uint32_t>(job.fixed_edge.length), 1),
-              pcaa_cost_matrix(varying, static_cast<uint32_t>(job.varying_edge.rows),
-                               static_cast<uint32_t>(job.varying_edge.columns),
-                               static_cast<uint32_t>(job.varying_edge.columns), 1),
-              pcaa_argmin_output(result, static_cast<uint32_t>(job.varying_edge.rows), 1),
-              &command) != 0)
+              pcaa_cost_vector(unary, job.unary.length, 1),
+              pcaa_cost_vector(fixed, job.fixed_edge.length, 1),
+              pcaa_cost_matrix(varying, job.varying_edge.rows, job.varying_edge.columns,
+                               job.varying_edge.columns, 1),
+              pcaa_argmin_output(result, job.varying_edge.rows, 1), &command) != 0)
         return -1;
       commands.push_back(command);
       results.push_back(result);
@@ -632,11 +626,9 @@ class ModelKernel {
     if (first_address == 0 || second_address == 0 || result_address == 0)
       return -1;
     pcaa_command_t command{};
-    if (pcaa_make_cost_add_vector(
-            pcaa_cost_vector(first_address, static_cast<uint32_t>(first.length), 1),
-            pcaa_cost_vector(second_address, static_cast<uint32_t>(second.length), 1),
-            pcaa_cost_output(result_address, static_cast<uint32_t>(first.length), 1),
-            &command) != 0)
+    if (pcaa_make_cost_add_vector(pcaa_cost_vector(first_address, first.length, 1),
+                                  pcaa_cost_vector(second_address, second.length, 1),
+                                  pcaa_cost_output(result_address, first.length, 1), &command) != 0)
       return -1;
     return kernel->submit_batch({command}) &&
                    kernel->memory_.read(result_address, result, first.length * sizeof(int32_t))
@@ -656,11 +648,9 @@ class ModelKernel {
       return -1;
     pcaa_command_t command{};
     if (pcaa_make_minplus_project(
-            pcaa_cost_matrix(matrix_address, static_cast<uint32_t>(matrix.rows),
-                             static_cast<uint32_t>(matrix.columns),
-                             static_cast<uint32_t>(matrix.columns), 1),
-            pcaa_cost_vector(unary_address, static_cast<uint32_t>(unary.length), 1),
-            pcaa_cost_output(result_address, static_cast<uint32_t>(matrix.rows), 1), &command) != 0)
+            pcaa_cost_matrix(matrix_address, matrix.rows, matrix.columns, matrix.columns, 1),
+            pcaa_cost_vector(unary_address, unary.length, 1),
+            pcaa_cost_output(result_address, matrix.rows, 1), &command) != 0)
       return -1;
     return kernel->submit_batch({command}) &&
                    kernel->memory_.read(result_address, result, matrix.rows * sizeof(int32_t))
@@ -725,8 +715,11 @@ class ModelKernel {
   }
 
   bool submit_batch(const std::vector<pcaa_command_t> &commands) {
-    if (commands.empty() || commands.size() > UINT32_MAX ||
-        pcaa_encoded_batch_bytes(commands.size()) == 0) {
+    size_t child_bytes = 0;
+    const pcaa_status_t measured =
+        pcaa_encoded_stream_size(commands.data(), commands.size(), &child_bytes);
+    if (measured != PCAA_STATUS_OK) {
+      pcaa_perror("pcaa measure batch", measured);
       return false;
     }
     const pcaa_status_t submitted =
@@ -735,7 +728,7 @@ class ModelKernel {
       pcaa_perror("pcaa submit", submitted);
       return false;
     }
-    record_batch_submission(commands.size());
+    record_batch_submission(commands, child_bytes);
     pcaa_completion_t completion{};
     const pcaa_status_t completed = pcaa_device_wait(device_->device(), &completion);
     if (completed != PCAA_STATUS_OK) {
@@ -747,10 +740,11 @@ class ModelKernel {
     return true;
   }
 
-  void record_batch_submission(size_t count) {
+  void record_batch_submission(const std::vector<pcaa_command_t> &commands, size_t child_bytes) {
     if (statistics_ == nullptr) {
       return;
     }
+    const size_t count = commands.size();
     const unsigned command_count = static_cast<unsigned>(count);
     ++statistics_->top_level_submissions;
     ++statistics_->batch_submissions;
@@ -758,8 +752,21 @@ class ModelKernel {
     if (command_count > statistics_->maximum_batch_size) {
       statistics_->maximum_batch_size = command_count;
     }
-    statistics_->batch_descriptor_bytes += pcaa_encoded_batch_bytes(count);
-    statistics_->batch_child_descriptor_bytes += count * pcaa_encoded_command_bytes();
+    statistics_->batch_descriptor_bytes += ACCEL_BATCH_COMMAND_BYTES + child_bytes;
+    statistics_->batch_child_descriptor_bytes += child_bytes;
+    for (const pcaa_command_t &command : commands) {
+      if (command.kind != PCAA_COST_ADD_VECTOR)
+        continue;
+      const pcaa_vector_add_t &add = command.operation.vector_add;
+      const bool alias0 =
+          add.result.base == add.first.base && add.result.stride == add.first.stride;
+      const bool alias1 =
+          add.result.base == add.second.base && add.result.stride == add.second.stride;
+      statistics_->vector_add_dst_src0 += alias0;
+      statistics_->vector_add_dst_src1 += alias1;
+      statistics_->vector_add_inplace_descriptors += alias0 || alias1;
+      statistics_->vector_add_general_descriptors += !alias0 && !alias1;
+    }
   }
 
   GuestMemory memory_;
@@ -1212,10 +1219,30 @@ int sc_main(int argc, char **argv) {
               << " scalar-project-descriptors=" << statistics->scalar_project_descriptors
               << " vector-project-descriptors=" << statistics->vector_project_descriptors
               << " vector-add-descriptors=" << statistics->vector_add_descriptors
+              << " vector-add-dst-src0=" << statistics->vector_add_dst_src0
+              << " vector-add-dst-src1=" << statistics->vector_add_dst_src1
+              << " vector-add-inplace=" << statistics->vector_add_inplace_descriptors
+              << " vector-add-general=" << statistics->vector_add_general_descriptors
               << " scalar-map3-descriptors=" << statistics->scalar_map3_descriptors
               << " partial-map3-descriptors=" << statistics->partial_map3_descriptors << '\n';
     std::cerr << "pcaa: views contiguous=" << statistics->contiguous_views
               << " strided=" << statistics->strided_views << '\n';
+    std::cerr << "pcaa: encoding old-fixed-bytes="
+              << kLegacyDescriptorBytes *
+                     (statistics->batch_primitive_descriptors + statistics->batch_submissions)
+              << " compact-bytes=" << statistics->batch_descriptor_bytes
+              << " child-bytes=" << statistics->batch_child_descriptor_bytes << " vector-add-total="
+              << statistics->vector_add_inplace_descriptors +
+                     statistics->vector_add_general_descriptors
+              << " dst-src0=" << statistics->vector_add_dst_src0
+              << " dst-src1=" << statistics->vector_add_dst_src1
+              << " inplace=" << statistics->vector_add_inplace_descriptors
+              << " general=" << statistics->vector_add_general_descriptors << '\n';
+    std::cerr << "pcaa: encoding primitive-counts";
+    for (unsigned opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN;
+         opcode <= ACCEL_OPCODE_MINPLUS_MAP3_PROJECT; ++opcode)
+      std::cerr << " op" << opcode << '=' << statistics->primitive_submissions[opcode];
+    std::cerr << '\n';
     std::cerr << "pcaa: exact search nodes=" << statistics->search_nodes_visited
               << " branches=" << statistics->search_branches_created
               << " max-depth=" << statistics->search_maximum_depth

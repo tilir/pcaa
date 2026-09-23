@@ -6,10 +6,10 @@ block owns only regular cost operations over runtime-sized affine views.
 The pre-decision evidence index remains [isa-decision-inputs.md](isa-decision-inputs.md).
 
 Semantic commands are distinct from their descriptor representation.
-`pcaalib` owns the semantic builders and current 80-byte descriptor codec;
-the functional engine consumes decoded commands. A later compact encoding
-can replace this codec without changing PBQP scheduling or arithmetic; it
-need not coexist with the current encoding. See [the architecture](arch.md#5-semantic-commands-and-descriptor-encoding)
+`pcaalib` owns the semantic builders and selected compact 32/48/64-byte
+stream codec; the functional engine consumes decoded commands. This encoding
+replaced the earlier fixed-width codec without changing ISA 1.0.0 semantics
+or requiring the encodings to coexist. See [the architecture](arch.md#5-semantic-commands-and-descriptor-encoding)
 for the descriptor contract and [pcaalib](pcaalib.md) for the library API.
 
 ## Primitive set and representation
@@ -26,10 +26,12 @@ Local-search slice accumulation remains software-side: making its current
 per-coordinate score update a device operation would add staging and control
 complexity without a descriptor-count gain demonstrated by the evidence.
 
-Every descriptor is 80 bytes: the original 56-byte prefix, then six 32-bit
-element strides at offsets `0x38` through `0x4c`. The prefix offsets and
-meaning for opcodes 1–5 are unchanged, although producers and consumers must
-agree on the new descriptor size. See [arch.md](arch.md#5-command-descriptor)
+The selected encoding gives scalar reductions and batches 32 bytes, general
+vector add and projection 48 bytes, and MAP3 projection 64 bytes. Exact
+in-place vector add uses a 32-byte form; when its destination aliases the
+second input, commutativity permits a wire-only input swap. Each command has
+an eight-byte header and one format-implied size. Dimensions and strides are
+16-bit; addresses remain 64-bit. See [arch.md](arch.md#5-semantic-commands-and-descriptor-encoding)
 for exact offsets, dimension rules, and operand formulas. Affine addressing
 expresses rows, columns, and padding without row-major/transpose modes.
 There is no architectural lane width.
@@ -43,11 +45,11 @@ minimum index wins. A vector command may have written earlier output elements
 when it fails; no-error atomicity is promised. `COST_ADD_VECTOR` allows exact
 full-view destination aliasing with an input; other output/input address-span
 overlap is invalid. Opcode 7–8 outputs may not overlap inputs. Opcodes 6–8
-require `flags`, `k`, and `reserved` to be zero, while unused source addresses
-and strides are ignored. A successful child batch write is visible to the
+require zero flags and reserved bytes. A successful child batch write is visible to the
 immediately next child, but neither child outputs nor the batch result may
 overlap child or top-level descriptor bytes. Batches remain ordered, fail-stop,
-non-transactional, and unnested.
+non-transactional, and unnested. `child_bytes` delimits the stream; exactly
+`child_count` decoded commands must consume it.
 
 ## Evidence and exclusions
 
@@ -62,7 +64,7 @@ non-transactional, and unnested.
 | Cross-output argmin tie semantics | Outputs are independent reductions; only the existing first-index tie within each output is meaningful. |
 | Nested batches or dependency scheduling | Ordered producer-consumer visibility supplies the needed composition without a new scheduler or graph protocol. |
 
-Historical characterization reports describe the pre-1.0.0 scalar descriptor
-mix. New counters separately report scalar projects, vector projects, vector
-adds, scalar MAP3, and partial-vector MAP3; do not reinterpret old CSV rows
-as measurements of the new ISA.
+Historical characterization reports retain their original descriptor-byte
+interpretation. New measurements must distinguish raw vector-add alias patterns
+and selected general/in-place formats; do not reinterpret old CSV rows as if
+they used the compact encoding.

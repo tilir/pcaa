@@ -1229,6 +1229,12 @@ class Solver {
     total->batch_descriptor_bytes += branch.batch_descriptor_bytes - base.batch_descriptor_bytes;
     total->batch_child_descriptor_bytes +=
         branch.batch_child_descriptor_bytes - base.batch_child_descriptor_bytes;
+    total->vector_add_dst_src0 += branch.vector_add_dst_src0 - base.vector_add_dst_src0;
+    total->vector_add_dst_src1 += branch.vector_add_dst_src1 - base.vector_add_dst_src1;
+    total->vector_add_inplace_descriptors +=
+        branch.vector_add_inplace_descriptors - base.vector_add_inplace_descriptors;
+    total->vector_add_general_descriptors +=
+        branch.vector_add_general_descriptors - base.vector_add_general_descriptors;
     total->unique_packed_views += branch.unique_packed_views - base.unique_packed_views;
     for (unsigned opcode = 0; opcode < 9; ++opcode)
       total->primitive_submissions[opcode] +=

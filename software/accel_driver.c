@@ -3,6 +3,7 @@
 // Implements the bare-metal polling driver for the accelerator MMIO device.
 
 #include "accel_driver.h"
+#include "pcaa_codec.h"
 
 enum {
   kDescriptorAlignment = 8,
@@ -38,15 +39,16 @@ static int submit_bytes(const void *source, size_t size) {
   return 0;
 }
 
-int accel_submit(const accel_command_t *source) {
-  return submit_bytes(source, sizeof(*source));
+int accel_submit_encoded(const void *source, size_t size) {
+  return submit_bytes(source, size);
 }
 
 int accel_submit_command(const pcaa_command_t *command) {
   pcaa_encoded_slot_t encoded;
-  if (pcaa_encode_command(command, &encoded) != 0)
+  size_t bytes = 0;
+  if (pcaa_encode_one(command, encoded.bytes, sizeof(encoded.bytes), &bytes) != PCAA_STATUS_OK)
     return -1;
-  return submit_bytes(encoded.bytes, pcaa_encoded_command_bytes());
+  return submit_bytes(encoded.bytes, bytes);
 }
 
 int accel_wait(void) {
@@ -59,31 +61,22 @@ int accel_wait(void) {
   return status == ACCEL_STATUS_DONE ? 0 : -1;
 }
 
-int accel_submit_batch(const accel_command_t *commands, size_t count,
-                       accel_batch_result_t *result) {
-  if (commands == NULL || result == NULL || count == 0 || count > UINT32_MAX) {
-    return -1;
-  }
-  pcaa_encoded_slot_t batch;
-  if (pcaa_encode_batch((uintptr_t)commands, (uint32_t)count, (uintptr_t)result, &batch) != 0)
-    return -1;
-  return submit_bytes(batch.bytes, pcaa_encoded_command_bytes()) || accel_wait() ? -1 : 0;
-}
-
 int accel_submit_command_batch(const pcaa_command_t *commands, size_t count,
                                pcaa_encoded_slot_t *encoded_workspace,
                                accel_batch_result_t *result) {
   if (commands == NULL || encoded_workspace == NULL || result == NULL || count == 0 ||
-      count > UINT32_MAX || count > SIZE_MAX / sizeof(*encoded_workspace))
+      count > SIZE_MAX / sizeof(*encoded_workspace))
     return -1;
-  if (pcaa_encode_commands(commands, count, encoded_workspace,
-                           count * sizeof(*encoded_workspace)) != 0)
+  size_t child_bytes = 0;
+  if (pcaa_encode_stream(commands, count, encoded_workspace, count * sizeof(*encoded_workspace),
+                         &child_bytes) != PCAA_STATUS_OK)
     return -1;
   pcaa_encoded_slot_t batch;
-  if (pcaa_encode_batch((uintptr_t)encoded_workspace, (uint32_t)count, (uintptr_t)result, &batch) !=
-      0)
+  size_t parent_bytes = 0;
+  if (pcaa_encode_batch((uintptr_t)encoded_workspace, count, child_bytes, (uintptr_t)result, &batch,
+                        &parent_bytes) != PCAA_STATUS_OK)
     return -1;
-  return submit_bytes(batch.bytes, pcaa_encoded_command_bytes()) || accel_wait() ? -1 : 0;
+  return submit_bytes(batch.bytes, parent_bytes) || accel_wait() ? -1 : 0;
 }
 
 int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n) {
@@ -96,9 +89,8 @@ int accel_min_add_checked(const int32_t *a, const int32_t *b, size_t n, int32_t 
   if (result == NULL)
     return -1;
   pcaa_command_t command;
-  if (n > UINT32_MAX || pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
-                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
-                                          (uintptr_t)result, 0, &command) != 0)
+  if (pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, n, 1), pcaa_cost_vector((uintptr_t)b, n, 1),
+                        (uintptr_t)result, 0, &command) != 0)
     return -1;
   return accel_submit_command(&command) || accel_wait() ? -1 : 0;
 }
@@ -106,10 +98,8 @@ int accel_min_add_checked(const int32_t *a, const int32_t *b, size_t n, int32_t 
 int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *d, size_t n) {
   int32_t result = ACCEL_INF;
   pcaa_command_t command;
-  if (n > UINT32_MAX || pcaa_make_reduce3(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
-                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
-                                          pcaa_cost_vector((uintptr_t)d, (uint32_t)n, 1),
-                                          (uintptr_t)&result, 0, &command) != 0)
+  if (pcaa_make_reduce3(pcaa_cost_vector((uintptr_t)a, n, 1), pcaa_cost_vector((uintptr_t)b, n, 1),
+                        pcaa_cost_vector((uintptr_t)d, n, 1), (uintptr_t)&result, 0, &command) != 0)
     return ACCEL_INF;
   return accel_submit_command(&command) || accel_wait() ? ACCEL_INF : result;
 }
@@ -132,9 +122,8 @@ int accel_min_add_argmin_checked(const int32_t *a, const int32_t *b, size_t n,
   if (result == NULL)
     return -1;
   pcaa_command_t command;
-  if (n > UINT32_MAX || pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
-                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
-                                          (uintptr_t)result, 1, &command) != 0)
+  if (pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, n, 1), pcaa_cost_vector((uintptr_t)b, n, 1),
+                        (uintptr_t)result, 1, &command) != 0)
     return -1;
   return accel_submit_command(&command) || accel_wait() ? -1 : 0;
 }
@@ -144,10 +133,8 @@ int accel_min_add3_argmin_checked(const int32_t *a, const int32_t *b, const int3
   if (result == NULL)
     return -1;
   pcaa_command_t command;
-  if (n > UINT32_MAX || pcaa_make_reduce3(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
-                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
-                                          pcaa_cost_vector((uintptr_t)c, (uint32_t)n, 1),
-                                          (uintptr_t)result, 1, &command) != 0)
+  if (pcaa_make_reduce3(pcaa_cost_vector((uintptr_t)a, n, 1), pcaa_cost_vector((uintptr_t)b, n, 1),
+                        pcaa_cost_vector((uintptr_t)c, n, 1), (uintptr_t)result, 1, &command) != 0)
     return -1;
   return accel_submit_command(&command) || accel_wait() ? -1 : 0;
 }

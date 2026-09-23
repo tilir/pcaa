@@ -4,6 +4,7 @@
 
 #include "pcaa_baremetal_device.h"
 #include "accel_driver.h"
+#include "pcaa_codec.h"
 
 #include <stdint.h>
 
@@ -12,10 +13,12 @@ static pcaa_status_t submit_command(void *opaque, const pcaa_command_t *command)
   if (context->pending)
     return PCAA_STATUS_BUSY;
   pcaa_encoded_slot_t encoded;
-  const pcaa_status_t encoded_status = pcaa_encode_command(command, &encoded);
+  size_t encoded_bytes = 0;
+  const pcaa_status_t encoded_status =
+      pcaa_encode_one(command, encoded.bytes, sizeof(encoded.bytes), &encoded_bytes);
   if (encoded_status != PCAA_STATUS_OK)
     return encoded_status;
-  if (accel_submit_command(command) != 0)
+  if (accel_submit_encoded(encoded.bytes, encoded_bytes) != 0)
     return PCAA_STATUS_TRANSPORT_ERROR;
   context->pending_batch_count = 0;
   context->pending = 1;
@@ -26,23 +29,35 @@ static pcaa_status_t submit_batch(void *opaque, const pcaa_command_t *commands, 
   pcaa_baremetal_device_t *context = opaque;
   if (context->pending)
     return PCAA_STATUS_BUSY;
-  if (count > UINT32_MAX)
-    return PCAA_STATUS_RANGE;
-  if (count > context->workspace_count || count > SIZE_MAX / sizeof(*context->encoded_workspace))
+  size_t child_bytes = 0;
+  const pcaa_status_t measured = pcaa_encoded_stream_size(commands, count, &child_bytes);
+  if (measured != PCAA_STATUS_OK)
+    return measured;
+  if (context->workspace_count > SIZE_MAX / sizeof(*context->encoded_workspace))
     return PCAA_STATUS_NO_SPACE;
-  const pcaa_status_t encoded_status = pcaa_encode_commands(
-      commands, count, context->encoded_workspace, count * sizeof(*context->encoded_workspace));
+  if (child_bytes > context->workspace_count * sizeof(*context->encoded_workspace))
+    return PCAA_STATUS_NO_SPACE;
+  size_t bytes_written = 0;
+  const pcaa_status_t encoded_status = pcaa_encode_stream(
+      commands, count, context->encoded_workspace,
+      context->workspace_count * sizeof(*context->encoded_workspace), &bytes_written);
   if (encoded_status != PCAA_STATUS_OK)
     return encoded_status;
   context->batch_result.completed = 0;
   context->batch_result.failed_index = UINT32_MAX;
   pcaa_command_t parent;
-  const pcaa_status_t parent_status =
-      pcaa_make_ordered_batch((pcaa_guest_address_t)(uintptr_t)context->encoded_workspace, count,
-                              (pcaa_guest_address_t)(uintptr_t)&context->batch_result, &parent);
+  const pcaa_status_t parent_status = pcaa_make_ordered_batch(
+      (pcaa_guest_address_t)(uintptr_t)context->encoded_workspace, count, child_bytes,
+      (pcaa_guest_address_t)(uintptr_t)&context->batch_result, &parent);
   if (parent_status != PCAA_STATUS_OK)
     return parent_status;
-  if (accel_submit_command(&parent) != 0)
+  pcaa_encoded_slot_t encoded_parent;
+  size_t parent_bytes = 0;
+  const pcaa_status_t parent_encoded =
+      pcaa_encode_one(&parent, encoded_parent.bytes, sizeof(encoded_parent.bytes), &parent_bytes);
+  if (parent_encoded != PCAA_STATUS_OK)
+    return parent_encoded;
+  if (accel_submit_encoded(encoded_parent.bytes, parent_bytes) != 0)
     return PCAA_STATUS_TRANSPORT_ERROR;
   context->pending_batch_count = count;
   context->pending = 1;

@@ -126,10 +126,9 @@ bool Accelerator::write_i32(uint64_t address, int32_t value) {
 
 bool Accelerator::execute(sc_core::sc_time *delay) {
   const uint64_t initial_cycles = timing_statistics_.total_service_cycles;
-  accel_command_t wire{};
   pcaa_command_t command{};
-  if (descriptor_address_ == 0 || !memory_.read(descriptor_address_, &wire, sizeof(wire)) ||
-      pcaa_decode_descriptor(&wire, &command) != 0) {
+  size_t encoded_bytes = 0;
+  if (!read_command(descriptor_address_, ACCEL_COMMAND_MAX_BYTES, &command, &encoded_bytes)) {
     return false;
   }
 
@@ -141,15 +140,30 @@ bool Accelerator::execute(sc_core::sc_time *delay) {
   return completed;
 }
 
+bool Accelerator::read_command(uint64_t address, size_t available, pcaa_command_t *command,
+                               size_t *bytes) {
+  if (address == 0 || available < ACCEL_COMMAND_HEADER_BYTES)
+    return false;
+  unsigned char wire[ACCEL_COMMAND_MAX_BYTES]{};
+  if (!memory_.read(address, wire, ACCEL_COMMAND_HEADER_BYTES))
+    return false;
+  size_t width = 0;
+  if (pcaa_wire_format_size(wire[0], wire[1], &width) != PCAA_STATUS_OK || width > available ||
+      width > UINT64_MAX - address ||
+      !memory_.read(address + ACCEL_COMMAND_HEADER_BYTES, wire + ACCEL_COMMAND_HEADER_BYTES,
+                    width - ACCEL_COMMAND_HEADER_BYTES))
+    return false;
+  return pcaa_decode_one(wire, width, command, bytes) == PCAA_STATUS_OK;
+}
+
 bool Accelerator::execute_batch(const pcaa_command_t &command, sc_core::sc_time *delay) {
   (void)delay;
   const pcaa_batch_reference_t &batch = command.operation.batch;
   uint64_t children_end = 0;
   uint64_t descriptor_end = 0;
   uint64_t result_end = 0;
-  if (!span(batch.child_descriptors, 1, batch.count, 0, 1, sizeof(accel_command_t),
-            &children_end) ||
-      !span(descriptor_address_, 1, 1, 0, 1, sizeof(accel_command_t), &descriptor_end) ||
+  if (!span(batch.child_descriptors, 1, batch.child_bytes, 0, 1, 1, &children_end) ||
+      !span(descriptor_address_, 1, 1, 0, 1, ACCEL_BATCH_COMMAND_BYTES, &descriptor_end) ||
       !span(batch.result, 1, 1, 0, 1, sizeof(accel_batch_result_t), &result_end) ||
       overlaps(batch.result, result_end, batch.child_descriptors, children_end) ||
       overlaps(batch.result, result_end, descriptor_address_, descriptor_end))
@@ -157,7 +171,7 @@ bool Accelerator::execute_batch(const pcaa_command_t &command, sc_core::sc_time 
   if (timing_.mode != AccelTimingMode::kUntimed && timing_.descriptor_bytes_per_cycle != 0 &&
       timing_.memory_write_bytes_per_cycle != 0) {
     const uint64_t descriptor_cycles =
-        (sizeof(accel_command_t) + timing_.descriptor_bytes_per_cycle - 1) /
+        (ACCEL_BATCH_COMMAND_BYTES + timing_.descriptor_bytes_per_cycle - 1) /
         timing_.descriptor_bytes_per_cycle;
     timing_statistics_.descriptor_cycles += descriptor_cycles;
     timing_statistics_.total_service_cycles += descriptor_cycles + timing_.batch_start_cycles;
@@ -172,16 +186,17 @@ bool Accelerator::execute_batch(const pcaa_command_t &command, sc_core::sc_time 
   if (verbose_) {
     std::cerr << "pcaa: batch children=" << batch.count << '\n';
   }
-  for (uint32_t index = 0; index < batch.count; ++index) {
-    accel_command_t child_wire{};
+  uint64_t cursor = batch.child_descriptors;
+  for (size_t index = 0; index < batch.count; ++index) {
     pcaa_command_t child{};
-    const uint64_t address = batch.child_descriptors + uint64_t(index) * sizeof(child_wire);
+    const uint64_t address = cursor;
     if (verbose_) {
       std::cerr << "pcaa: child=" << index << " descriptor=0x" << std::hex << address << std::dec
                 << '\n';
     }
-    if (!memory_.read(address, &child_wire, sizeof(child_wire)) ||
-        pcaa_decode_descriptor(&child_wire, &child) != 0 || child.kind == PCAA_ORDERED_BATCH ||
+    size_t child_bytes = 0;
+    if (!read_command(cursor, children_end - cursor, &child, &child_bytes) ||
+        child.kind == PCAA_ORDERED_BATCH ||
         pcaa_output_overlaps(&child, batch.child_descriptors, children_end) ||
         pcaa_output_overlaps(&child, descriptor_address_, descriptor_end) ||
         !execute_command(child, delay)) {
@@ -190,6 +205,13 @@ bool Accelerator::execute_batch(const pcaa_command_t &command, sc_core::sc_time 
       memory_.write(batch.result, &result, sizeof(result));
       return false;
     }
+    cursor += child_bytes;
+  }
+  if (cursor != children_end) {
+    result.completed = batch.count;
+    result.failed_index = batch.count;
+    memory_.write(batch.result, &result, sizeof(result));
+    return false;
   }
   result.completed = batch.count;
   return memory_.write(batch.result, &result, sizeof(result));

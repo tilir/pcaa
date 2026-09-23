@@ -98,6 +98,152 @@ constexpr uint64_t kTruncatedDescriptorAddress = kTestMemorySize - 6;
 constexpr uint64_t kInvalidElementAddress = kTestMemorySize - 1;
 constexpr uint32_t kUnsupportedOpcode = 99;
 
+/* Test-only editable fixture, deliberately not a production wire descriptor. */
+struct CommandFixture {
+  uint32_t opcode = 0;
+  uint32_t flags = 0;
+  uint32_t n = 0;
+  uint32_t m = 0;
+  uint32_t k = 0;  // Explicit child_bytes for a batch; zero defaults to n scalar children.
+  uint32_t reserved = 0;
+  uint64_t src0 = 0;
+  uint64_t src1 = 0;
+  uint64_t src2 = 0;
+  uint64_t dst = 0;
+  uint32_t src0_stride = 0;
+  uint32_t src1_stride = 0;
+  uint32_t src2_stride = 0;
+  uint32_t dst_stride = 0;
+  uint32_t src0_outer_stride = 0;
+  uint32_t src2_outer_stride = 0;
+};
+
+void fixture16(unsigned char *bytes, size_t offset, uint16_t value) {
+  bytes[offset] = static_cast<unsigned char>(value);
+  bytes[offset + 1] = static_cast<unsigned char>(value >> 8);
+}
+
+void fixture32(unsigned char *bytes, size_t offset, uint32_t value) {
+  for (size_t index = 0; index < 4; ++index)
+    bytes[offset + index] = static_cast<unsigned char>(value >> (8 * index));
+}
+
+void fixture64(unsigned char *bytes, size_t offset, uint64_t value) {
+  for (size_t index = 0; index < 8; ++index)
+    bytes[offset + index] = static_cast<unsigned char>(value >> (8 * index));
+}
+
+size_t encode_fixture(const CommandFixture &command, unsigned char *bytes) {
+  std::memset(bytes, 0, ACCEL_COMMAND_MAX_BYTES);
+  uint8_t format = 0;
+  switch (command.opcode) {
+    case ACCEL_OPCODE_MAP_ADD_REDUCE_MIN:
+      format = ACCEL_FORMAT_REDUCE2;
+      break;
+    case ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN:
+      format = ACCEL_FORMAT_REDUCE2_ARGMIN;
+      break;
+    case ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN:
+      format = ACCEL_FORMAT_REDUCE3;
+      break;
+    case ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN:
+      format = ACCEL_FORMAT_REDUCE3_ARGMIN;
+      break;
+    case ACCEL_OPCODE_EXECUTE_BATCH:
+      format = ACCEL_FORMAT_EXECUTE_BATCH;
+      break;
+    case ACCEL_OPCODE_COST_ADD_VECTOR:
+      format = command.dst == command.src0 && command.dst_stride == command.src0_stride
+                   ? ACCEL_FORMAT_COST_ADD_VECTOR_INPLACE
+               : command.dst == command.src1 && command.dst_stride == command.src1_stride
+                   ? ACCEL_FORMAT_COST_ADD_VECTOR_INPLACE
+                   : ACCEL_FORMAT_COST_ADD_VECTOR_GENERAL;
+      break;
+    case ACCEL_OPCODE_MINPLUS_PROJECT:
+      format = ACCEL_FORMAT_MINPLUS_PROJECT;
+      break;
+    case ACCEL_OPCODE_MINPLUS_MAP3_PROJECT:
+      format = ACCEL_FORMAT_MINPLUS_MAP3_PROJECT;
+      break;
+    default:
+      break;
+  }
+  // Unsupported-opcode fixtures still need a complete header for ingress tests.
+  size_t width = ACCEL_COMMAND_MIN_BYTES;
+  if (format != 0)
+    CHECK(pcaa_wire_format_size(static_cast<uint8_t>(command.opcode), format, &width) ==
+          PCAA_STATUS_OK);
+  bytes[0] = static_cast<unsigned char>(command.opcode);
+  bytes[1] = format;
+  fixture16(bytes, 2, static_cast<uint16_t>(command.flags));
+  fixture16(bytes, 4,
+            command.opcode == ACCEL_OPCODE_EXECUTE_BATCH ? 0 : static_cast<uint16_t>(command.n));
+  fixture16(bytes, 6,
+            command.opcode == ACCEL_OPCODE_EXECUTE_BATCH ? 0 : static_cast<uint16_t>(command.m));
+  if (command.opcode == ACCEL_OPCODE_EXECUTE_BATCH) {
+    fixture64(bytes, 8, command.src0);
+    fixture64(bytes, 16, command.dst);
+    fixture32(bytes, 24, command.n);
+    fixture32(bytes, 28, command.k != 0 ? command.k : command.n * ACCEL_COMMAND_MIN_BYTES);
+    return width;
+  }
+  if (format == ACCEL_FORMAT_COST_ADD_VECTOR_INPLACE) {
+    const bool swap = command.dst != command.src0;
+    fixture64(bytes, 8, swap ? command.src1 : command.src0);
+    fixture64(bytes, 16, swap ? command.src0 : command.src1);
+    fixture16(bytes, 24, swap ? command.src1_stride : command.src0_stride);
+    fixture16(bytes, 26, swap ? command.src0_stride : command.src1_stride);
+    return width;
+  }
+  fixture64(bytes, 8, command.src0);
+  fixture64(bytes, 16, command.src1);
+  if (width == ACCEL_COMMAND_MIN_BYTES) {
+    fixture64(bytes, 24, command.dst);
+    return width;
+  }
+  fixture64(bytes, 24,
+            command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT ||
+                    command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN ||
+                    command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN
+                ? command.src2
+                : command.dst);
+  if (command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN ||
+      command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN) {
+    fixture64(bytes, 32, command.dst);
+  } else if (command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT) {
+    fixture64(bytes, 32, command.dst);
+    fixture16(bytes, 40, command.src0_stride);
+    fixture16(bytes, 42, command.src1_stride);
+    fixture16(bytes, 44, command.src2_stride);
+    fixture16(bytes, 46, command.src2_outer_stride);
+    fixture16(bytes, 48, command.dst_stride);
+  } else if (command.opcode == ACCEL_OPCODE_MINPLUS_PROJECT) {
+    fixture16(bytes, 32, command.src0_stride);
+    fixture16(bytes, 34, command.src0_outer_stride);
+    fixture16(bytes, 36, command.src1_stride);
+    fixture16(bytes, 38, command.dst_stride);
+  } else if (command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR) {
+    fixture16(bytes, 32, command.src0_stride);
+    fixture16(bytes, 34, command.src1_stride);
+    fixture16(bytes, 36, command.dst_stride);
+  }
+  if (command.reserved != 0)
+    bytes[width - 1] = static_cast<unsigned char>(command.reserved);
+  return width;
+}
+
+size_t stage_fixtures(TestMemory &memory, uint64_t address, const CommandFixture *commands,
+                      size_t count) {
+  size_t cursor = 0;
+  for (size_t index = 0; index < count; ++index) {
+    unsigned char bytes[ACCEL_COMMAND_MAX_BYTES];
+    const size_t width = encode_fixture(commands[index], bytes);
+    CHECK(memory.write(address + cursor, bytes, width));
+    cursor += width;
+  }
+  return cursor;
+}
+
 void mmio(TestInitiator &initiator, uint64_t address, uint32_t *value, tlm::tlm_command command) {
   tlm::tlm_generic_payload transaction;
   sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
@@ -110,9 +256,9 @@ void mmio(TestInitiator &initiator, uint64_t address, uint32_t *value, tlm::tlm_
   CHECK(transaction.get_response_status() == tlm::TLM_OK_RESPONSE);
 }
 
-uint32_t submit(TestInitiator &initiator, TestMemory &memory, const accel_command_t &command,
-                uint64_t descriptor_address = kDescriptorAddress) {
-  CHECK(memory.write(descriptor_address, &command, sizeof(command)));
+uint32_t submit_encoded(TestInitiator &initiator, TestMemory &memory, const void *bytes,
+                        size_t width, uint64_t descriptor_address = kDescriptorAddress) {
+  CHECK(memory.write(descriptor_address, bytes, width));
 
   uint32_t register_value = static_cast<uint32_t>(descriptor_address);
   mmio(initiator, ACCEL_MMIO_DESC_ADDR_LO, &register_value, tlm::TLM_WRITE_COMMAND);
@@ -125,12 +271,68 @@ uint32_t submit(TestInitiator &initiator, TestMemory &memory, const accel_comman
   return register_value;
 }
 
-void expect_done(TestInitiator &initiator, TestMemory &memory, const accel_command_t &command) {
-  CHECK(submit(initiator, memory, command) == ACCEL_STATUS_DONE);
+uint32_t submit(TestInitiator &initiator, TestMemory &memory, const CommandFixture &command,
+                uint64_t descriptor_address = kDescriptorAddress) {
+  unsigned char bytes[ACCEL_COMMAND_MAX_BYTES];
+  const size_t width = encode_fixture(command, bytes);
+  return submit_encoded(initiator, memory, bytes, width, descriptor_address);
 }
 
-void expect_error(TestInitiator &initiator, TestMemory &memory, const accel_command_t &command) {
-  CHECK(submit(initiator, memory, command) == ACCEL_STATUS_ERROR);
+pcaa_status_t make_semantic_command(const CommandFixture &fixture, pcaa_command_t *command) {
+  const auto first = pcaa_cost_vector(fixture.src0, fixture.n, fixture.src0_stride);
+  const auto second = pcaa_cost_vector(fixture.src1, fixture.n, fixture.src1_stride);
+  switch (fixture.opcode) {
+    case ACCEL_OPCODE_MAP_ADD_REDUCE_MIN:
+    case ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN:
+      return pcaa_make_reduce2(pcaa_cost_vector(fixture.src0, fixture.n, 1),
+                               pcaa_cost_vector(fixture.src1, fixture.n, 1), fixture.dst,
+                               fixture.opcode == ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, command);
+    case ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN:
+    case ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN:
+      return pcaa_make_reduce3(pcaa_cost_vector(fixture.src0, fixture.n, 1),
+                               pcaa_cost_vector(fixture.src1, fixture.n, 1),
+                               pcaa_cost_vector(fixture.src2, fixture.n, 1), fixture.dst,
+                               fixture.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, command);
+    case ACCEL_OPCODE_EXECUTE_BATCH:
+      return pcaa_make_ordered_batch(
+          fixture.src0, fixture.n, fixture.k != 0 ? fixture.k : fixture.n * ACCEL_COMMAND_MIN_BYTES,
+          fixture.dst, command);
+    case ACCEL_OPCODE_COST_ADD_VECTOR:
+      return pcaa_make_cost_add_vector(
+          first, second, pcaa_cost_output(fixture.dst, fixture.n, fixture.dst_stride), command);
+    case ACCEL_OPCODE_MINPLUS_PROJECT:
+      return pcaa_make_minplus_project(
+          pcaa_cost_matrix(fixture.src0, fixture.m, fixture.n, fixture.src0_outer_stride,
+                           fixture.src0_stride),
+          second, pcaa_cost_output(fixture.dst, fixture.m, fixture.dst_stride), command);
+    case ACCEL_OPCODE_MINPLUS_MAP3_PROJECT:
+      return pcaa_make_minplus_map3_project(
+          first, second,
+          pcaa_cost_matrix(fixture.src2, fixture.m, fixture.n, fixture.src2_outer_stride,
+                           fixture.src2_stride),
+          pcaa_argmin_output(fixture.dst, fixture.m, fixture.dst_stride), command);
+    default:
+      return PCAA_STATUS_INVALID_COMMAND;
+  }
+}
+
+void expect_done(TestInitiator &initiator, TestMemory &memory, const pcaa_command_t &command) {
+  unsigned char bytes[ACCEL_COMMAND_MAX_BYTES];
+  size_t width = 0;
+  ASSERT_EQ(pcaa_encode_one(&command, bytes, sizeof(bytes), &width), PCAA_STATUS_OK);
+  EXPECT_EQ(submit_encoded(initiator, memory, bytes, width), ACCEL_STATUS_DONE);
+}
+
+void expect_done(TestInitiator &initiator, TestMemory &memory, const CommandFixture &command) {
+  pcaa_command_t semantic{};
+  ASSERT_EQ(make_semantic_command(command, &semantic), PCAA_STATUS_OK);
+  expect_done(initiator, memory, semantic);
+}
+
+void expect_error(TestInitiator &initiator, TestMemory &memory, const CommandFixture &command) {
+  EXPECT_EQ(submit(initiator, memory, command), ACCEL_STATUS_ERROR)
+      << "opcode=" << command.opcode << " n=" << command.n << " m=" << command.m
+      << " dst=" << command.dst;
 }
 
 void test_invalid_mmio(TestInitiator &initiator) {
@@ -159,6 +361,7 @@ void test_batches(TestInitiator &initiator, TestMemory &memory);
 void test_vector_isa(TestInitiator &initiator, TestMemory &memory);
 void test_invalid_costs(TestInitiator &initiator, TestMemory &memory);
 void test_semantic_differential(TestInitiator &initiator, TestMemory &memory);
+void test_vector_add_swap_symmetry(TestInitiator &initiator, TestMemory &memory);
 
 TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(2, 3) == 5);
@@ -178,7 +381,7 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   AccelTimingConfig timing;
   timing.mode = AccelTimingMode::kL1Sequential;
   timing.lanes = 4;
-  timing.descriptor_bytes_per_cycle = sizeof(accel_command_t);
+  timing.descriptor_bytes_per_cycle = ACCEL_COMMAND_SLOT_BYTES;
   timing.memory_read_bytes_per_cycle = 16;
   timing.memory_write_bytes_per_cycle = 8;
   timing.batch_start_cycles = 2;
@@ -208,26 +411,31 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(memory.write(kSecondInputAddress, second.data(), second.size() * sizeof(second.front())));
   CHECK(memory.write(kThirdInputAddress, third.data(), third.size() * sizeof(third.front())));
 
-  accel_command_t command{ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
-                          0,
-                          1,
-                          0,
-                          0,
-                          0,
-                          kFirstInputAddress,
-                          kSecondInputAddress,
-                          0,
-                          kResultAddress};
-  expect_done(initiator, memory, command);
+  pcaa_command_t initial{};
+  ASSERT_EQ(
+      pcaa_make_reduce2(pcaa_cost_vector(kFirstInputAddress, 1, 1),
+                        pcaa_cost_vector(kSecondInputAddress, 1, 1), kResultAddress, 0, &initial),
+      PCAA_STATUS_OK);
+  expect_done(initiator, memory, initial);
   int32_t result = 0;
   CHECK(memory.read(kResultAddress, &result, sizeof(result)) && result == ACCEL_INF);
+  CommandFixture command{ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
+                         0,
+                         1,
+                         0,
+                         0,
+                         0,
+                         kFirstInputAddress,
+                         kSecondInputAddress,
+                         0,
+                         kResultAddress};
   command.flags = 1;
   command.m = 1;
   command.k = 1;
   command.reserved = 1;
   command.src2 = kThirdInputAddress;
   command.src0_stride = 17;
-  expect_done(initiator, memory, command);  // Opcode 1 ignores legacy and appended fields.
+  expect_error(initiator, memory, command);  // Compact encoding requires zero flags and m.
   command = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
              0,
              1,
@@ -326,7 +534,9 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
              kSecondInputAddress,
              0,
              kResultAddress};
-  CHECK(!memory.write(kTruncatedDescriptorAddress, &command, sizeof(command)));
+  unsigned char truncated_wire[ACCEL_COMMAND_MAX_BYTES];
+  const size_t truncated_width = encode_fixture(command, truncated_wire);
+  CHECK(!memory.write(kTruncatedDescriptorAddress, truncated_wire, truncated_width));
   uint32_t register_value = kTruncatedDescriptorAddress;
   mmio(initiator, ACCEL_MMIO_DESC_ADDR_LO, &register_value, tlm::TLM_WRITE_COMMAND);
   register_value = 0;
@@ -348,30 +558,31 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   test_vector_isa(initiator, memory);
   test_invalid_costs(initiator, memory);
   test_semantic_differential(initiator, memory);
+  test_vector_add_swap_symmetry(initiator, memory);
   EXPECT_GT(accelerator.timing_statistics().primitive_count, 0);
   EXPECT_GE(accelerator.timing_statistics().batch_count, 7);
   EXPECT_GT(accelerator.timing_statistics().descriptor_cycles, 0);
   EXPECT_GT(accelerator.timing_statistics().total_service_cycles, 0);
   const int32_t zero_bandwidth_first = 1;
   const int32_t zero_bandwidth_second = 2;
-  const accel_command_t child = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
-                                 0,
-                                 1,
-                                 0,
-                                 0,
-                                 0,
-                                 kFirstInputAddress,
-                                 kSecondInputAddress,
-                                 0,
-                                 kResultAddress};
-  const accel_command_t batch = {
+  const CommandFixture child = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
+                                0,
+                                1,
+                                0,
+                                0,
+                                0,
+                                kFirstInputAddress,
+                                kSecondInputAddress,
+                                0,
+                                kResultAddress};
+  const CommandFixture batch = {
       ACCEL_OPCODE_EXECUTE_BATCH, 0, 1, 0, 0, 0, kBatchDescriptorAddress, 0, 0,
       kBatchResultAddress};
   CHECK(zero_bandwidth_memory.write(kFirstInputAddress, &zero_bandwidth_first,
                                     sizeof(zero_bandwidth_first)));
   CHECK(zero_bandwidth_memory.write(kSecondInputAddress, &zero_bandwidth_second,
                                     sizeof(zero_bandwidth_second)));
-  CHECK(zero_bandwidth_memory.write(kBatchDescriptorAddress, &child, sizeof(child)));
+  stage_fixtures(zero_bandwidth_memory, kBatchDescriptorAddress, &child, 1);
   expect_done(zero_bandwidth_initiator, zero_bandwidth_memory, batch);
   EXPECT_EQ(zero_bandwidth_accelerator.timing_statistics().total_service_cycles, 0);
 }
@@ -380,7 +591,7 @@ TEST(TimingModel, CalculatesSequentialAndStreamingCommandCycles) {
   AccelTimingConfig config;
   config.mode = AccelTimingMode::kL1Sequential;
   config.lanes = 4;
-  config.descriptor_bytes_per_cycle = sizeof(accel_command_t);
+  config.descriptor_bytes_per_cycle = ACCEL_COMMAND_SLOT_BYTES;
   config.memory_read_bytes_per_cycle = 16;
   config.memory_write_bytes_per_cycle = 8;
   config.primitive_start_cycles = 1;
@@ -389,44 +600,59 @@ TEST(TimingModel, CalculatesSequentialAndStreamingCommandCycles) {
   config.reduction_tree_latency = 3;
   config.result_latency = 4;
 
-  accel_command_t command{};
-  command.opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN;
-  command.n = 3;
+  pcaa_command_t command{};
+  ASSERT_EQ(
+      pcaa_make_reduce2(pcaa_cost_vector(kFirstInputAddress, 3, 1),
+                        pcaa_cost_vector(kSecondInputAddress, 3, 1), kResultAddress, 0, &command),
+      PCAA_STATUS_OK);
   AccelCommandTiming timing = accel_estimate_command_cycles(command, config);
-  EXPECT_EQ(timing.descriptor_cycles, 1);
+  EXPECT_EQ(timing.descriptor_cycles, 2);
   EXPECT_EQ(timing.operand_read_cycles, 2);
   EXPECT_EQ(timing.compute_cycles, 11);
   EXPECT_EQ(timing.result_write_cycles, 1);
-  EXPECT_EQ(timing.total_cycles, 15);
+  EXPECT_EQ(timing.total_cycles, 16);
 
-  command.n = 4;
-  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 15);
-  command.n = 5;
-  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 17);
-
-  command.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN;
-  command.n = 4;
-  timing = accel_estimate_command_cycles(command, config);
-  EXPECT_EQ(timing.operand_read_cycles, 3);
-  EXPECT_EQ(timing.compute_cycles, 16);
-  EXPECT_EQ(timing.total_cycles, 21);
-
-  config.mode = AccelTimingMode::kL1Streaming;
+  command.operation.reduce2.first.length = command.operation.reduce2.second.length = 4;
+  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 16);
+  command.operation.reduce2.first.length = command.operation.reduce2.second.length = 5;
   EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 18);
 
-  command.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
-  command.n = 5;
+  ASSERT_EQ(
+      pcaa_make_reduce3(pcaa_cost_vector(kFirstInputAddress, 4, 1),
+                        pcaa_cost_vector(kSecondInputAddress, 4, 1),
+                        pcaa_cost_vector(kThirdInputAddress, 4, 1), kResultAddress, 1, &command),
+      PCAA_STATUS_OK);
   timing = accel_estimate_command_cycles(command, config);
+  EXPECT_EQ(timing.descriptor_cycles, 3);
+  EXPECT_EQ(timing.operand_read_cycles, 3);
+  EXPECT_EQ(timing.compute_cycles, 16);
+  EXPECT_EQ(timing.total_cycles, 23);
+
+  config.mode = AccelTimingMode::kL1Streaming;
+  EXPECT_EQ(accel_estimate_command_cycles(command, config).total_cycles, 20);
+
+  ASSERT_EQ(pcaa_make_cost_add_vector(pcaa_cost_vector(kFirstInputAddress, 5, 1),
+                                      pcaa_cost_vector(kSecondInputAddress, 5, 1),
+                                      pcaa_cost_output(kResultAddress, 5, 1), &command),
+            PCAA_STATUS_OK);
+  timing = accel_estimate_command_cycles(command, config);
+  EXPECT_EQ(timing.descriptor_cycles, 3);
   EXPECT_EQ(timing.operand_read_cycles, 3);
   EXPECT_EQ(timing.result_write_cycles, 3);
-  command.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
-  command.n = 3;
-  command.m = 2;
+  ASSERT_EQ(pcaa_make_minplus_project(pcaa_cost_matrix(kFirstInputAddress, 2, 3, 3, 1),
+                                      pcaa_cost_vector(kSecondInputAddress, 3, 1),
+                                      pcaa_cost_output(kResultAddress, 2, 1), &command),
+            PCAA_STATUS_OK);
   timing = accel_estimate_command_cycles(command, config);
   EXPECT_EQ(timing.operand_read_cycles, 3);
   EXPECT_EQ(timing.result_write_cycles, 1);
-  command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  ASSERT_EQ(pcaa_make_minplus_map3_project(pcaa_cost_vector(kFirstInputAddress, 3, 1),
+                                           pcaa_cost_vector(kSecondInputAddress, 3, 1),
+                                           pcaa_cost_matrix(kThirdInputAddress, 2, 3, 3, 1),
+                                           pcaa_argmin_output(kResultAddress, 2, 1), &command),
+            PCAA_STATUS_OK);
   timing = accel_estimate_command_cycles(command, config);
+  EXPECT_EQ(timing.descriptor_cycles, 4);
   EXPECT_EQ(timing.operand_read_cycles, 3);
   EXPECT_EQ(timing.result_write_cycles, 2);
 }
@@ -441,23 +667,24 @@ void test_batches(TestInitiator &initiator, TestMemory &memory) {
 
   int32_t minimum = 0;
   accel_min_argmin_result_t argmin{};
-  std::array<accel_command_t, 2> children = {{
+  std::array<CommandFixture, 2> children = {{
       {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, 0, 3, 0, 0, 0, kFirstInputAddress, kSecondInputAddress, 0,
        kBatchSecondResultAddress},
       {ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, 0, 3, 0, 0, 0, kFirstInputAddress,
        kSecondInputAddress, kThirdInputAddress, kResultAddress},
   }};
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
-  const accel_command_t batch = {ACCEL_OPCODE_EXECUTE_BATCH,
-                                 0,
-                                 static_cast<uint32_t>(children.size()),
-                                 0,
-                                 0,
-                                 0,
-                                 kBatchDescriptorAddress,
-                                 0,
-                                 0,
-                                 kBatchResultAddress};
+  const size_t first_child_bytes =
+      stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
+  CommandFixture batch = {ACCEL_OPCODE_EXECUTE_BATCH,
+                          0,
+                          static_cast<uint32_t>(children.size()),
+                          0,
+                          static_cast<uint32_t>(first_child_bytes),
+                          0,
+                          kBatchDescriptorAddress,
+                          0,
+                          0,
+                          kBatchResultAddress};
   expect_done(initiator, memory, batch);
   accel_batch_result_t batch_result{};
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
@@ -470,7 +697,7 @@ void test_batches(TestInitiator &initiator, TestMemory &memory) {
   minimum = 0;
   argmin = {123, 123};
   CHECK(memory.write(kResultAddress, &argmin, sizeof(argmin)));
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
   expect_error(initiator, memory, batch);
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   CHECK(batch_result.completed == 1 && batch_result.failed_index == 1);
@@ -487,25 +714,26 @@ void test_batches(TestInitiator &initiator, TestMemory &memory) {
                  kSecondInputAddress,
                  0,
                  kResultAddress};
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
+  batch.k = 64;
   expect_error(initiator, memory, batch);
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   CHECK(batch_result.completed == 1 && batch_result.failed_index == 1);
 
   children[0].dst = kInvalidElementAddress;
   children[1].opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN;
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
   expect_error(initiator, memory, batch);
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   CHECK(batch_result.completed == 0 && batch_result.failed_index == 0);
 
   children[0] = batch;
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
   expect_error(initiator, memory, batch);
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   CHECK(batch_result.completed == 0 && batch_result.failed_index == 0);
 
-  accel_command_t invalid_batch = batch;
+  CommandFixture invalid_batch = batch;
   invalid_batch.n = 0;
   expect_error(initiator, memory, invalid_batch);
   invalid_batch.n = 1;
@@ -517,25 +745,45 @@ void test_batches(TestInitiator &initiator, TestMemory &memory) {
   children[0] = {
       ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, 0, 3, 0, 0, 0, kFirstInputAddress, kSecondInputAddress, 0,
       kBatchSecondResultAddress};
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(accel_command_t)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), 1);
   invalid_batch = batch;
   invalid_batch.n = 1;
+  invalid_batch.k = ACCEL_COMMAND_MIN_BYTES;
   expect_done(initiator, memory, invalid_batch);
 
   // A child may not rewrite a later child or the top-level descriptor.
-  children[0].dst = kBatchDescriptorAddress + sizeof(accel_command_t);
+  children[0].dst = kBatchDescriptorAddress + ACCEL_COMMAND_MIN_BYTES;
   children[1] = children[0];
   children[1].dst = kResultAddress;
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
   expect_error(initiator, memory, batch);
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   EXPECT_EQ(batch_result.completed, 0u);
   EXPECT_EQ(batch_result.failed_index, 0u);
   children[0].dst = kDescriptorAddress;
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
   expect_error(initiator, memory, batch);
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   EXPECT_EQ(batch_result.failed_index, 0u);
+
+  // Bounds are checked against child_bytes, not a fixed descriptor stride.
+  children[0].dst = kBatchSecondResultAddress;
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
+  invalid_batch = batch;
+  invalid_batch.k = ACCEL_COMMAND_SLOT_BYTES;
+  expect_error(initiator, memory, invalid_batch);  // First child extends past the stream.
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  EXPECT_EQ(batch_result.failed_index, 0u);
+  invalid_batch = batch;
+  invalid_batch.n = 3;
+  expect_error(initiator, memory, invalid_batch);  // Too few children in child_bytes.
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  EXPECT_EQ(batch_result.failed_index, 2u);
+  invalid_batch = batch;
+  invalid_batch.k += ACCEL_COMMAND_MIN_BYTES;
+  expect_error(initiator, memory, invalid_batch);  // Trailing bytes after two children.
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  EXPECT_EQ(batch_result.failed_index, 2u);
 
   // The batch's own result may not corrupt its descriptor array.
   invalid_batch = batch;
@@ -550,7 +798,7 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   const std::array<int32_t, 5> second = {4, -9, 1, -8, 2};
   CHECK(memory.write(kFirstInputAddress, first.data(), sizeof(first)));
   CHECK(memory.write(kSecondInputAddress, second.data(), sizeof(second)));
-  accel_command_t add{};
+  CommandFixture add{};
   add.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
   add.n = 5;
   add.src0 = kFirstInputAddress;
@@ -616,7 +864,7 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   const std::array<int32_t, 2> unary = {-1, 2};
   CHECK(memory.write(kFirstInputAddress, matrix.data(), sizeof(matrix)));
   CHECK(memory.write(kSecondInputAddress, unary.data(), sizeof(unary)));
-  accel_command_t project{};
+  CommandFixture project{};
   project.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
   project.n = 2;
   project.m = 3;
@@ -649,9 +897,9 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   project.src2_stride = 0;
   project.src2_outer_stride = 13;
   expect_done(initiator, memory, project);
-  project.k = 1;
+  project.reserved = 1;
   expect_error(initiator, memory, project);
-  project.k = 0;
+  project.reserved = 0;
   const std::array<int32_t, 2> underflow_unary = {INT32_MIN, 0};
   CHECK(memory.write(kSecondInputAddress, underflow_unary.data(), sizeof(underflow_unary)));
   expect_error(initiator, memory, project);
@@ -662,7 +910,7 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   CHECK(memory.write(kFirstInputAddress, varying.data(), sizeof(varying)));
   CHECK(memory.write(kSecondInputAddress, zero.data(), sizeof(zero)));
   CHECK(memory.write(kThirdInputAddress, fixed.data(), sizeof(fixed)));
-  accel_command_t map3{};
+  CommandFixture map3{};
   map3.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
   map3.n = 2;
   map3.m = 3;
@@ -685,7 +933,7 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   EXPECT_EQ(results[1].index, 1u);
   EXPECT_EQ(results[2].value, -3);
   EXPECT_EQ(results[2].index, 0u);
-  accel_command_t scalar{};
+  CommandFixture scalar{};
   scalar.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN;
   scalar.n = 2;
   scalar.src0 = kSecondInputAddress;
@@ -720,16 +968,24 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   add.src0 = kBatchSecondResultAddress;
   add.src1 = kThirdInputAddress;
   add.dst = kResultAddress;
-  std::array<accel_command_t, 2> children = {project, add};
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
-  const accel_command_t batch = {
-      ACCEL_OPCODE_EXECUTE_BATCH, 0, 2, 0, 0, 0, kBatchDescriptorAddress, 0, 0,
-      kBatchResultAddress};
+  std::array<CommandFixture, 2> children = {project, add};
+  const size_t child_bytes =
+      stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
+  const CommandFixture batch = {ACCEL_OPCODE_EXECUTE_BATCH,
+                                0,
+                                2,
+                                0,
+                                static_cast<uint32_t>(child_bytes),
+                                0,
+                                kBatchDescriptorAddress,
+                                0,
+                                0,
+                                kBatchResultAddress};
   expect_done(initiator, memory, batch);
   CHECK(memory.read(kResultAddress, unchanged.data(), sizeof(unchanged)));
   EXPECT_EQ(unchanged, (std::array<int32_t, 2>{3, -2}));
   children[1].src0_stride = 0;
-  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  stage_fixtures(memory, kBatchDescriptorAddress, children.data(), children.size());
   expect_error(initiator, memory, batch);
   accel_batch_result_t batch_result{};
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
@@ -745,7 +1001,7 @@ void test_invalid_costs(TestInitiator &initiator, TestMemory &memory) {
   CHECK(memory.write(kSecondInputAddress, &invalid, sizeof(invalid)));
   CHECK(memory.write(kThirdInputAddress, &negative, sizeof(negative)));
 
-  accel_command_t command{};
+  CommandFixture command{};
   command.n = 1;
   command.src0 = kFirstInputAddress;
   command.src1 = kSecondInputAddress;
@@ -908,9 +1164,10 @@ void test_semantic_differential(TestInitiator &initiator, TestMemory &memory) {
     TestMemory reference(kTestMemorySize);
     reference.data = memory.data;
     reference_execute(reference, command);
-    accel_command_t encoded{};
-    CHECK(pcaa_encode_descriptor(&command, &encoded) == 0);
-    expect_done(initiator, memory, encoded);
+    unsigned char encoded[ACCEL_COMMAND_MAX_BYTES]{};
+    size_t width = 0;
+    CHECK(pcaa_encode_one(&command, encoded, sizeof(encoded), &width) == PCAA_STATUS_OK);
+    CHECK(submit_encoded(initiator, memory, encoded, width) == ACCEL_STATUS_DONE);
     const size_t result_bytes = command.kind == PCAA_COST_ADD_VECTOR   ? 3 * sizeof(int32_t)
                                 : command.kind == PCAA_MINPLUS_PROJECT ? 2 * sizeof(int32_t)
                                 : command.kind == PCAA_MINPLUS_MAP3_PROJECT
@@ -924,6 +1181,48 @@ void test_semantic_differential(TestInitiator &initiator, TestMemory &memory) {
     CHECK(reference.read(kResultAddress, expected.data(), result_bytes));
     CHECK(memory.read(kResultAddress, actual.data(), result_bytes));
     EXPECT_EQ(actual, expected);
+  }
+}
+
+void test_vector_add_swap_symmetry(TestInitiator &initiator, TestMemory &memory) {
+  struct Operands {
+    int32_t first;
+    int32_t second;
+  };
+  const std::array<Operands, 5> cases{
+      {{2, -3}, {ACCEL_INF, -7}, {ACCEL_INF - 2, 5}, {ACCEL_INF + 1, ACCEL_INF}, {INT32_MIN, -1}}};
+  for (const Operands operands : cases) {
+    pcaa_command_t general{};
+    pcaa_command_t alias_second{};
+    const auto first = pcaa_cost_vector(kFirstInputAddress, 1, 1);
+    const auto second = pcaa_cost_vector(kSecondInputAddress, 1, 1);
+    ASSERT_EQ(
+        pcaa_make_cost_add_vector(first, second, pcaa_cost_output(kResultAddress, 1, 1), &general),
+        PCAA_STATUS_OK);
+    ASSERT_EQ(pcaa_make_cost_add_vector(first, second, pcaa_cost_output(kSecondInputAddress, 1, 1),
+                                        &alias_second),
+              PCAA_STATUS_OK);
+    unsigned char bytes[ACCEL_COMMAND_MAX_BYTES]{};
+    size_t width = 0;
+    ASSERT_EQ(pcaa_encode_one(&general, bytes, sizeof(bytes), &width), PCAA_STATUS_OK);
+    ASSERT_EQ(width, 48u);
+    ASSERT_TRUE(memory.write(kFirstInputAddress, &operands.first, sizeof(int32_t)));
+    ASSERT_TRUE(memory.write(kSecondInputAddress, &operands.second, sizeof(int32_t)));
+    const uint32_t general_status = submit_encoded(initiator, memory, bytes, width);
+    int32_t general_result = 0;
+    if (general_status == ACCEL_STATUS_DONE)
+      ASSERT_TRUE(memory.read(kResultAddress, &general_result, sizeof(general_result)));
+    ASSERT_EQ(pcaa_encode_one(&alias_second, bytes, sizeof(bytes), &width), PCAA_STATUS_OK);
+    ASSERT_EQ(width, 32u);
+    ASSERT_TRUE(memory.write(kFirstInputAddress, &operands.first, sizeof(int32_t)));
+    ASSERT_TRUE(memory.write(kSecondInputAddress, &operands.second, sizeof(int32_t)));
+    const uint32_t alias_status = submit_encoded(initiator, memory, bytes, width);
+    EXPECT_EQ(alias_status, general_status);
+    if (alias_status == ACCEL_STATUS_DONE) {
+      int32_t alias_result = 0;
+      ASSERT_TRUE(memory.read(kSecondInputAddress, &alias_result, sizeof(alias_result)));
+      EXPECT_EQ(alias_result, general_result);
+    }
   }
 }
 

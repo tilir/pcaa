@@ -109,6 +109,7 @@ typedef struct pcaa_map3_project {
 typedef struct pcaa_batch_reference {
   pcaa_guest_address_t child_descriptors;
   size_t count;
+  size_t child_bytes;
   pcaa_guest_address_t result;
 } pcaa_batch_reference_t;
 
@@ -147,7 +148,8 @@ pcaa_status_t pcaa_make_minplus_map3_project(pcaa_cost_vector_view_t first,
                                              pcaa_cost_matrix_view_t third,
                                              pcaa_output_view_t result, pcaa_command_t *command);
 pcaa_status_t pcaa_make_ordered_batch(pcaa_guest_address_t child_descriptors, size_t count,
-                                      pcaa_guest_address_t result, pcaa_command_t *command);
+                                      size_t child_bytes, pcaa_guest_address_t result,
+                                      pcaa_command_t *command);
 
 #ifdef __cplusplus
 }  // extern "C"

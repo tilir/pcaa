@@ -7,6 +7,7 @@
 #include "memory_interface.h"
 #include "pcaa.h"
 #include "pcaa_device.h"
+#include "pcaa_codec.h"
 #include "pcaa_submission.h"
 
 #include <cstddef>
@@ -56,10 +57,11 @@ pcaa_status_t PcaaSystemCDevice::submit_command(const pcaa_command_t *command) {
   if (allocate_ == nullptr)
     return PCAA_STATUS_INVALID_ARGUMENT;
   pcaa_encoded_slot_t encoded{};
-  const pcaa_status_t encoded_status = pcaa_encode_command(command, &encoded);
+  size_t width = 0;
+  const pcaa_status_t encoded_status =
+      pcaa_encode_one(command, encoded.bytes, sizeof(encoded.bytes), &width);
   if (encoded_status != PCAA_STATUS_OK)
     return encoded_status;
-  const size_t width = pcaa_encoded_command_bytes();
   const pcaa_guest_address_t address = allocate_(allocation_context_, width);
   if (address == 0)
     return PCAA_STATUS_NO_SPACE;
@@ -77,25 +79,26 @@ pcaa_status_t PcaaSystemCDevice::submit_batch(const pcaa_command_t *commands, si
     return PCAA_STATUS_BUSY;
   if (allocate_ == nullptr)
     return PCAA_STATUS_INVALID_ARGUMENT;
-  if (count > UINT32_MAX)
-    return PCAA_STATUS_RANGE;
-  if (pcaa_encoded_batch_bytes(count) == 0)
-    return PCAA_STATUS_NO_SPACE;
-  const size_t width = pcaa_encoded_command_bytes();
+  size_t child_bytes = 0;
+  const pcaa_status_t measured = pcaa_encoded_stream_size(commands, count, &child_bytes);
+  if (measured != PCAA_STATUS_OK)
+    return measured;
   std::vector<unsigned char> encoded;
   try {
-    encoded.resize(count * width);
+    encoded.resize(child_bytes);
   } catch (const std::bad_alloc &) {
     return PCAA_STATUS_NO_SPACE;
   }
+  size_t bytes_written = 0;
   const pcaa_status_t encoded_status =
-      pcaa_encode_commands(commands, count, encoded.data(), encoded.size());
+      pcaa_encode_stream(commands, count, encoded.data(), encoded.size(), &bytes_written);
   if (encoded_status != PCAA_STATUS_OK)
     return encoded_status;
   const pcaa_guest_address_t child_address = allocate_(allocation_context_, encoded.size());
   const pcaa_guest_address_t result_address =
       allocate_(allocation_context_, sizeof(accel_batch_result_t));
-  const pcaa_guest_address_t parent_address = allocate_(allocation_context_, width);
+  const pcaa_guest_address_t parent_address =
+      allocate_(allocation_context_, ACCEL_BATCH_COMMAND_BYTES);
   if (child_address == 0 || result_address == 0 || parent_address == 0)
     return PCAA_STATUS_NO_SPACE;
   const accel_batch_result_t initial_result{0, UINT32_MAX};
@@ -104,10 +107,10 @@ pcaa_status_t PcaaSystemCDevice::submit_batch(const pcaa_command_t *commands, si
     return PCAA_STATUS_MEMORY_ERROR;
   pcaa_encoded_slot_t parent{};
   const pcaa_status_t parent_status =
-      pcaa_encode_batch(child_address, count, result_address, &parent);
+      pcaa_encode_batch(child_address, count, child_bytes, result_address, &parent, &bytes_written);
   if (parent_status != PCAA_STATUS_OK)
     return parent_status;
-  if (!memory_.write(parent_address, parent.bytes, width))
+  if (!memory_.write(parent_address, parent.bytes, bytes_written))
     return PCAA_STATUS_MEMORY_ERROR;
   if (!ring(parent_address))
     return PCAA_STATUS_TRANSPORT_ERROR;

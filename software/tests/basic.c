@@ -43,14 +43,11 @@ int main(void) {
   if (accel_min_add_argmin_checked((const int32_t *)0x40000000UL, b, 1, &checked_result) == 0) {
     finish(kExitCheckedErrorNotReported);
   }
-  accel_command_t command = {
-      .opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
-      .n = 1,
-      .src0 = (uintptr_t)a,
-      .src1 = (uintptr_t)b,
-      .dst = ACCEL_MMIO_BASE + ACCEL_MMIO_DOORBELL,
-  };
-  if (accel_submit(&command) == 0 && accel_wait() == 0) {
+  pcaa_command_t command;
+  if (pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, 1, 1), pcaa_cost_vector((uintptr_t)b, 1, 1),
+                        ACCEL_MMIO_BASE + ACCEL_MMIO_DOORBELL, 0, &command) != PCAA_STATUS_OK)
+    finish(kExitMmioDestinationAccepted);
+  if (accel_submit_command(&command) == 0 && accel_wait() == 0) {
     finish(kExitMmioDestinationAccepted);
   }
   if (accel_min_add(a, b, count) != ref_min2(a, b, count)) {

@@ -28,8 +28,8 @@ enum {
   kExpectedBatchSubmissions = 2,
   kExpectedBatchPrimitiveDescriptors = 4,
   kExpectedMaximumBatchSize = 2,
-  kExpectedBatchDescriptorBytes = 480,
-  kExpectedBatchChildDescriptorBytes = 320,
+  kExpectedBatchDescriptorBytes = 256,
+  kExpectedBatchChildDescriptorBytes = 192,
   kInvalidGuestAddress = 0x40000000UL,
   kProblemStorageBytes = 512 * 1024,
 };

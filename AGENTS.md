@@ -165,9 +165,15 @@ host uses the same solver with a heap allocator and input-sized capacities.
 Do not raise the bare-metal arena policy without recalculating static-storage
 and stack use, then re-running all PBQP ELFs under Spike.
 
-ISA 1.0.0 uses an 80-byte descriptor with the original 56-byte prefix unchanged,
-plus explicit element strides for vector add, min-plus project, and partial-vector
-MAP3 project. Keep dimensions runtime-sized and independent of lane count.
+Semantic ISA 1.0.0 uses the selected compact stream encoding: every command
+occupies 32, 48, or 64 bytes in 16-byte slots, with an eight-byte common
+header and format-implied length. It is not an `accel_command_t` array or any
+other universal fixed-width struct. Dimensions and strides encode as u16,
+batch count and exact child-stream bytes as u32, and guest addresses as u64.
+Keep dimensions runtime-sized and independent of lane count; reject narrowing
+with `PCAA_STATUS_RANGE`. Enforce zero reserved bytes and exact stream walking.
+The only compact alias specialization is the 32-byte in-place vector add, with
+wire-only source swapping for an exact `dst == src1` alias.
 `EXECUTE_BATCH` is an ordered, finite control operation, not a scheduler: the
 runtime constructs child primitive descriptors and the accelerator drains them
 in order. Do not add dependency discovery, reordering, graph awareness, or
@@ -182,7 +188,7 @@ Version pcaalib and the semantic ISA through the SemVer-returning
 `pcaa_version()` and `pcaa_isa_version()` calls and documentation, not through
 versioned function or header names. Production algorithm
 code constructs `pcaa_command_t` through pcaalib builders, never raw
-`accel_command_t` fields. Raw wire manipulation belongs in the pcaalib codec,
+wire fields. Raw wire manipulation belongs in the pcaalib codec,
 transport buffers, or explicit wire-format tests. The accelerator decodes at
 guest-memory ingress and its functional executor consumes canonical commands.
 Only one descriptor encoding is supported at a time. Reflect encoding changes

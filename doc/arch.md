@@ -130,73 +130,45 @@ minimum. This is part of the observable result.
 ISA 1.0.0 consists of the operations in section 8 over affine guest
 physical-memory views. The current `pcaalib` supports this ISA through the
 descriptor encoding specified below; see the [pcaalib API reference](pcaalib.md)
-for its API and versioning. The host writes one `accel_command_t` descriptor
-into guest memory for each submission.
+for its API and independent SemVer versioning. The selected compact encoding
+uses a stream of 16-byte slots: a command occupies exactly 32, 48, or 64 bytes.
+There is no universal C descriptor struct or fixed child-command stride. The
+device reads an eight-byte common header, derives the canonical size from its
+`opcode`/`format` pair, then reads that many bytes.
 
-```c
-typedef struct accel_command {
-  uint32_t opcode;
-  uint32_t flags;
-  uint32_t n;
-  uint32_t m;
-  uint32_t k;
-  uint32_t reserved;
-  uint64_t src0;
-  uint64_t src1;
-  uint64_t src2;
-  uint64_t dst;
-  uint32_t src0_stride;
-  uint32_t src1_stride;
-  uint32_t src2_stride;
-  uint32_t dst_stride;
-  uint32_t src0_outer_stride;
-  uint32_t src2_outer_stride;
-} accel_command_t;
-```
+All multi-byte fields are little-endian. The common header is `opcode:u8` at
+`0x00`, `format:u8` at `0x01`, `flags:u16` at `0x02`, `n:u16` at `0x04`, and
+`m:u16` at `0x06`. `flags` and every reserved byte must be zero. `n` is the
+reduction/vector length and `m` the projection output count; both are nonzero
+where used. Batch instead has `n = m = 0` in the header. Address fields are
+full 64-bit guest physical byte addresses; required addresses are nonzero.
+Dimensions and strides are unsigned 16-bit values. Required strides are
+nonzero; a projection's outer stride may be zero only when `m == 1`. Strides
+count elements (32-bit costs or 8-byte output records), not bytes. Address
+spans must not overflow 64-bit physical addresses.
 
-ISA 1.0.0 uses 80-byte descriptors, naturally aligned to 8 bytes. The
-original 56-byte prefix keeps its offsets and semantics for opcodes 1–5. The field
-offsets are fixed:
+| Format ID | Opcode | Bytes | Fields after the common header (offset: field) |
+| ---: | ---: | ---: | --- |
+| 1 `REDUCE2` | 1 | 32 | `08:src0:u64`, `10:src1:u64`, `18:dst:u64`; `m=0`, implicit unit strides |
+| 2 `REDUCE3` | 2 | 48 | `08:src0`, `10:src1`, `18:src2`, `20:dst` (all u64); `28..2f` reserved, `m=0` |
+| 3 `REDUCE2_ARGMIN` | 3 | 32 | Same offsets as `REDUCE2` |
+| 4 `REDUCE3_ARGMIN` | 4 | 48 | Same offsets as `REDUCE3` |
+| 5 `EXECUTE_BATCH` | 5 | 32 | `08:child_stream:u64`, `10:result:u64`, `18:child_count:u32`, `1c:child_bytes:u32` |
+| 6 `COST_ADD_VECTOR_GENERAL` | 6 | 48 | `08:src0:u64`, `10:src1:u64`, `18:dst:u64`; `20:src0_stride:u16`, `22:src1_stride:u16`, `24:dst_stride:u16`; `26..2f` reserved, `m=0` |
+| 7 `COST_ADD_VECTOR_INPLACE` | 6 | 32 | `08:src0_and_dst:u64`, `10:src1:u64`; `18:src0_dst_stride:u16`, `1a:src1_stride:u16`; `1c..1f` reserved, `m=0` |
+| 8 `MINPLUS_PROJECT` | 7 | 48 | `08:src0:u64`, `10:src1:u64`, `18:dst:u64`; `20:src0_inner_stride:u16`, `22:src0_outer_stride:u16`, `24:src1_stride:u16`, `26:dst_stride:u16`; `28..2f` reserved |
+| 9 `MINPLUS_MAP3_PROJECT` | 8 | 64 | `08:src0:u64`, `10:src1:u64`, `18:src2:u64`, `20:dst:u64`; `28:src0_stride:u16`, `2a:src1_stride:u16`, `2c:src2_inner_stride:u16`, `2e:src2_outer_stride:u16`, `30:dst_stride:u16`; `32..3f` reserved |
 
-| Offset | Field | Meaning |
-| ---: | --- | --- |
-| `0x00` | `opcode` | operation selector |
-| `0x04` | `flags` | ignored by opcodes 1–5; zero for opcodes 6–8 |
-| `0x08` | `n` | vector/reduction length, or batch child count |
-| `0x0c` | `m` | ignored by opcodes 1–5; zero for opcode 6; output count for 7–8 |
-| `0x10` | `k` | ignored by opcodes 1–5; zero for opcodes 6–8 |
-| `0x14` | `reserved` | ignored by opcodes 1–5; zero for opcodes 6–8 |
-| `0x18` | `src0` | first source vector physical address |
-| `0x20` | `src1` | second source vector physical address |
-| `0x28` | `src2` | third source vector physical address when required |
-| `0x30` | `dst` | result physical address |
-| `0x38` | `src0_stride` | inner element stride of source 0 |
-| `0x3c` | `src1_stride` | inner element stride of source 1 |
-| `0x40` | `src2_stride` | inner element stride of source 2 |
-| `0x44` | `dst_stride` | output element stride |
-| `0x48` | `src0_outer_stride` | outer element stride of source 0 |
-| `0x4c` | `src2_outer_stride` | outer element stride of source 2 |
-
-For opcodes 1–4 and 6–8, `n`, `src0`, `src1`, and `dst` must be non-zero.
-Commands requiring `src2` additionally require a non-zero `src2`.
-For opcode 5, `n`, `src0`, and `dst` must be non-zero; `src1` and `src2`
-are ignored.
-
-For opcodes 1–5, `flags`, `m`, `k`, `reserved`, and appended stride fields are
-ignored, preserving their semantics. For opcodes 6–8, `flags`, `k`, and
-`reserved` must be zero. `n` is the vector length for opcode 6 and the
-reduction length for opcodes 7–8; `m` is zero for opcode 6 and the output
-length for opcodes 7–8. Required addresses, dimensions, and inner strides
-must be nonzero. A required outer stride may be zero only for a one-output
-projection.
-Unused source-address and stride fields are ignored, not required to be zero.
-All strides are unsigned and count elements of the addressed type (32-bit costs,
-or 8-byte result records for MAP3), not bytes. Each required inner stride is
-nonzero. `src0_outer_stride` is required only for opcode 7 with `m > 1`;
-`src2_outer_stride` is required only for opcode 8 with `m > 1`. Operand address
-spans must not overflow 64-bit physical addresses. Exchanging the inner and
-outer strides represents a column rather than a row projection; there is no
-transpose or lane bit.
+The format ID is distinct from the semantic opcode. Every opcode/format pair
+has one exact size; incompatible pairs and nonzero reserved fields are malformed.
+The in-place format reconstructs ordinary semantic `COST_ADD_VECTOR` with
+`dst == src0` and equal destination/source stride. Since `cost_add` is
+commutative and has symmetric error checks, an exact `dst == src1` alias is
+encoded by swapping the two source references. This does not mutate the
+semantic command. A separate destination uses the general format; partial or
+other output/input overlap remains illegal. No other opcode has an in-place
+variant. Exchanging a matrix's inner and outer strides still represents a
+different affine view, not a transpose or lane bit.
 
 ## 6. MMIO control interface
 
@@ -327,23 +299,26 @@ occurrence. All three source addresses are required.
 
 Opcode: `5`
 
-`n` is a non-zero count of child `accel_command_t` descriptors at guest physical
-address `src0`. `dst` points to `accel_batch_result_t`. The block fetches and
-executes child descriptors strictly in ascending array order using the same
-primitive semantics as standalone commands. Children may use opcodes 1–4 and 6–8;
-nested batches are invalid.
+`child_count` is a non-zero 32-bit count of commands in the encoded stream at
+guest physical address `child_stream`; `child_bytes` is its exact non-zero
+byte length, a multiple of 16 and representable in 32 bits. `result` points
+to `accel_batch_result_t`. The block walks children by each decoded format's
+32/48/64-byte size and executes them in order. Exactly `child_count` primitive
+commands must consume exactly `child_bytes`: truncation, overrun, trailing
+bytes, malformed lengths, and nested batches cause `ERROR`.
 
 All writes by a successful child are visible to the next child through guest
 memory before that next child begins. Thus a batch may produce a temporary
 projection and consume it with a vector add.
 
-On success, `{ completed = n, failed_index = UINT32_MAX }` is stored and status
+On success, `{ completed = child_count, failed_index = UINT32_MAX }` is stored and status
 is `DONE`. If child `i` cannot be read, is invalid, or fails, descriptors before
 it remain completed, descriptors after it are not executed, and
 `{ completed = i, failed_index = i }` is stored before status becomes `ERROR`.
 Batch execution is fail-stop and non-transactional.
-The batch result and every child output must avoid all bytes of the child
-descriptor array and the top-level batch descriptor. A batch with an overlapping
+The batch result and every child output must avoid all bytes of
+`[child_stream, child_stream + child_bytes)` and the 32-byte top-level batch
+descriptor. A batch with an overlapping
 result is rejected before child execution; a child whose output overlaps either
 descriptor region fails at that child. Child input reads may overlap descriptor
 storage, but software must still keep descriptors and inputs stable until
@@ -379,7 +354,8 @@ malformed cases are:
 
 * zero descriptor address;
 * unsupported opcode;
-* `n == 0`;
+* an incompatible format, truncated command, or nonzero reserved field;
+* `n == 0` for a primitive, or `child_count == 0` for a batch;
 * zero required source or destination address;
 * zero `src2` for opcodes `2` and `4`;
 * `EXECUTE_BATCH` with a nested batch child.

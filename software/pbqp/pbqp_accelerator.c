@@ -3,6 +3,7 @@
 // Adapts PBQP vector views to contiguous PCAA primitive submissions.
 
 #include "pbqp_accelerator.h"
+#include "pcaa_codec.h"
 
 static void record_batch_submission(pbqp_accelerator_kernel_context_t *context, size_t count);
 
@@ -97,13 +98,30 @@ static const int32_t *batch_contiguous(pbqp_accelerator_kernel_context_t *contex
 }
 
 static void record_batch_submission(pbqp_accelerator_kernel_context_t *context, size_t count) {
+  size_t child_bytes = 0;
+  if (pcaa_encoded_stream_size(context->batch_commands, count, &child_bytes) != PCAA_STATUS_OK)
+    return;
   ++context->statistics->top_level_submissions;
   ++context->statistics->batch_submissions;
   context->statistics->batch_primitive_descriptors += count;
   if (count > context->statistics->maximum_batch_size)
     context->statistics->maximum_batch_size = count;
-  context->statistics->batch_descriptor_bytes += pcaa_encoded_batch_bytes(count);
-  context->statistics->batch_child_descriptor_bytes += count * pcaa_encoded_command_bytes();
+  context->statistics->batch_descriptor_bytes += ACCEL_BATCH_COMMAND_BYTES + child_bytes;
+  context->statistics->batch_child_descriptor_bytes += child_bytes;
+  for (size_t index = 0; index < count; ++index) {
+    const pcaa_command_t *command = &context->batch_commands[index];
+    if (command->kind != PCAA_COST_ADD_VECTOR)
+      continue;
+    const pcaa_vector_add_t *add = &command->operation.vector_add;
+    const int alias0 =
+        add->result.base == add->first.base && add->result.stride == add->first.stride;
+    const int alias1 =
+        add->result.base == add->second.base && add->result.stride == add->second.stride;
+    context->statistics->vector_add_dst_src0 += alias0;
+    context->statistics->vector_add_dst_src1 += alias1;
+    context->statistics->vector_add_inplace_descriptors += alias0 || alias1;
+    context->statistics->vector_add_general_descriptors += !alias0 && !alias1;
+  }
 }
 
 static int accel_min2(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,

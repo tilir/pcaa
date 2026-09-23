@@ -16,7 +16,7 @@ enum class AccelTimingMode { kUntimed, kL1Sequential, kL1Streaming };
 struct AccelTimingConfig {
   AccelTimingMode mode = AccelTimingMode::kUntimed;
   unsigned lanes = 1;
-  unsigned descriptor_bytes_per_cycle = sizeof(accel_command_t);
+  unsigned descriptor_bytes_per_cycle = ACCEL_COMMAND_SLOT_BYTES;
   unsigned memory_read_bytes_per_cycle = sizeof(int32_t);
   unsigned memory_write_bytes_per_cycle = sizeof(int32_t);
   unsigned batch_start_cycles = 0;
@@ -50,11 +50,8 @@ struct AccelCommandTiming {
   uint64_t total_cycles = 0;
 };
 
-AccelCommandTiming accel_estimate_command_cycles(const accel_command_t &command,
+AccelCommandTiming accel_estimate_command_cycles(const pcaa_command_t &command,
                                                  const AccelTimingConfig &config);
-void accel_accumulate_command_timing(const accel_command_t &command,
-                                     const AccelTimingConfig &config,
-                                     AccelTimingStatistics *statistics);
 void accel_accumulate_semantic_command_timing(const pcaa_command_t &command,
                                               const AccelTimingConfig &config,
                                               AccelTimingStatistics *statistics);

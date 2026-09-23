@@ -302,6 +302,10 @@ typedef struct {
   unsigned maximum_batch_size;
   uint64_t batch_descriptor_bytes;
   uint64_t batch_child_descriptor_bytes;
+  unsigned vector_add_dst_src0;
+  unsigned vector_add_dst_src1;
+  unsigned vector_add_inplace_descriptors;
+  unsigned vector_add_general_descriptors;
   unsigned unique_packed_views;
 } pbqp_statistics_t;
 
