@@ -35,6 +35,7 @@ typedef enum {
      returned by pbqp_solver_solve(); consumed by the caller that issued the
      branch. */
   PBQP_PRUNED = -6,
+  PBQP_KERNEL_ERROR = -7,
 } pbqp_status_t;
 
 /*
@@ -333,6 +334,8 @@ typedef struct {
   pbqp_mode_t mode;
   pbqp_cost_kernel_t kernel;
   pbqp_solver_config_t config;
+  /* Original nonzero cost-kernel status after PBQP_KERNEL_ERROR; zero otherwise. */
+  int last_kernel_status;
 } pbqp_solver_t;
 
 /* Node state; reconstruction choices live in the owning problem's allocated storage. */

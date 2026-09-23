@@ -7,7 +7,7 @@ target_link_libraries(pbqp_graph_generate PRIVATE pcaa_graph_generator)
 
 add_executable(pcaa_graph_run_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_model PRIVATE PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_core pcaa_pbqp)
+target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_core pcaa_pbqp pcaalib_systemc)
 
 add_executable(pcaa_graph_run pbqp_run_launcher.cpp)
 add_dependencies(pcaa_graph_run pcaa_graph_run_model)
@@ -16,7 +16,7 @@ add_executable(pcaa_graph_run_timed_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_timed_model PRIVATE
   PCAA_GRAPH_RUN_TIMED
   PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_core pcaa_pbqp)
+target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_core pcaa_pbqp pcaalib_systemc)
 
 add_executable(pcaa_graph_run_timed pbqp_run_launcher.cpp)
 target_compile_definitions(pcaa_graph_run_timed PRIVATE

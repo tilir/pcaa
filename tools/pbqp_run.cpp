@@ -6,6 +6,11 @@
 #include "accel_protocol.h"
 #include "memory_interface.h"
 #include "pbqp/pbqp.h"
+#include "pcaa.h"
+#include "pcaa_device.h"
+#include "pcaa_host_error.h"
+#include "pcaa_submission.h"
+#include "pcaa_systemc_device.h"
 #include "timing_model.h"
 
 #include <algorithm>
@@ -18,13 +23,13 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <sysc/communication/sc_port.h>
 #include <sysc/kernel/sc_dynamic_processes.h>
 #include <sysc/kernel/sc_externs.h>
 #include <sysc/kernel/sc_module.h>
@@ -34,7 +39,6 @@
 #include <sysc/kernel/sc_time.h>
 #include <sysc/kernel/sc_wait.h>
 #include <tlm_core/tlm_2/tlm_2_interfaces/tlm_fw_bw_ifs.h>
-#include <tlm_core/tlm_2/tlm_generic_payload/tlm_gp.h>
 #include <tlm_core/tlm_2/tlm_generic_payload/tlm_phase.h>
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/simple_target_socket.h>
@@ -46,10 +50,8 @@ constexpr size_t kMaximumHostDomain = 64 * 1024;
 constexpr unsigned kTimedRunnerLanes = 4;
 constexpr int kTimedRunnerCyclePeriodNanoseconds = 1;
 constexpr unsigned kTimedRunnerBytesPerCycle = 16;
-constexpr uint64_t kFirstAllocationAddress = 0x100;
+constexpr pcaa_guest_address_t kFirstAllocationAddress = 0x100;
 constexpr size_t kAllocationAlignment = 8;
-constexpr uint32_t kDoorbellSubmit = 1;
-constexpr int kAddressLowBits = 32;
 
 struct InputNode {
   std::vector<int32_t> unary;
@@ -179,7 +181,7 @@ class GuestMemory final : public MemoryInterface {
  public:
   GuestMemory() : bytes_(kInitialGuestMemoryBytes) {}
 
-  bool read(uint64_t address, void *destination, size_t size) override {
+  bool read(pcaa_guest_address_t address, void *destination, size_t size) override {
     if (!contains(address, size)) {
       return false;
     }
@@ -187,7 +189,7 @@ class GuestMemory final : public MemoryInterface {
     return true;
   }
 
-  bool write(uint64_t address, const void *source, size_t size) override {
+  bool write(pcaa_guest_address_t address, const void *source, size_t size) override {
     if (!contains(address, size)) {
       return false;
     }
@@ -195,12 +197,12 @@ class GuestMemory final : public MemoryInterface {
     return true;
   }
 
-  uint64_t allocate(size_t size, size_t alignment = kAllocationAlignment) {
-    const uint64_t aligned = (next_address_ + alignment - 1) / alignment * alignment;
-    if (aligned > std::numeric_limits<uint64_t>::max() - size) {
+  pcaa_guest_address_t allocate(size_t size, size_t alignment = kAllocationAlignment) {
+    const pcaa_guest_address_t aligned = (next_address_ + alignment - 1) / alignment * alignment;
+    if (aligned > std::numeric_limits<pcaa_guest_address_t>::max() - size) {
       return 0;
     }
-    const uint64_t end = aligned + size;
+    const pcaa_guest_address_t end = aligned + size;
     if (end > std::numeric_limits<size_t>::max()) {
       return 0;
     }
@@ -220,12 +222,12 @@ class GuestMemory final : public MemoryInterface {
   }
 
  private:
-  bool contains(uint64_t address, size_t size) const {
+  bool contains(pcaa_guest_address_t address, size_t size) const {
     return address <= bytes_.size() && size <= bytes_.size() - address;
   }
 
   std::vector<unsigned char> bytes_;
-  uint64_t next_address_ = kFirstAllocationAddress;
+  pcaa_guest_address_t next_address_ = kFirstAllocationAddress;
 };
 
 class Initiator final : public sc_core::sc_module {
@@ -240,6 +242,8 @@ class ModelKernel {
   ModelKernel(bool verbose, AccelTimingConfig timing)
       : accelerator_("accelerator", memory_, timing, verbose), initiator_("initiator") {
     initiator_.socket.bind(accelerator_.target_socket);
+    device_ = std::make_unique<PcaaSystemCDevice>(memory_, &memory_, allocate_device_storage,
+                                                  *initiator_.socket.operator->());
     sc_core::sc_start(sc_core::SC_ZERO_TIME);
   }
 
@@ -268,6 +272,10 @@ class ModelKernel {
   }
 
  private:
+  static pcaa_guest_address_t allocate_device_storage(void *context, size_t size) {
+    return static_cast<GuestMemory *>(context)->allocate(size);
+  }
+
   struct ViewKey {
     const int32_t *base;
     size_t length;
@@ -292,7 +300,8 @@ class ModelKernel {
 
   static void record_cycles(CycleBreakdown *breakdown, uint64_t operand_elements,
                             uint64_t compute_chunks, uint64_t result_bytes) {
-    const uint64_t descriptor = divide_round_up(sizeof(accel_command_t), kTimedRunnerBytesPerCycle);
+    const uint64_t descriptor =
+        divide_round_up(pcaa_encoded_command_bytes(), kTimedRunnerBytesPerCycle);
     const uint64_t operands =
         divide_round_up(operand_elements * sizeof(int32_t), kTimedRunnerBytesPerCycle);
     const uint64_t result = divide_round_up(result_bytes, kTimedRunnerBytesPerCycle);
@@ -426,19 +435,23 @@ class ModelKernel {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
     kernel->record_project_cycle_projection(jobs, count);
     kernel->begin_batch();
-    std::vector<accel_command_t> commands;
-    std::vector<uint64_t> result_addresses;
+    std::vector<pcaa_command_t> commands;
+    std::vector<pcaa_guest_address_t> result_addresses;
     commands.reserve(count);
     result_addresses.reserve(count);
     for (size_t index = 0; index < count; ++index) {
-      const uint64_t first = kernel->copy_view(jobs[index].a);
-      const uint64_t second = kernel->copy_view(jobs[index].b);
-      const uint64_t result = kernel->memory_.allocate(sizeof(int32_t));
+      const pcaa_guest_address_t first = kernel->copy_view(jobs[index].a);
+      const pcaa_guest_address_t second = kernel->copy_view(jobs[index].b);
+      const pcaa_guest_address_t result = kernel->memory_.allocate(sizeof(int32_t));
       if (first == 0 || second == 0 || result == 0)
         return -1;
-      commands.push_back({ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, 0,
-                          static_cast<uint32_t>(jobs[index].a.length), 0, 0, 0, first, second, 0,
-                          result});
+      pcaa_command_t command{};
+      if (pcaa_make_reduce2(
+              pcaa_cost_vector(first, static_cast<uint32_t>(jobs[index].a.length), 1),
+              pcaa_cost_vector(second, static_cast<uint32_t>(jobs[index].b.length), 1), result, 0,
+              &command) != 0)
+        return -1;
+      commands.push_back(command);
       result_addresses.push_back(result);
     }
     if (!kernel->submit_batch(commands))
@@ -454,20 +467,24 @@ class ModelKernel {
   static int min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
     kernel->begin_batch();
-    std::vector<accel_command_t> commands;
-    std::vector<uint64_t> result_addresses;
+    std::vector<pcaa_command_t> commands;
+    std::vector<pcaa_guest_address_t> result_addresses;
     commands.reserve(count);
     result_addresses.reserve(count);
     for (size_t index = 0; index < count; ++index) {
-      const uint64_t first = kernel->copy_view(jobs[index].a);
-      const uint64_t second = kernel->copy_view(jobs[index].b);
-      const uint64_t result = kernel->allocate_result();
+      const pcaa_guest_address_t first = kernel->copy_view(jobs[index].a);
+      const pcaa_guest_address_t second = kernel->copy_view(jobs[index].b);
+      const pcaa_guest_address_t result = kernel->allocate_result();
       if (first == 0 || second == 0 || result == 0) {
         return -1;
       }
-      commands.push_back({ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, 0,
-                          static_cast<uint32_t>(jobs[index].a.length), 0, 0, 0, first, second, 0,
-                          result});
+      pcaa_command_t command{};
+      if (pcaa_make_reduce2(
+              pcaa_cost_vector(first, static_cast<uint32_t>(jobs[index].a.length), 1),
+              pcaa_cost_vector(second, static_cast<uint32_t>(jobs[index].b.length), 1), result, 1,
+              &command) != 0)
+        return -1;
+      commands.push_back(command);
       result_addresses.push_back(result);
     }
     if (!kernel->submit_batch(commands)) {
@@ -486,21 +503,26 @@ class ModelKernel {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
     kernel->record_map3_cycle_projection(jobs, count);
     kernel->begin_batch();
-    std::vector<accel_command_t> commands;
-    std::vector<uint64_t> result_addresses;
+    std::vector<pcaa_command_t> commands;
+    std::vector<pcaa_guest_address_t> result_addresses;
     commands.reserve(count);
     result_addresses.reserve(count);
     for (size_t index = 0; index < count; ++index) {
-      const uint64_t first = kernel->copy_view(jobs[index].a);
-      const uint64_t second = kernel->copy_view(jobs[index].b);
-      const uint64_t third = kernel->copy_view(jobs[index].c);
-      const uint64_t result = kernel->allocate_result();
+      const pcaa_guest_address_t first = kernel->copy_view(jobs[index].a);
+      const pcaa_guest_address_t second = kernel->copy_view(jobs[index].b);
+      const pcaa_guest_address_t third = kernel->copy_view(jobs[index].c);
+      const pcaa_guest_address_t result = kernel->allocate_result();
       if (first == 0 || second == 0 || third == 0 || result == 0) {
         return -1;
       }
-      commands.push_back({ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, 0,
-                          static_cast<uint32_t>(jobs[index].a.length), 0, 0, 0, first, second,
-                          third, result});
+      pcaa_command_t command{};
+      if (pcaa_make_reduce3(
+              pcaa_cost_vector(first, static_cast<uint32_t>(jobs[index].a.length), 1),
+              pcaa_cost_vector(second, static_cast<uint32_t>(jobs[index].b.length), 1),
+              pcaa_cost_vector(third, static_cast<uint32_t>(jobs[index].c.length), 1), result, 1,
+              &command) != 0)
+        return -1;
+      commands.push_back(command);
       result_addresses.push_back(result);
     }
     if (!kernel->submit_batch(commands)) {
@@ -521,40 +543,34 @@ class ModelKernel {
       return 0;
     kernel->record_vector_project_projection(jobs, count);
     kernel->begin_batch();
-    std::vector<accel_command_t> commands;
+    std::vector<pcaa_command_t> commands;
     commands.reserve(2 * count);
     const size_t rows = jobs[0].matrix.rows;
-    const uint64_t scores = kernel->copy_view({jobs[0].scores, rows, 1});
+    const pcaa_guest_address_t scores = kernel->copy_view({jobs[0].scores, rows, 1});
     if (scores == 0)
       return -1;
     for (size_t index = 0; index < count; ++index) {
       const pbqp_project_add_job_t &job = jobs[index];
-      const uint64_t matrix = kernel->copy_matrix(job.matrix);
-      const uint64_t unary = kernel->copy_view(job.unary);
-      const uint64_t temporary = kernel->memory_.allocate(rows * sizeof(int32_t));
+      const pcaa_guest_address_t matrix = kernel->copy_matrix(job.matrix);
+      const pcaa_guest_address_t unary = kernel->copy_view(job.unary);
+      const pcaa_guest_address_t temporary = kernel->memory_.allocate(rows * sizeof(int32_t));
       if (matrix == 0 || unary == 0 || temporary == 0)
         return -1;
-      accel_command_t project{};
-      project.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
-      project.n = static_cast<uint32_t>(job.matrix.columns);
-      project.m = static_cast<uint32_t>(rows);
-      project.src0 = matrix;
-      project.src1 = unary;
-      project.dst = temporary;
-      project.src0_stride = 1;
-      project.src0_outer_stride = static_cast<uint32_t>(job.matrix.columns);
-      project.src1_stride = 1;
-      project.dst_stride = 1;
+      pcaa_command_t project{};
+      if (pcaa_make_minplus_project(
+              pcaa_cost_matrix(matrix, static_cast<uint32_t>(rows),
+                               static_cast<uint32_t>(job.matrix.columns),
+                               static_cast<uint32_t>(job.matrix.columns), 1),
+              pcaa_cost_vector(unary, static_cast<uint32_t>(job.unary.length), 1),
+              pcaa_cost_output(temporary, static_cast<uint32_t>(rows), 1), &project) != 0)
+        return -1;
       commands.push_back(project);
-      accel_command_t add{};
-      add.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
-      add.n = static_cast<uint32_t>(rows);
-      add.src0 = temporary;
-      add.src1 = scores;
-      add.dst = scores;
-      add.src0_stride = 1;
-      add.src1_stride = 1;
-      add.dst_stride = 1;
+      pcaa_command_t add{};
+      if (pcaa_make_cost_add_vector(pcaa_cost_vector(temporary, static_cast<uint32_t>(rows), 1),
+                                    pcaa_cost_vector(scores, static_cast<uint32_t>(rows), 1),
+                                    pcaa_cost_output(scores, static_cast<uint32_t>(rows), 1),
+                                    &add) != 0)
+        return -1;
       commands.push_back(add);
     }
     return kernel->submit_batch(commands) &&
@@ -569,32 +585,29 @@ class ModelKernel {
       return 0;
     kernel->record_vector_map3_projection(jobs, count);
     kernel->begin_batch();
-    std::vector<accel_command_t> commands;
-    std::vector<uint64_t> results;
+    std::vector<pcaa_command_t> commands;
+    std::vector<pcaa_guest_address_t> results;
     commands.reserve(count);
     results.reserve(count);
     for (size_t index = 0; index < count; ++index) {
       const pbqp_map3_project_job_t &job = jobs[index];
-      const uint64_t unary = kernel->copy_view(job.unary);
-      const uint64_t fixed = kernel->copy_view(job.fixed_edge);
-      const uint64_t varying = kernel->copy_matrix(job.varying_edge);
-      const uint64_t result =
+      const pcaa_guest_address_t unary = kernel->copy_view(job.unary);
+      const pcaa_guest_address_t fixed = kernel->copy_view(job.fixed_edge);
+      const pcaa_guest_address_t varying = kernel->copy_matrix(job.varying_edge);
+      const pcaa_guest_address_t result =
           kernel->memory_.allocate(job.varying_edge.rows * sizeof(accel_min_argmin_result_t));
       if (unary == 0 || fixed == 0 || varying == 0 || result == 0)
         return -1;
-      accel_command_t command{};
-      command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
-      command.n = static_cast<uint32_t>(job.unary.length);
-      command.m = static_cast<uint32_t>(job.varying_edge.rows);
-      command.src0 = unary;
-      command.src1 = fixed;
-      command.src2 = varying;
-      command.dst = result;
-      command.src0_stride = 1;
-      command.src1_stride = 1;
-      command.src2_stride = 1;
-      command.src2_outer_stride = static_cast<uint32_t>(job.varying_edge.columns);
-      command.dst_stride = 1;
+      pcaa_command_t command{};
+      if (pcaa_make_minplus_map3_project(
+              pcaa_cost_vector(unary, static_cast<uint32_t>(job.unary.length), 1),
+              pcaa_cost_vector(fixed, static_cast<uint32_t>(job.fixed_edge.length), 1),
+              pcaa_cost_matrix(varying, static_cast<uint32_t>(job.varying_edge.rows),
+                               static_cast<uint32_t>(job.varying_edge.columns),
+                               static_cast<uint32_t>(job.varying_edge.columns), 1),
+              pcaa_argmin_output(result, static_cast<uint32_t>(job.varying_edge.rows), 1),
+              &command) != 0)
+        return -1;
       commands.push_back(command);
       results.push_back(result);
     }
@@ -612,18 +625,19 @@ class ModelKernel {
                              int32_t *result) {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
     kernel->begin_batch();
-    const uint64_t first_address = kernel->copy_view(first);
-    const uint64_t second_address = kernel->copy_view(second);
-    const uint64_t result_address = kernel->memory_.allocate(first.length * sizeof(int32_t));
+    const pcaa_guest_address_t first_address = kernel->copy_view(first);
+    const pcaa_guest_address_t second_address = kernel->copy_view(second);
+    const pcaa_guest_address_t result_address =
+        kernel->memory_.allocate(first.length * sizeof(int32_t));
     if (first_address == 0 || second_address == 0 || result_address == 0)
       return -1;
-    accel_command_t command{};
-    command.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
-    command.n = static_cast<uint32_t>(first.length);
-    command.src0 = first_address;
-    command.src1 = second_address;
-    command.dst = result_address;
-    command.src0_stride = command.src1_stride = command.dst_stride = 1;
+    pcaa_command_t command{};
+    if (pcaa_make_cost_add_vector(
+            pcaa_cost_vector(first_address, static_cast<uint32_t>(first.length), 1),
+            pcaa_cost_vector(second_address, static_cast<uint32_t>(second.length), 1),
+            pcaa_cost_output(result_address, static_cast<uint32_t>(first.length), 1),
+            &command) != 0)
+      return -1;
     return kernel->submit_batch({command}) &&
                    kernel->memory_.read(result_address, result, first.length * sizeof(int32_t))
                ? 0
@@ -634,20 +648,20 @@ class ModelKernel {
                              int32_t *result) {
     ModelKernel *kernel = static_cast<ModelKernel *>(opaque);
     kernel->begin_batch();
-    const uint64_t matrix_address = kernel->copy_matrix(matrix);
-    const uint64_t unary_address = kernel->copy_view(unary);
-    const uint64_t result_address = kernel->memory_.allocate(matrix.rows * sizeof(int32_t));
+    const pcaa_guest_address_t matrix_address = kernel->copy_matrix(matrix);
+    const pcaa_guest_address_t unary_address = kernel->copy_view(unary);
+    const pcaa_guest_address_t result_address =
+        kernel->memory_.allocate(matrix.rows * sizeof(int32_t));
     if (matrix_address == 0 || unary_address == 0 || result_address == 0)
       return -1;
-    accel_command_t command{};
-    command.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
-    command.n = static_cast<uint32_t>(matrix.columns);
-    command.m = static_cast<uint32_t>(matrix.rows);
-    command.src0 = matrix_address;
-    command.src1 = unary_address;
-    command.dst = result_address;
-    command.src0_stride = command.src1_stride = command.dst_stride = 1;
-    command.src0_outer_stride = static_cast<uint32_t>(matrix.columns);
+    pcaa_command_t command{};
+    if (pcaa_make_minplus_project(
+            pcaa_cost_matrix(matrix_address, static_cast<uint32_t>(matrix.rows),
+                             static_cast<uint32_t>(matrix.columns),
+                             static_cast<uint32_t>(matrix.columns), 1),
+            pcaa_cost_vector(unary_address, static_cast<uint32_t>(unary.length), 1),
+            pcaa_cost_output(result_address, static_cast<uint32_t>(matrix.rows), 1), &command) != 0)
+      return -1;
     return kernel->submit_batch({command}) &&
                    kernel->memory_.read(result_address, result, matrix.rows * sizeof(int32_t))
                ? 0
@@ -670,13 +684,13 @@ class ModelKernel {
   // Copies a strided view into guest memory once per batch. R2 alone submits
   // D^2 primitives that repeat one unary and 2*D matrix slices, so copying
   // each operand separately would exhaust the staging area at moderate D.
-  uint64_t copy_view(pbqp_vector_view_t view) {
+  pcaa_guest_address_t copy_view(pbqp_vector_view_t view) {
     const ViewKey key{view.base, view.length, view.stride};
     const auto cached = view_cache_.find(key);
     if (cached != view_cache_.end()) {
       return cached->second;
     }
-    const uint64_t address = memory_.allocate(view.length * sizeof(int32_t));
+    const pcaa_guest_address_t address = memory_.allocate(view.length * sizeof(int32_t));
     if (address == 0) {
       return 0;
     }
@@ -690,8 +704,9 @@ class ModelKernel {
     return address;
   }
 
-  uint64_t copy_matrix(pbqp_matrix_view_t matrix) {
-    const uint64_t address = memory_.allocate(matrix.rows * matrix.columns * sizeof(int32_t));
+  pcaa_guest_address_t copy_matrix(pbqp_matrix_view_t matrix) {
+    const pcaa_guest_address_t address =
+        memory_.allocate(matrix.rows * matrix.columns * sizeof(int32_t));
     if (address == 0)
       return 0;
     for (size_t row = 0; row < matrix.rows; ++row) {
@@ -705,47 +720,31 @@ class ModelKernel {
     return address;
   }
 
-  uint64_t allocate_result() {
+  pcaa_guest_address_t allocate_result() {
     return memory_.allocate(sizeof(accel_min_argmin_result_t));
   }
 
-  bool submit_batch(const std::vector<accel_command_t> &commands) {
-    if (commands.empty()) {
+  bool submit_batch(const std::vector<pcaa_command_t> &commands) {
+    if (commands.empty() || commands.size() > UINT32_MAX ||
+        pcaa_encoded_batch_bytes(commands.size()) == 0) {
       return false;
     }
-    const uint64_t child_address = memory_.allocate(commands.size() * sizeof(commands.front()));
-    const uint64_t batch_result_address = memory_.allocate(sizeof(accel_batch_result_t));
-    const uint64_t descriptor_address = memory_.allocate(sizeof(accel_command_t));
-    if (child_address == 0 || batch_result_address == 0 || descriptor_address == 0 ||
-        !memory_.write(child_address, commands.data(),
-                       commands.size() * sizeof(commands.front()))) {
-      return false;
-    }
-    const accel_command_t batch = {ACCEL_OPCODE_EXECUTE_BATCH,
-                                   0,
-                                   static_cast<uint32_t>(commands.size()),
-                                   0,
-                                   0,
-                                   0,
-                                   child_address,
-                                   0,
-                                   0,
-                                   batch_result_address};
-    if (!memory_.write(descriptor_address, &batch, sizeof(batch)) ||
-        !mmio(ACCEL_MMIO_DESC_ADDR_LO, static_cast<uint32_t>(descriptor_address)) ||
-        !mmio(ACCEL_MMIO_DESC_ADDR_HI,
-              static_cast<uint32_t>(descriptor_address >> kAddressLowBits)) ||
-        !mmio(ACCEL_MMIO_DOORBELL, kDoorbellSubmit)) {
+    const pcaa_status_t submitted =
+        pcaa_device_submit_batch(device_->device(), commands.data(), commands.size());
+    if (submitted != PCAA_STATUS_OK) {
+      pcaa_perror("pcaa submit", submitted);
       return false;
     }
     record_batch_submission(commands.size());
-    uint32_t status = 0;
-    if (!mmio_read(ACCEL_MMIO_STATUS, &status) || status != ACCEL_STATUS_DONE) {
+    pcaa_completion_t completion{};
+    const pcaa_status_t completed = pcaa_device_wait(device_->device(), &completion);
+    if (completed != PCAA_STATUS_OK) {
+      pcaa_perror("pcaa wait", completed);
+      if (completion.has_batch_result && completion.failed_index != UINT32_MAX)
+        std::cerr << "pcaa: failed child=" << completion.failed_index << '\n';
       return false;
     }
-    accel_batch_result_t result{};
-    return memory_.read(batch_result_address, &result, sizeof(result)) &&
-           result.completed == commands.size() && result.failed_index == UINT32_MAX;
+    return true;
   }
 
   void record_batch_submission(size_t count) {
@@ -759,35 +758,16 @@ class ModelKernel {
     if (command_count > statistics_->maximum_batch_size) {
       statistics_->maximum_batch_size = command_count;
     }
-    statistics_->batch_descriptor_bytes += sizeof(accel_command_t) * (count + 1);
-    statistics_->batch_child_descriptor_bytes += count * sizeof(accel_command_t);
-  }
-
-  bool mmio(uint64_t address, uint32_t value) {
-    return transport(address, &value, tlm::TLM_WRITE_COMMAND);
-  }
-
-  bool mmio_read(uint64_t address, uint32_t *value) {
-    return transport(address, value, tlm::TLM_READ_COMMAND);
-  }
-
-  bool transport(uint64_t address, uint32_t *value, tlm::tlm_command command) {
-    tlm::tlm_generic_payload transaction;
-    sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
-    transaction.set_command(command);
-    transaction.set_address(address);
-    transaction.set_data_ptr(reinterpret_cast<unsigned char *>(value));
-    transaction.set_data_length(sizeof(*value));
-    transaction.set_streaming_width(sizeof(*value));
-    initiator_.socket->b_transport(transaction, delay);
-    return transaction.get_response_status() == tlm::TLM_OK_RESPONSE;
+    statistics_->batch_descriptor_bytes += pcaa_encoded_batch_bytes(count);
+    statistics_->batch_child_descriptor_bytes += count * pcaa_encoded_command_bytes();
   }
 
   GuestMemory memory_;
-  std::map<ViewKey, uint64_t, ViewKeyLess> view_cache_;
+  std::map<ViewKey, pcaa_guest_address_t, ViewKeyLess> view_cache_;
   VectorCycleProjection vector_cycle_projection_;
   Accelerator accelerator_;
   Initiator initiator_;
+  std::unique_ptr<PcaaSystemCDevice> device_;
   pbqp_statistics_t *statistics_ = nullptr;
 };
 
@@ -1131,6 +1111,9 @@ int sc_main(int argc, char **argv) {
       return 0;
     }
     if (status != PBQP_OK) {
+      if (status == PBQP_KERNEL_ERROR && solver.last_kernel_status > 0 &&
+          solver.last_kernel_status <= PCAA_STATUS_DEVICE_ERROR)
+        pcaa_perror("PCAA cost kernel", static_cast<pcaa_status_t>(solver.last_kernel_status));
       std::cerr << "PCAA model could not solve the graph\n";
       return 1;
     }

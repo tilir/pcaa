@@ -215,6 +215,33 @@ static void check_problem(void (*build)(pbqp_problem_t*), int expect_r2) {
   }
 }
 
+static int injected_kernel_failure(void*, pbqp_vector_view_t, pbqp_vector_view_t,
+                                   accel_min_argmin_result_t*) {
+  return 7;
+}
+
+TEST(PbqpSolver, PreservesKernelFailureStatus) {
+  pbqp_problem_t problem;
+  ASSERT_EQ(pbqp_init(&problem, pbqp_heap_allocator(), 2, 1, 2), PBQP_OK);
+  const int32_t unary[] = {0, 1};
+  const int32_t edge[] = {0, 1, 2, 3};
+  ASSERT_EQ(pbqp_add_node(&problem, 2, unary), PBQP_OK);
+  ASSERT_EQ(pbqp_add_node(&problem, 2, unary), PBQP_OK);
+  ASSERT_EQ(pbqp_add_edge(&problem, 0, 1, edge), PBQP_OK);
+  pbqp_cost_kernel_t kernel;
+  pbqp_make_software_kernel(&kernel, &problem.statistics);
+  kernel.min2_argmin = injected_kernel_failure;
+  kernel.min2_argmin_batch = nullptr;
+  pbqp_solver_t solver;
+  ASSERT_EQ(pbqp_solver_create(&solver, PBQP_MODE_SOFTWARE, &kernel), PBQP_OK);
+  unsigned assignment[2]{};
+  pbqp_solution_t solution;
+  pbqp_solution_init(&solution, assignment, 2);
+  EXPECT_EQ(pbqp_solver_solve(&solver, &problem, &solution), PBQP_KERNEL_ERROR);
+  EXPECT_EQ(solver.last_kernel_status, 7);
+  pbqp_destroy(&problem);
+}
+
 TEST(PbqpSolver, ReductionsAndReconstruction) {
   pbqp_problem_t original;
   pbqp_problem_t reduced;

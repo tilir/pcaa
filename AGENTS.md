@@ -20,6 +20,13 @@ Do not add RISC-V instructions, CSRs, interrupts, DMA timing, cache coherency, v
 
 Use `int` by default for local counters, status codes, loop variables, and ordinary computation. Use `size_t` for object sizes and indexes into host containers. Introduce fixed-width integer types only where their exact representation is part of the accelerator ABI, MMIO register format, guest-memory data format, serialized descriptor, or where a wider intermediate is required to make overflow behavior explicit. Do not spread `int32_t`/`uint32_t` through implementation code merely because the ABI uses them.
 
+In pcaalib, use `pcaa_guest_address_t` for guest physical addresses and `size_t`
+for semantic dimensions and strides; check for narrowing when encoding ABI fields.
+Preserve error information across layers: do not collapse a typed failure into
+`-1`, a boolean, or an unrelated generic status before the receiving layer has
+handled it. When an interface cannot carry the original type, retain the cause
+in an explicit diagnostic field and expose it to the caller.
+
 ## Code style
 
 `.clang-format` is authoritative for C, C++, and SystemC source. Keep new code compatible with C++17, use 2-space indentation, keep lines within 100 columns where practical, and avoid dense multi-statement lines. In each C/C++ file, include project headers first, then standard-library headers, then external-library headers; every header must remain self-sufficient. Do not hand-format around the configuration: run `cmake --build build --target format` after editing C/C++ sources. The target runs both `clang-format` and Include-What-You-Use against the CMake compilation database; it requires `clang-format`, `include-what-you-use`, and `iwyu_tool`.
@@ -40,7 +47,7 @@ Every source module and public header begins with an SPDX GPL-3.0-only identifie
 
 ## Documentation and public interfaces
 
-Keep `README.md` concise and human-facing. It should explain what the project does, the supported commands and their observable semantics, plus build and test commands; it must not expose internal implementation or simulation-lifecycle details. Put development constraints in this guide and block architecture in `doc/arch.md`.
+Keep `README.md` concise and human-facing. It should explain what the project does, the supported commands and their observable semantics, plus build and test commands; it must not expose internal implementation or simulation-lifecycle details. Put development constraints in this guide, block architecture in `doc/arch.md`, and the pcaalib function reference in `doc/pcaalib.md`.
 
 With every change, explicitly review `README.md`, `AGENTS.md`, and `doc/arch.md`. Update each document when the change affects its audience: README for user-visible behavior and commands, AGENTS for durable development rules, and the architecture specification for block-visible behavior or contracts.
 
@@ -49,6 +56,9 @@ Document public ABI structs directly where they are declared: state their purpos
 ## Structure
 
 * `accelerator/include`: ABI, guest-memory abstraction, SystemC module interface.
+* `pcaalib`: platform-neutral semantic commands/views, builders, descriptor codec,
+  and device submission API. Its common core has no SystemC, heap, or host-pointer ABI;
+  separate SystemC and RV64 backends own staging and MMIO transport.
 * `accelerator/include/cost_math.h` and `accelerator/src/cost_math.cpp`: reusable saturating cost arithmetic.
 * `accelerator/src/accelerator.cpp`: generic vector primitives only.
 * `accelerator/src/spike_device.cpp`: the sole Spike plugin and physical-memory adapter.
@@ -155,7 +165,7 @@ host uses the same solver with a heap allocator and input-sized capacities.
 Do not raise the bare-metal arena policy without recalculating static-storage
 and stack use, then re-running all PBQP ELFs under Spike.
 
-ISA v1 uses an 80-byte descriptor with the original 56-byte prefix unchanged,
+ISA 1.0.0 uses an 80-byte descriptor with the original 56-byte prefix unchanged,
 plus explicit element strides for vector add, min-plus project, and partial-vector
 MAP3 project. Keep dimensions runtime-sized and independent of lane count.
 `EXECUTE_BATCH` is an ordered, finite control operation, not a scheduler: the
@@ -163,10 +173,21 @@ runtime constructs child primitive descriptors and the accelerator drains them
 in order. Do not add dependency discovery, reordering, graph awareness, or
 batching across PBQP reductions. Successful child outputs must be visible to
 the following child. The retained scalar differential path must cache packed
-strided views by `(base, length, stride)` through completion. The v1 path uses
+strided views by `(base, length, stride)` through completion. The current path uses
 affine strides directly on RV64; host staging may pack views into guest memory.
 Keep statistics for primitive descriptors separate from top-level MMIO
 submissions.
+
+Version pcaalib and the semantic ISA through the SemVer-returning
+`pcaa_version()` and `pcaa_isa_version()` calls and documentation, not through
+versioned function or header names. Production algorithm
+code constructs `pcaa_command_t` through pcaalib builders, never raw
+`accel_command_t` fields. Raw wire manipulation belongs in the pcaalib codec,
+transport buffers, or explicit wire-format tests. The accelerator decodes at
+guest-memory ingress and its functional executor consumes canonical commands.
+Only one descriptor encoding is supported at a time. Reflect encoding changes
+in the pcaalib version without requiring a semantic ISA version change. Do not
+couple PBQP to a future descriptor layout or encoding choice.
 
 When changing freestanding PBQP working storage, calculate the complete call
 chain's stack use. The bare-metal startup reserve is 1 MiB and PBQP ELFs must

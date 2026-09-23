@@ -11,31 +11,21 @@ enum {
 };
 
 static volatile uint32_t *const k_registers = (volatile uint32_t *)ACCEL_MMIO_BASE;
-static accel_command_t pending_command __attribute__((aligned(kDescriptorAlignment)));
+static pcaa_encoded_slot_t pending_command __attribute__((aligned(kDescriptorAlignment)));
 
 static inline void fence_read_write(void) {
   __asm__ volatile("fence iorw, iorw" ::: "memory");
-}
-
-static accel_command_t make_command(uint32_t opcode, const int32_t *src0, const int32_t *src1,
-                                    const int32_t *src2, void *dst, size_t n) {
-  accel_command_t command = {
-      .opcode = opcode,
-      .n = (uint32_t)n,
-      .src0 = (uintptr_t)src0,
-      .src1 = (uintptr_t)src1,
-      .src2 = (uintptr_t)src2,
-      .dst = (uintptr_t)dst,
-  };
-  return command;
 }
 
 void accel_init(void) {
   fence_read_write();
 }
 
-int accel_submit(const accel_command_t *source) {
-  pending_command = *source;
+static int submit_bytes(const void *source, size_t size) {
+  if (source == NULL || size > sizeof(pending_command))
+    return -1;
+  const unsigned char *bytes = source;
+  for (size_t index = 0; index < size; ++index) pending_command.bytes[index] = bytes[index];
   fence_read_write();
 
   const uintptr_t command_address = (uintptr_t)&pending_command;
@@ -46,6 +36,17 @@ int accel_submit(const accel_command_t *source) {
   k_registers[ACCEL_MMIO_DOORBELL / sizeof(uint32_t)] = kDoorbellSubmit;
   fence_read_write();
   return 0;
+}
+
+int accel_submit(const accel_command_t *source) {
+  return submit_bytes(source, sizeof(*source));
+}
+
+int accel_submit_command(const pcaa_command_t *command) {
+  pcaa_encoded_slot_t encoded;
+  if (pcaa_encode_command(command, &encoded) != 0)
+    return -1;
+  return submit_bytes(encoded.bytes, pcaa_encoded_command_bytes());
 }
 
 int accel_wait(void) {
@@ -63,13 +64,26 @@ int accel_submit_batch(const accel_command_t *commands, size_t count,
   if (commands == NULL || result == NULL || count == 0 || count > UINT32_MAX) {
     return -1;
   }
-  const accel_command_t batch = {
-      .opcode = ACCEL_OPCODE_EXECUTE_BATCH,
-      .n = (uint32_t)count,
-      .src0 = (uintptr_t)commands,
-      .dst = (uintptr_t)result,
-  };
-  return accel_submit(&batch) || accel_wait() ? -1 : 0;
+  pcaa_encoded_slot_t batch;
+  if (pcaa_encode_batch((uintptr_t)commands, (uint32_t)count, (uintptr_t)result, &batch) != 0)
+    return -1;
+  return submit_bytes(batch.bytes, pcaa_encoded_command_bytes()) || accel_wait() ? -1 : 0;
+}
+
+int accel_submit_command_batch(const pcaa_command_t *commands, size_t count,
+                               pcaa_encoded_slot_t *encoded_workspace,
+                               accel_batch_result_t *result) {
+  if (commands == NULL || encoded_workspace == NULL || result == NULL || count == 0 ||
+      count > UINT32_MAX || count > SIZE_MAX / sizeof(*encoded_workspace))
+    return -1;
+  if (pcaa_encode_commands(commands, count, encoded_workspace,
+                           count * sizeof(*encoded_workspace)) != 0)
+    return -1;
+  pcaa_encoded_slot_t batch;
+  if (pcaa_encode_batch((uintptr_t)encoded_workspace, (uint32_t)count, (uintptr_t)result, &batch) !=
+      0)
+    return -1;
+  return submit_bytes(batch.bytes, pcaa_encoded_command_bytes()) || accel_wait() ? -1 : 0;
 }
 
 int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n) {
@@ -81,16 +95,23 @@ int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n) {
 int accel_min_add_checked(const int32_t *a, const int32_t *b, size_t n, int32_t *result) {
   if (result == NULL)
     return -1;
-  const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, a, b, NULL, result, n);
-  return accel_submit(&command) || accel_wait() ? -1 : 0;
+  pcaa_command_t command;
+  if (n > UINT32_MAX || pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
+                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
+                                          (uintptr_t)result, 0, &command) != 0)
+    return -1;
+  return accel_submit_command(&command) || accel_wait() ? -1 : 0;
 }
 
 int32_t accel_min_add3(const int32_t *a, const int32_t *b, const int32_t *d, size_t n) {
   int32_t result = ACCEL_INF;
-  const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN, a, b, d, &result, n);
-  return accel_submit(&command) || accel_wait() ? ACCEL_INF : result;
+  pcaa_command_t command;
+  if (n > UINT32_MAX || pcaa_make_reduce3(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
+                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
+                                          pcaa_cost_vector((uintptr_t)d, (uint32_t)n, 1),
+                                          (uintptr_t)&result, 0, &command) != 0)
+    return ACCEL_INF;
+  return accel_submit_command(&command) || accel_wait() ? ACCEL_INF : result;
 }
 
 accel_min_argmin_result_t accel_min_add_argmin(const int32_t *a, const int32_t *b, size_t n) {
@@ -110,16 +131,23 @@ int accel_min_add_argmin_checked(const int32_t *a, const int32_t *b, size_t n,
                                  accel_min_argmin_result_t *result) {
   if (result == NULL)
     return -1;
-  const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, a, b, NULL, result, n);
-  return accel_submit(&command) || accel_wait() ? -1 : 0;
+  pcaa_command_t command;
+  if (n > UINT32_MAX || pcaa_make_reduce2(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
+                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
+                                          (uintptr_t)result, 1, &command) != 0)
+    return -1;
+  return accel_submit_command(&command) || accel_wait() ? -1 : 0;
 }
 
 int accel_min_add3_argmin_checked(const int32_t *a, const int32_t *b, const int32_t *c, size_t n,
                                   accel_min_argmin_result_t *result) {
   if (result == NULL)
     return -1;
-  const accel_command_t command =
-      make_command(ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN, a, b, c, result, n);
-  return accel_submit(&command) || accel_wait() ? -1 : 0;
+  pcaa_command_t command;
+  if (n > UINT32_MAX || pcaa_make_reduce3(pcaa_cost_vector((uintptr_t)a, (uint32_t)n, 1),
+                                          pcaa_cost_vector((uintptr_t)b, (uint32_t)n, 1),
+                                          pcaa_cost_vector((uintptr_t)c, (uint32_t)n, 1),
+                                          (uintptr_t)result, 1, &command) != 0)
+    return -1;
+  return accel_submit_command(&command) || accel_wait() ? -1 : 0;
 }

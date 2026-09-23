@@ -4,7 +4,56 @@
 
 #include "pbqp_accelerator.h"
 
-#include "accel_driver.h"
+static void record_batch_submission(pbqp_accelerator_kernel_context_t *context, size_t count);
+
+static pcaa_cost_vector_view_t vector_view(pbqp_vector_view_t view) {
+  return pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)view.base, view.length, view.stride);
+}
+
+static int fail(pbqp_accelerator_kernel_context_t *context, pcaa_status_t status) {
+  context->last_status = status;
+  return status;
+}
+
+static int submit_batch(pbqp_accelerator_kernel_context_t *context, size_t count) {
+  record_batch_submission(context, count);
+  context->last_status = pcaa_device_submit_batch(context->device, context->batch_commands, count);
+  if (context->last_status == PCAA_STATUS_OK)
+    context->last_status = pcaa_device_wait(context->device, &context->last_completion);
+  return context->last_status;
+}
+
+static int submit_reduce2(pbqp_accelerator_kernel_context_t *context, const int32_t *first,
+                          const int32_t *second, size_t length, void *result, int with_argmin) {
+  pcaa_command_t command;
+  context->last_status =
+      pcaa_make_reduce2(pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)first, length, 1),
+                        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)second, length, 1),
+                        (pcaa_guest_address_t)(uintptr_t)result, with_argmin, &command);
+  if (context->last_status != PCAA_STATUS_OK)
+    return context->last_status;
+  context->last_status = pcaa_device_submit(context->device, &command);
+  if (context->last_status == PCAA_STATUS_OK)
+    context->last_status = pcaa_device_wait(context->device, &context->last_completion);
+  return context->last_status;
+}
+
+static int submit_reduce3(pbqp_accelerator_kernel_context_t *context, const int32_t *first,
+                          const int32_t *second, const int32_t *third, size_t length,
+                          void *result) {
+  pcaa_command_t command;
+  context->last_status =
+      pcaa_make_reduce3(pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)first, length, 1),
+                        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)second, length, 1),
+                        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)third, length, 1),
+                        (pcaa_guest_address_t)(uintptr_t)result, 1, &command);
+  if (context->last_status != PCAA_STATUS_OK)
+    return context->last_status;
+  context->last_status = pcaa_device_submit(context->device, &command);
+  if (context->last_status == PCAA_STATUS_OK)
+    context->last_status = pcaa_device_wait(context->device, &context->last_completion);
+  return context->last_status;
+}
 
 static const int32_t *contiguous(pbqp_accelerator_kernel_context_t *context,
                                  pbqp_vector_view_t view, int32_t *scratch) {
@@ -53,8 +102,8 @@ static void record_batch_submission(pbqp_accelerator_kernel_context_t *context, 
   context->statistics->batch_primitive_descriptors += count;
   if (count > context->statistics->maximum_batch_size)
     context->statistics->maximum_batch_size = count;
-  context->statistics->batch_descriptor_bytes += sizeof(accel_command_t) * (count + 1);
-  context->statistics->batch_child_descriptor_bytes += count * sizeof(accel_command_t);
+  context->statistics->batch_descriptor_bytes += pcaa_encoded_batch_bytes(count);
+  context->statistics->batch_child_descriptor_bytes += count * pcaa_encoded_command_bytes();
 }
 
 static int accel_min2(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
@@ -62,7 +111,7 @@ static int accel_min2(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
   pbqp_accelerator_kernel_context_t *context = opaque;
   const int32_t *first = contiguous(context, a, context->scratch0);
   const int32_t *second = contiguous(context, b, context->scratch1);
-  return accel_min_add_argmin_checked(first, second, a.length, result);
+  return submit_reduce2(context, first, second, a.length, result, 1);
 }
 
 static int accel_min3(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
@@ -71,7 +120,7 @@ static int accel_min3(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
   const int32_t *first = contiguous(context, a, context->scratch0);
   const int32_t *second = contiguous(context, b, context->scratch1);
   const int32_t *third = contiguous(context, c, context->scratch2);
-  return accel_min_add3_argmin_checked(first, second, third, a.length, result);
+  return submit_reduce3(context, first, second, third, a.length, result);
 }
 
 static int accel_min2_value(void *opaque, pbqp_vector_view_t a, pbqp_vector_view_t b,
@@ -80,183 +129,170 @@ static int accel_min2_value(void *opaque, pbqp_vector_view_t a, pbqp_vector_view
   const int32_t *first = contiguous(context, a, context->scratch0);
   const int32_t *second = contiguous(context, b, context->scratch1);
   if (first == NULL || second == NULL || result == NULL)
-    return -1;
-  return accel_min_add_checked(first, second, a.length, result);
+    return fail(context, PCAA_STATUS_INVALID_ARGUMENT);
+  return submit_reduce2(context, first, second, a.length, result, 0);
 }
 
 static int accel_min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   if (count > PBQP_MAX_BATCH_JOBS)
-    return -1;
+    return fail(context, PCAA_STATUS_NO_SPACE);
   begin_batch(context);
   for (size_t index = 0; index < count; ++index) {
     const int32_t *first = batch_contiguous(context, jobs[index].a);
     const int32_t *second = batch_contiguous(context, jobs[index].b);
     if (first == NULL || second == NULL)
-      return -1;
-    context->batch_commands[index] = (accel_command_t){
-        .opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN,
-        .n = (uint32_t)jobs[index].a.length,
-        .src0 = (uintptr_t)first,
-        .src1 = (uintptr_t)second,
-        .dst = (uintptr_t)jobs[index].result,
-    };
+      return fail(context, PCAA_STATUS_NO_SPACE);
+    context->last_status = pcaa_make_reduce2(
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)first, jobs[index].a.length, 1),
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)second, jobs[index].b.length, 1),
+        (pcaa_guest_address_t)(uintptr_t)jobs[index].result, 1, &context->batch_commands[index]);
+    if (context->last_status != PCAA_STATUS_OK)
+      return context->last_status;
   }
-  record_batch_submission(context, count);
-  return accel_submit_batch(context->batch_commands, count, &context->batch_result);
+  return submit_batch(context, count);
 }
 
 static int accel_min3_batch(void *opaque, const pbqp_min3_job_t *jobs, size_t count) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   if (count > PBQP_MAX_BATCH_JOBS)
-    return -1;
+    return fail(context, PCAA_STATUS_NO_SPACE);
   begin_batch(context);
   for (size_t index = 0; index < count; ++index) {
     const int32_t *first = batch_contiguous(context, jobs[index].a);
     const int32_t *second = batch_contiguous(context, jobs[index].b);
     const int32_t *third = batch_contiguous(context, jobs[index].c);
     if (first == NULL || second == NULL || third == NULL)
-      return -1;
-    context->batch_commands[index] = (accel_command_t){
-        .opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN,
-        .n = (uint32_t)jobs[index].a.length,
-        .src0 = (uintptr_t)first,
-        .src1 = (uintptr_t)second,
-        .src2 = (uintptr_t)third,
-        .dst = (uintptr_t)jobs[index].result,
-    };
+      return fail(context, PCAA_STATUS_NO_SPACE);
+    context->last_status = pcaa_make_reduce3(
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)first, jobs[index].a.length, 1),
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)second, jobs[index].b.length, 1),
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)third, jobs[index].c.length, 1),
+        (pcaa_guest_address_t)(uintptr_t)jobs[index].result, 1, &context->batch_commands[index]);
+    if (context->last_status != PCAA_STATUS_OK)
+      return context->last_status;
   }
-  record_batch_submission(context, count);
-  return accel_submit_batch(context->batch_commands, count, &context->batch_result);
+  return submit_batch(context, count);
 }
 
 static int accel_min2_value_batch(void *opaque, const pbqp_min2_value_job_t *jobs, size_t count) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   if (count > PBQP_MAX_BATCH_JOBS)
-    return -1;
+    return fail(context, PCAA_STATUS_NO_SPACE);
   begin_batch(context);
   for (size_t index = 0; index < count; ++index) {
     const int32_t *first = batch_contiguous(context, jobs[index].a);
     const int32_t *second = batch_contiguous(context, jobs[index].b);
     if (first == NULL || second == NULL || jobs[index].result == NULL)
-      return -1;
-    context->batch_commands[index] = (accel_command_t){
-        .opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
-        .n = (uint32_t)jobs[index].a.length,
-        .src0 = (uintptr_t)first,
-        .src1 = (uintptr_t)second,
-        .dst = (uintptr_t)jobs[index].result,
-    };
+      return fail(context, first == NULL || second == NULL ? PCAA_STATUS_NO_SPACE
+                                                           : PCAA_STATUS_INVALID_ARGUMENT);
+    context->last_status = pcaa_make_reduce2(
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)first, jobs[index].a.length, 1),
+        pcaa_cost_vector((pcaa_guest_address_t)(uintptr_t)second, jobs[index].b.length, 1),
+        (pcaa_guest_address_t)(uintptr_t)jobs[index].result, 0, &context->batch_commands[index]);
+    if (context->last_status != PCAA_STATUS_OK)
+      return context->last_status;
   }
-  record_batch_submission(context, count);
-  return accel_submit_batch(context->batch_commands, count, &context->batch_result);
+  return submit_batch(context, count);
 }
 
-static accel_command_t project_command(pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
-                                       int32_t *result) {
-  accel_command_t command = {0};
-  command.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
-  command.n = (uint32_t)matrix.columns;
-  command.m = (uint32_t)matrix.rows;
-  command.src0 = (uintptr_t)matrix.base;
-  command.src1 = (uintptr_t)unary.base;
-  command.dst = (uintptr_t)result;
-  command.src0_stride = (uint32_t)matrix.column_stride;
-  command.src0_outer_stride = (uint32_t)matrix.row_stride;
-  command.src1_stride = (uint32_t)unary.stride;
-  command.dst_stride = 1;
-  return command;
+static pcaa_status_t project_command(pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
+                                     int32_t *result, pcaa_command_t *command) {
+  return pcaa_make_minplus_project(
+      pcaa_cost_matrix((pcaa_guest_address_t)(uintptr_t)matrix.base, matrix.rows, matrix.columns,
+                       matrix.row_stride, matrix.column_stride),
+      vector_view(unary), pcaa_cost_output((pcaa_guest_address_t)(uintptr_t)result, matrix.rows, 1),
+      command);
 }
 
-static accel_command_t add_vector_command(pbqp_vector_view_t first, pbqp_vector_view_t second,
-                                          int32_t *result) {
-  accel_command_t command = {0};
-  command.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
-  command.n = (uint32_t)first.length;
-  command.src0 = (uintptr_t)first.base;
-  command.src1 = (uintptr_t)second.base;
-  command.dst = (uintptr_t)result;
-  command.src0_stride = (uint32_t)first.stride;
-  command.src1_stride = (uint32_t)second.stride;
-  command.dst_stride = 1;
-  return command;
+static pcaa_status_t add_vector_command(pbqp_vector_view_t first, pbqp_vector_view_t second,
+                                        int32_t *result, pcaa_command_t *command) {
+  return pcaa_make_cost_add_vector(
+      vector_view(first), vector_view(second),
+      pcaa_cost_output((pcaa_guest_address_t)(uintptr_t)result, first.length, 1), command);
 }
 
-static accel_command_t map3_project_command(pbqp_vector_view_t unary, pbqp_vector_view_t fixed_edge,
-                                            pbqp_matrix_view_t varying_edge,
-                                            accel_min_argmin_result_t *result) {
-  accel_command_t command = {0};
-  command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
-  command.n = (uint32_t)unary.length;
-  command.m = (uint32_t)varying_edge.rows;
-  command.src0 = (uintptr_t)unary.base;
-  command.src1 = (uintptr_t)fixed_edge.base;
-  command.src2 = (uintptr_t)varying_edge.base;
-  command.dst = (uintptr_t)result;
-  command.src0_stride = (uint32_t)unary.stride;
-  command.src1_stride = (uint32_t)fixed_edge.stride;
-  command.src2_stride = (uint32_t)varying_edge.column_stride;
-  command.src2_outer_stride = (uint32_t)varying_edge.row_stride;
-  command.dst_stride = 1;
-  return command;
+static pcaa_status_t map3_project_command(pbqp_vector_view_t unary, pbqp_vector_view_t fixed_edge,
+                                          pbqp_matrix_view_t varying_edge,
+                                          accel_min_argmin_result_t *result,
+                                          pcaa_command_t *command) {
+  return pcaa_make_minplus_map3_project(
+      vector_view(unary), vector_view(fixed_edge),
+      pcaa_cost_matrix((pcaa_guest_address_t)(uintptr_t)varying_edge.base, varying_edge.rows,
+                       varying_edge.columns, varying_edge.row_stride, varying_edge.column_stride),
+      pcaa_argmin_output((pcaa_guest_address_t)(uintptr_t)result, varying_edge.rows, 1), command);
 }
 
 static int accel_cost_add_vector(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
                                  int32_t *result) {
   pbqp_accelerator_kernel_context_t *context = opaque;
-  context->batch_commands[0] = add_vector_command(first, second, result);
-  record_batch_submission(context, 1);
-  return accel_submit_batch(context->batch_commands, 1, &context->batch_result);
+  context->last_status = add_vector_command(first, second, result, &context->batch_commands[0]);
+  if (context->last_status != PCAA_STATUS_OK)
+    return context->last_status;
+  return submit_batch(context, 1);
 }
 
 static int accel_minplus_project(void *opaque, pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
                                  int32_t *result) {
   pbqp_accelerator_kernel_context_t *context = opaque;
-  context->batch_commands[0] = project_command(matrix, unary, result);
-  record_batch_submission(context, 1);
-  return accel_submit_batch(context->batch_commands, 1, &context->batch_result);
+  context->last_status = project_command(matrix, unary, result, &context->batch_commands[0]);
+  if (context->last_status != PCAA_STATUS_OK)
+    return context->last_status;
+  return submit_batch(context, 1);
 }
 
 static int accel_map3_project(void *opaque, pbqp_vector_view_t unary, pbqp_vector_view_t fixed_edge,
                               pbqp_matrix_view_t varying_edge, accel_min_argmin_result_t *result) {
   pbqp_accelerator_kernel_context_t *context = opaque;
-  context->batch_commands[0] = map3_project_command(unary, fixed_edge, varying_edge, result);
-  record_batch_submission(context, 1);
-  return accel_submit_batch(context->batch_commands, 1, &context->batch_result);
+  context->last_status =
+      map3_project_command(unary, fixed_edge, varying_edge, result, &context->batch_commands[0]);
+  if (context->last_status != PCAA_STATUS_OK)
+    return context->last_status;
+  return submit_batch(context, 1);
 }
 
 static int accel_project_add_batch(void *opaque, const pbqp_project_add_job_t *jobs, size_t count) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   if (count > PBQP_MAX_BATCH_JOBS / 2)
-    return -1;
+    return fail(context, PCAA_STATUS_NO_SPACE);
   for (size_t index = 0; index < count; ++index) {
     const pbqp_project_add_job_t *job = &jobs[index];
-    context->batch_commands[2 * index] = project_command(job->matrix, job->unary, job->temporary);
-    context->batch_commands[2 * index + 1] =
+    context->last_status = project_command(job->matrix, job->unary, job->temporary,
+                                           &context->batch_commands[2 * index]);
+    if (context->last_status != PCAA_STATUS_OK)
+      return context->last_status;
+    context->last_status =
         add_vector_command((pbqp_vector_view_t){job->temporary, job->matrix.rows, 1},
-                           (pbqp_vector_view_t){job->scores, job->matrix.rows, 1}, job->scores);
+                           (pbqp_vector_view_t){job->scores, job->matrix.rows, 1}, job->scores,
+                           &context->batch_commands[2 * index + 1]);
+    if (context->last_status != PCAA_STATUS_OK)
+      return context->last_status;
   }
-  record_batch_submission(context, 2 * count);
-  return accel_submit_batch(context->batch_commands, 2 * count, &context->batch_result);
+  return submit_batch(context, 2 * count);
 }
 
 static int accel_map3_project_batch(void *opaque, const pbqp_map3_project_job_t *jobs,
                                     size_t count) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   if (count > PBQP_MAX_BATCH_JOBS)
-    return -1;
+    return fail(context, PCAA_STATUS_NO_SPACE);
   for (size_t index = 0; index < count; ++index) {
     const pbqp_map3_project_job_t *job = &jobs[index];
-    context->batch_commands[index] =
-        map3_project_command(job->unary, job->fixed_edge, job->varying_edge, job->results);
+    context->last_status = map3_project_command(job->unary, job->fixed_edge, job->varying_edge,
+                                                job->results, &context->batch_commands[index]);
+    if (context->last_status != PCAA_STATUS_OK)
+      return context->last_status;
   }
-  record_batch_submission(context, count);
-  return accel_submit_batch(context->batch_commands, count, &context->batch_result);
+  return submit_batch(context, count);
 }
 
 static void accel_set_statistics(void *opaque, pbqp_statistics_t *statistics) {
   pbqp_accelerator_kernel_context_t *context = opaque;
   context->statistics = statistics;
+  context->device = pcaa_baremetal_device_init(&context->backend, context->encoded_workspace,
+                                               PBQP_MAX_BATCH_JOBS);
+  context->last_status = PCAA_STATUS_OK;
+  context->last_completion.has_batch_result = 0;
 }
 
 void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,

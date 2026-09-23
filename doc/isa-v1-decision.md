@@ -1,9 +1,16 @@
-# PCAA ISA v1 decision
+# PCAA ISA 1.0.0 decision
 
-ISA v1 is an ordered, descriptor-driven cost-algebra engine. Software owns
+ISA 1.0.0 is an ordered, descriptor-driven cost-algebra engine. Software owns
 PBQP topology, graph reductions, allocation, search, and scheduling. The
 block owns only regular cost operations over runtime-sized affine views.
 The pre-decision evidence index remains [isa-decision-inputs.md](isa-decision-inputs.md).
+
+Semantic commands are distinct from their descriptor representation.
+`pcaalib` owns the semantic builders and current 80-byte descriptor codec;
+the functional engine consumes decoded commands. A later compact encoding
+can replace this codec without changing PBQP scheduling or arithmetic; it
+need not coexist with the current encoding. See [the architecture](arch.md#5-semantic-commands-and-descriptor-encoding)
+for the descriptor contract and [pcaalib](pcaalib.md) for the library API.
 
 ## Primitive set and representation
 
@@ -44,18 +51,18 @@ non-transactional, and unnested.
 
 ## Evidence and exclusions
 
-| Omitted from v1 | Reason |
+| Omitted from ISA 1.0.0 | Reason |
 | --- | --- |
 | Full-matrix MAP3 output | The [cycle projection](vector-primitive-cycle-projection.md) shows a small incremental corpus gain over partial-vector output; buffering and interface cost are not justified. |
 | Fused `PROJECT_ACCUMULATE` and `SLICE_ACCUMULATE` | The [primitive-shape study](primitive-shape-study.md) identifies these as software-only arithmetic, not descriptor-count bottlenecks; ordered projection→vector-add already composes the needed RN operation. |
 | PBQP graph, branch/frontier, and snapshot instructions | The [fork study](fork-parallelism-characterization.md) exposes irregular graph-dependent state and uncertain frontier width. It supports keeping this control in software, not encoding it in the cost engine. |
 | Architectural workers or lanes | The [cycle projection](vector-primitive-cycle-projection.md) uses lanes as a model parameter; runtime work size, not implementation parallelism, is the ISA contract. |
 | Row/column layout modes | The [access-pattern study](matrix-access-pattern-study.md) finds both contiguous and strided views; affine element strides directly cover both and padded matrices. |
-| FP32 costs, negative saturation, graph-wide overflow | The [cost study](cost-representation-study.md) finds no v1 case compelling enough to replace exact signed-int32/INF behavior, and explicitly identifies order-sensitive arithmetic concerns. |
+| FP32 costs, negative saturation, graph-wide overflow | The [cost study](cost-representation-study.md) finds no ISA 1.0.0 case compelling enough to replace exact signed-int32/INF behavior, and explicitly identifies order-sensitive arithmetic concerns. |
 | Cross-output argmin tie semantics | Outputs are independent reductions; only the existing first-index tie within each output is meaningful. |
 | Nested batches or dependency scheduling | Ordered producer-consumer visibility supplies the needed composition without a new scheduler or graph protocol. |
 
-Historical characterization reports describe the pre-v1 scalar descriptor
+Historical characterization reports describe the pre-1.0.0 scalar descriptor
 mix. New counters separately report scalar projects, vector projects, vector
 adds, scalar MAP3, and partial-vector MAP3; do not reinterpret old CSV rows
 as measurements of the new ISA.

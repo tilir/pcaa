@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 PCAA contributors
-// Defines the C-compatible software ABI for accelerator descriptors and MMIO.
+// Defines the C-compatible PCAA descriptor encoding and MMIO ABI.
 
 #pragma once
 
@@ -35,8 +35,9 @@ extern "C" {
 #define ACCEL_INF (INT32_MAX / 4)
 
 /*
- * Guest-memory command descriptor submitted through the accelerator MMIO
- * registers. ISA v1 uses an 80-byte, naturally 8-byte-aligned layout. The
+ * Guest-memory descriptor submitted through accelerator MMIO.
+ * The semantic command/view API is in pcaalib; this is not its in-memory form.
+ * The current encoding uses an 80-byte, naturally 8-byte-aligned layout. The
  * first 56 bytes preserve the offsets and meaning of opcodes 1-5; appended
  * strides are ignored by those opcodes. Addresses are guest physical, never
  * host pointers. All multi-byte guest-memory fields, operands, and results

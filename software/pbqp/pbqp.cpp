@@ -205,70 +205,75 @@ class Graph {
 
 class CostKernel {
  public:
-  explicit CostKernel(const pbqp_cost_kernel_t &api) : api_(api) {
+  CostKernel(const pbqp_cost_kernel_t &api, int *last_status)
+      : api_(api), last_status_(last_status) {
     assert(api_.min2_argmin != nullptr);
     assert(api_.min3_argmin != nullptr);
   }
 
   int Min2(pbqp_vector_view_t first, pbqp_vector_view_t second,
            accel_min_argmin_result_t *result) const {
-    return api_.min2_argmin(api_.context, first, second, result);
+    return Record(api_.min2_argmin(api_.context, first, second, result));
   }
 
   int Min3(pbqp_vector_view_t first, pbqp_vector_view_t second, pbqp_vector_view_t third,
            accel_min_argmin_result_t *result) const {
-    return api_.min3_argmin(api_.context, first, second, third, result);
+    return Record(api_.min3_argmin(api_.context, first, second, third, result));
   }
 
   int Min2Batch(const pbqp_min2_job_t *jobs, size_t count) const {
     if (api_.min2_argmin_batch != nullptr)
-      return api_.min2_argmin_batch(api_.context, jobs, count);
+      return Record(api_.min2_argmin_batch(api_.context, jobs, count));
     for (size_t index = 0; index < count; ++index) {
-      if (Min2(jobs[index].a, jobs[index].b, jobs[index].result) != 0)
-        return -1;
+      const int status = Min2(jobs[index].a, jobs[index].b, jobs[index].result);
+      if (status != 0)
+        return status;
     }
     return 0;
   }
 
   int Min3Batch(const pbqp_min3_job_t *jobs, size_t count) const {
     if (api_.min3_argmin_batch != nullptr)
-      return api_.min3_argmin_batch(api_.context, jobs, count);
+      return Record(api_.min3_argmin_batch(api_.context, jobs, count));
     for (size_t index = 0; index < count; ++index) {
-      if (Min3(jobs[index].a, jobs[index].b, jobs[index].c, jobs[index].result) != 0)
-        return -1;
+      const int status = Min3(jobs[index].a, jobs[index].b, jobs[index].c, jobs[index].result);
+      if (status != 0)
+        return status;
     }
     return 0;
   }
 
   int Min2Value(pbqp_vector_view_t first, pbqp_vector_view_t second, int32_t *result) const {
     if (api_.min2_value != nullptr)
-      return api_.min2_value(api_.context, first, second, result);
+      return Record(api_.min2_value(api_.context, first, second, result));
     accel_min_argmin_result_t argmin{};
     const int status = Min2(first, second, &argmin);
-    *result = argmin.value;
+    if (status == 0)
+      *result = argmin.value;
     return status;
   }
 
   int Min2ValueBatch(const pbqp_min2_value_job_t *jobs, size_t count) const {
     if (api_.min2_value_batch != nullptr)
-      return api_.min2_value_batch(api_.context, jobs, count);
+      return Record(api_.min2_value_batch(api_.context, jobs, count));
     for (size_t index = 0; index < count; ++index) {
-      if (Min2Value(jobs[index].a, jobs[index].b, jobs[index].result) != 0)
-        return -1;
+      const int status = Min2Value(jobs[index].a, jobs[index].b, jobs[index].result);
+      if (status != 0)
+        return status;
     }
     return 0;
   }
 
   int ProjectAddBatch(const pbqp_project_add_job_t *jobs, size_t count) const {
     if (api_.project_add_batch == nullptr)
-      return -1;
-    return api_.project_add_batch(api_.context, jobs, count);
+      return Record(-1);
+    return Record(api_.project_add_batch(api_.context, jobs, count));
   }
 
   int Map3ProjectBatch(const pbqp_map3_project_job_t *jobs, size_t count) const {
     if (api_.map3_project_batch == nullptr)
-      return -1;
-    return api_.map3_project_batch(api_.context, jobs, count);
+      return Record(-1);
+    return Record(api_.map3_project_batch(api_.context, jobs, count));
   }
 
   const pbqp_cost_kernel_t &Api() const {
@@ -281,13 +286,20 @@ class CostKernel {
   }
 
  private:
+  int Record(int status) const {
+    if (status != 0 && last_status_ != nullptr)
+      *last_status_ = status;
+    return status;
+  }
+
   const pbqp_cost_kernel_t &api_;
+  int *last_status_;
 };
 
 class Solver {
  public:
-  Solver(const pbqp_cost_kernel_t &kernel, const pbqp_solver_config_t &config)
-      : kernel_(kernel), config_(config) {}
+  Solver(const pbqp_cost_kernel_t &kernel, const pbqp_solver_config_t &config, int *kernel_status)
+      : kernel_(kernel, kernel_status), config_(config), kernel_status_(kernel_status) {}
 
   pbqp_status_t Solve(pbqp_problem_t *problem, pbqp_solution_t *solution) const {
     if (problem == nullptr || solution == nullptr || solution->assignment == nullptr ||
@@ -305,7 +317,8 @@ class Solver {
       rn_config.strategy = PBQP_STRATEGY_HEURISTIC_RN;
       pbqp_solution_t rn_solution;
       pbqp_solution_init(&rn_solution, rn_assignment.Get(), problem->node_count);
-      const pbqp_status_t rn_status = Solver(kernel_.Api(), rn_config).Solve(problem, &rn_solution);
+      const pbqp_status_t rn_status =
+          Solver(kernel_.Api(), rn_config, kernel_status_).Solve(problem, &rn_solution);
       if (rn_status != PBQP_OK) {
         return rn_status;
       }
@@ -599,7 +612,9 @@ class Solver {
         RecordOperation(&problem.statistics, ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, node.domain,
                         2);
         RecordArgminVector(&problem.statistics, node.domain);
-        if (kernel_.Min2(score_view, zero_view, &best) != 0 || best.index >= node.domain) {
+        if (kernel_.Min2(score_view, zero_view, &best) != 0)
+          return PBQP_KERNEL_ERROR;
+        if (best.index >= node.domain) {
           return PBQP_ARGUMENT_ERROR;
         }
         const unsigned degree = graph.NeighborCount(node_index, nullptr);
@@ -637,9 +652,9 @@ class Solver {
       return PBQP_CAPACITY_ERROR;
     pbqp_solution_t best;
     pbqp_solution_init(&best, best_assignment.Get(), problem.node_count);
-    if (RunLocalDescent(problem, initial.Get(), &best) != PBQP_OK) {
-      return PBQP_ARGUMENT_ERROR;
-    }
+    const pbqp_status_t descent_status = RunLocalDescent(problem, initial.Get(), &best);
+    if (descent_status != PBQP_OK)
+      return descent_status;
     for (unsigned node = 0; node < problem.node_count; ++node) {
       for (unsigned value = 1; value < problem.nodes[node].domain; ++value) {
         initial.Get()[node] = value;
@@ -836,7 +851,7 @@ class Solver {
       ++problem.statistics.rn_projection_count;
       if (config_.rn_batching == PBQP_RN_BATCH_PER_EDGE) {
         if (kernel_.Min2ValueBatch(jobs, node.domain) != 0)
-          return PBQP_ARGUMENT_ERROR;
+          return PBQP_KERNEL_ERROR;
         for (unsigned value = 0; value < node.domain; ++value)
           scores[value] = accel_cost_add(scores[value], results[value]);
       } else if (!vector_path) {
@@ -849,12 +864,15 @@ class Solver {
       problem.statistics.operation_mix_result_bytes += node.domain * sizeof(int32_t);
     }
     if (vector_path) {
-      if (job_offset != degree ||
-          kernel_.ProjectAddBatch(vector_jobs_storage.Get(), job_offset) != 0)
+      if (job_offset != degree)
         return PBQP_ARGUMENT_ERROR;
+      if (kernel_.ProjectAddBatch(vector_jobs_storage.Get(), job_offset) != 0)
+        return PBQP_KERNEL_ERROR;
     } else if (config_.rn_batching == PBQP_RN_BATCH_PER_NODE) {
-      if (job_offset != node_job_count || kernel_.Min2ValueBatch(jobs, job_offset) != 0)
+      if (job_offset != node_job_count)
         return PBQP_ARGUMENT_ERROR;
+      if (kernel_.Min2ValueBatch(jobs, job_offset) != 0)
+        return PBQP_KERNEL_ERROR;
       for (size_t edge_offset = 0; edge_offset < job_offset; edge_offset += node.domain) {
         for (unsigned value = 0; value < node.domain; ++value)
           scores[value] = accel_cost_add(scores[value], results[edge_offset + value]);
@@ -940,7 +958,7 @@ class Solver {
       jobs[neighbor_value] = {unary, edge_cost, &results[neighbor_value]};
     }
     if (kernel_.Min2Batch(jobs, neighbor.domain) != 0)
-      return PBQP_ARGUMENT_ERROR;
+      return PBQP_KERNEL_ERROR;
     for (unsigned neighbor_value = 0; neighbor_value < neighbor.domain; ++neighbor_value) {
       const accel_min_argmin_result_t result = results[neighbor_value];
       if (result.index >= node.domain) {
@@ -1048,7 +1066,7 @@ class Solver {
     }
     if (vector_path ? kernel_.Map3ProjectBatch(vector_jobs_storage.Get(), first.domain) != 0
                     : kernel_.Min3Batch(jobs, job_count) != 0)
-      return PBQP_ARGUMENT_ERROR;
+      return PBQP_KERNEL_ERROR;
     job_count = 0;
     for (unsigned first_value = 0; first_value < first.domain; ++first_value) {
       for (unsigned second_value = 0; second_value < second.domain; ++second_value) {
@@ -1450,6 +1468,7 @@ class Solver {
 
   const CostKernel kernel_;
   const pbqp_solver_config_t config_;
+  int *kernel_status_;
 };
 
 void Enumerate(const pbqp_problem_t &problem, unsigned node, unsigned *assignment,
@@ -1780,6 +1799,7 @@ pbqp_status_t pbqp_solver_create_with_config(pbqp_solver_t *solver, pbqp_mode_t 
   solver->mode = mode;
   solver->kernel = *kernel;
   solver->config = *config;
+  solver->last_kernel_status = 0;
   return PBQP_OK;
 }
 
@@ -1788,7 +1808,9 @@ pbqp_status_t pbqp_solver_solve(pbqp_solver_t *solver, pbqp_problem_t *problem,
   if (solver == nullptr) {
     return PBQP_ARGUMENT_ERROR;
   }
-  return Solver(solver->kernel, solver->config).Solve(problem, solution);
+  solver->last_kernel_status = 0;
+  return Solver(solver->kernel, solver->config, &solver->last_kernel_status)
+      .Solve(problem, solution);
 }
 
 }  // extern "C"

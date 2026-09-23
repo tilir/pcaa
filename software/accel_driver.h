@@ -5,6 +5,8 @@
 #pragma once
 
 #include "accel_protocol.h"
+#include "pcaa.h"
+#include "pcaa_submission.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,9 +28,14 @@ extern "C" {
 #endif
 void accel_init(void);
 int accel_submit(const accel_command_t *command);
+int accel_submit_command(const pcaa_command_t *command);
 int accel_wait(void);
 /* Submits an ordered primitive descriptor array and waits for its batch result. */
 int accel_submit_batch(const accel_command_t *commands, size_t count, accel_batch_result_t *result);
+/* Caller owns encoded workspace[count] until completion; this function waits. */
+int accel_submit_command_batch(const pcaa_command_t *commands, size_t count,
+                               pcaa_encoded_slot_t *encoded_workspace,
+                               accel_batch_result_t *result);
 int32_t accel_min_add(const int32_t *a, const int32_t *b, size_t n);
 /* Writes a valid finite or INF result and separately reports submission/device failure. */
 int accel_min_add_checked(const int32_t *a, const int32_t *b, size_t n, int32_t *result);

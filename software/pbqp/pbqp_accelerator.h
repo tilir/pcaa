@@ -5,6 +5,9 @@
 #pragma once
 
 #include "pbqp.h"
+#include "pcaa.h"
+#include "pcaa_baremetal_device.h"
+#include "pcaa_submission.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,8 +28,12 @@ typedef struct {
   size_t packed_lengths[PBQP_MAX_BATCH_PACKED_VIEWS];
   size_t packed_strides[PBQP_MAX_BATCH_PACKED_VIEWS];
   unsigned packed_view_count;
-  accel_command_t batch_commands[PBQP_MAX_BATCH_JOBS];
-  accel_batch_result_t batch_result;
+  pcaa_command_t batch_commands[PBQP_MAX_BATCH_JOBS];
+  pcaa_encoded_slot_t encoded_workspace[PBQP_MAX_BATCH_JOBS];
+  pcaa_baremetal_device_t backend;
+  pcaa_device_t *device;
+  pcaa_status_t last_status;
+  pcaa_completion_t last_completion;
 } pbqp_accelerator_kernel_context_t;
 
 void pbqp_make_accelerator_kernel(pbqp_cost_kernel_t *kernel,

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "accel_protocol.h"
+#include "pcaa.h"
 
 #include <cstdint>
 
@@ -54,3 +55,6 @@ AccelCommandTiming accel_estimate_command_cycles(const accel_command_t &command,
 void accel_accumulate_command_timing(const accel_command_t &command,
                                      const AccelTimingConfig &config,
                                      AccelTimingStatistics *statistics);
+void accel_accumulate_semantic_command_timing(const pcaa_command_t &command,
+                                              const AccelTimingConfig &config,
+                                              AccelTimingStatistics *statistics);

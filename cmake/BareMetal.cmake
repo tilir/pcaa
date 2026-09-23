@@ -4,6 +4,12 @@
 
 get_property(PCAA_BAREMETAL_SOURCES GLOBAL PROPERTY PCAA_BAREMETAL_SOURCES)
 get_property(PCAA_BAREMETAL_HEADERS GLOBAL PROPERTY PCAA_BAREMETAL_HEADERS)
+get_property(PCAA_BAREMETAL_C_SOURCES GLOBAL PROPERTY PCAA_BAREMETAL_C_SOURCES)
+get_property(PCAA_BAREMETAL_INCLUDE_DIRS GLOBAL PROPERTY PCAA_BAREMETAL_INCLUDE_DIRS)
+set(PCAA_BAREMETAL_INCLUDE_FLAGS)
+foreach(include_dir IN LISTS PCAA_BAREMETAL_INCLUDE_DIRS)
+  list(APPEND PCAA_BAREMETAL_INCLUDE_FLAGS -I${include_dir})
+endforeach()
 
 function(add_baremetal_test test_name)
   set(output_elf ${CMAKE_CURRENT_BINARY_DIR}/${test_name}.elf)
@@ -13,9 +19,11 @@ function(add_baremetal_test test_name)
     COMMAND ${RISCV_GCC} -march=rv64imac -mabi=lp64 -mcmodel=medany -std=c11 -ffreestanding
       -fno-builtin -nostdlib -nostartfiles -O2
       -I${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include -I${CMAKE_CURRENT_SOURCE_DIR}/software
+      ${PCAA_BAREMETAL_INCLUDE_FLAGS}
       ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/start.S
       ${CMAKE_CURRENT_SOURCE_DIR}/software/tests/runtime.c
       ${CMAKE_CURRENT_SOURCE_DIR}/software/accel_driver.c
+      ${PCAA_BAREMETAL_C_SOURCES}
       ${test_source}
       -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/software/tests/linker.ld
       -Wl,--build-id=none -o ${output_elf}
@@ -29,10 +37,11 @@ function(add_pbqp_baremetal_test test_name)
   set(object_dir ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${test_name}_elf.dir)
   set(common_flags -march=rv64imac -mabi=lp64 -mcmodel=medany -ffreestanding -fno-builtin
     -nostdlib -nostartfiles -O2 -I${CMAKE_CURRENT_SOURCE_DIR}/accelerator/include
-    -I${CMAKE_CURRENT_SOURCE_DIR}/software)
+    -I${CMAKE_CURRENT_SOURCE_DIR}/software ${PCAA_BAREMETAL_INCLUDE_FLAGS})
   set(c_objects
     ${object_dir}/start.o ${object_dir}/runtime.o ${object_dir}/accel_driver.o
-    ${object_dir}/pbqp_accelerator.o ${object_dir}/cost_math.o ${object_dir}/${test_name}.o)
+    ${object_dir}/pbqp_accelerator.o ${object_dir}/cost_math.o
+    ${object_dir}/${test_name}.o)
   set(pbqp_object ${object_dir}/pbqp.o)
   set(pbqp_storage_object ${object_dir}/pbqp_storage.o)
   file(MAKE_DIRECTORY ${object_dir})
@@ -64,6 +73,12 @@ function(add_pbqp_baremetal_test test_name)
   add_pbqp_object(${object_dir}/cost_math.o ${RISCV_GXX} -std=c++17
     ${CMAKE_CURRENT_SOURCE_DIR}/accelerator/src/cost_math.cpp
     -fno-exceptions -fno-rtti -fno-threadsafe-statics)
+  foreach(codec_source IN LISTS PCAA_BAREMETAL_C_SOURCES)
+    get_filename_component(codec_name ${codec_source} NAME_WE)
+    set(codec_object ${object_dir}/${codec_name}.o)
+    add_pbqp_object(${codec_object} ${RISCV_GCC} -std=c11 ${codec_source})
+    list(APPEND c_objects ${codec_object})
+  endforeach()
   add_custom_target(${test_name}_objects DEPENDS ${c_objects} ${pbqp_object} ${pbqp_storage_object})
 
   add_custom_command(

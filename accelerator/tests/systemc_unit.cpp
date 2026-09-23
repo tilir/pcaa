@@ -6,6 +6,8 @@
 #include "accel_protocol.h"
 #include "cost_math.h"
 #include "memory_interface.h"
+#include "pcaa.h"
+#include "pcaa_codec.h"
 #include "timing_model.h"
 
 #include <array>
@@ -156,6 +158,7 @@ void test_invalid_mmio(TestInitiator &initiator) {
 void test_batches(TestInitiator &initiator, TestMemory &memory);
 void test_vector_isa(TestInitiator &initiator, TestMemory &memory);
 void test_invalid_costs(TestInitiator &initiator, TestMemory &memory);
+void test_semantic_differential(TestInitiator &initiator, TestMemory &memory);
 
 TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(2, 3) == 5);
@@ -344,6 +347,7 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   test_batches(initiator, memory);
   test_vector_isa(initiator, memory);
   test_invalid_costs(initiator, memory);
+  test_semantic_differential(initiator, memory);
   EXPECT_GT(accelerator.timing_statistics().primitive_count, 0);
   EXPECT_GE(accelerator.timing_statistics().batch_count, 7);
   EXPECT_GT(accelerator.timing_statistics().descriptor_cycles, 0);
@@ -778,6 +782,149 @@ void test_invalid_costs(TestInitiator &initiator, TestMemory &memory) {
   command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
   command.m = 1;
   expect_error(initiator, memory, command);
+}
+
+namespace {
+int32_t reference_add(int32_t first, int32_t second) {
+  if (first == ACCEL_INF || second == ACCEL_INF)
+    return ACCEL_INF;
+  const int64_t sum = int64_t(first) + second;
+  return sum >= ACCEL_INF ? ACCEL_INF : static_cast<int32_t>(sum);
+}
+
+int32_t reference_cost(TestMemory &memory, pcaa_cost_vector_view_t view, uint32_t index) {
+  int32_t value = 0;
+  EXPECT_TRUE(memory.read(view.base + uint64_t(index) * view.stride * sizeof(value), &value,
+                          sizeof(value)));
+  return value;
+}
+
+int32_t reference_cost(TestMemory &memory, pcaa_cost_matrix_view_t view, uint32_t row,
+                       uint32_t column) {
+  int32_t value = 0;
+  const uint64_t address =
+      view.base +
+      (uint64_t(row) * view.row_stride + uint64_t(column) * view.column_stride) * sizeof(value);
+  EXPECT_TRUE(memory.read(address, &value, sizeof(value)));
+  return value;
+}
+
+void reference_execute(TestMemory &memory, const pcaa_command_t &command) {
+  const bool reduce2 =
+      command.kind == PCAA_MAP_ADD_REDUCE_MIN || command.kind == PCAA_MAP_ADD_REDUCE_MIN_ARGMIN;
+  const bool reduce3 =
+      command.kind == PCAA_MAP_ADD3_REDUCE_MIN || command.kind == PCAA_MAP_ADD3_REDUCE_MIN_ARGMIN;
+  const bool map3 = command.kind == PCAA_MINPLUS_MAP3_PROJECT;
+  const bool add = command.kind == PCAA_COST_ADD_VECTOR;
+  const bool project = command.kind == PCAA_MINPLUS_PROJECT;
+  const uint32_t outputs = add       ? command.operation.vector_add.result.length
+                           : project ? command.operation.project.result.length
+                           : map3    ? command.operation.map3_project.result.length
+                                     : 1;
+  for (uint32_t output = 0; output < outputs; ++output) {
+    const uint32_t count = reduce2   ? command.operation.reduce2.first.length
+                           : reduce3 ? command.operation.reduce3.first.length
+                           : add     ? 1
+                           : project ? command.operation.project.vector.length
+                                     : command.operation.map3_project.first.length;
+    int32_t minimum = ACCEL_INF;
+    uint32_t argmin = 0;
+    for (uint32_t inner = 0; inner < count; ++inner) {
+      const uint32_t vector_index = add ? output : inner;
+      int32_t first = 0;
+      int32_t second = 0;
+      int32_t third = 0;
+      if (reduce2) {
+        first = reference_cost(memory, command.operation.reduce2.first, inner);
+        second = reference_cost(memory, command.operation.reduce2.second, inner);
+      } else if (reduce3) {
+        first = reference_cost(memory, command.operation.reduce3.first, inner);
+        second = reference_cost(memory, command.operation.reduce3.second, inner);
+        third = reference_cost(memory, command.operation.reduce3.third, inner);
+      } else if (add) {
+        first = reference_cost(memory, command.operation.vector_add.first, vector_index);
+        second = reference_cost(memory, command.operation.vector_add.second, vector_index);
+      } else if (project) {
+        first = reference_cost(memory, command.operation.project.matrix, output, inner);
+        second = reference_cost(memory, command.operation.project.vector, inner);
+      } else {
+        first = reference_cost(memory, command.operation.map3_project.first, inner);
+        second = reference_cost(memory, command.operation.map3_project.second, inner);
+        third = reference_cost(memory, command.operation.map3_project.third, output, inner);
+      }
+      int32_t value = reference_add(first, second);
+      if (reduce3 || map3)
+        value = reference_add(value, third);
+      if (inner == 0 || value < minimum) {
+        minimum = value;
+        argmin = inner;
+      }
+    }
+    const bool argmin_result = map3 || command.kind == PCAA_MAP_ADD_REDUCE_MIN_ARGMIN ||
+                               command.kind == PCAA_MAP_ADD3_REDUCE_MIN_ARGMIN;
+    const pcaa_output_view_t destination =
+        add       ? command.operation.vector_add.result
+        : project ? command.operation.project.result
+        : map3    ? command.operation.map3_project.result
+                  : pcaa_cost_output(
+                     reduce2 ? command.operation.reduce2.result : command.operation.reduce3.result,
+                     1, 1);
+    const uint64_t address =
+        destination.base +
+        uint64_t(output) * destination.stride *
+            (argmin_result ? sizeof(accel_min_argmin_result_t) : sizeof(int32_t));
+    if (argmin_result) {
+      const accel_min_argmin_result_t result{minimum, argmin};
+      EXPECT_TRUE(memory.write(address, &result, sizeof(result)));
+    } else {
+      EXPECT_TRUE(memory.write(address, &minimum, sizeof(minimum)));
+    }
+  }
+}
+}  // namespace
+
+void test_semantic_differential(TestInitiator &initiator, TestMemory &memory) {
+  const std::array<int32_t, 3> first = {3, ACCEL_INF, -4};
+  const std::array<int32_t, 3> second = {-6, 2, 1};  // Two-way argmin tie at -3.
+  const std::array<int32_t, 8> matrix = {3, 1, ACCEL_INF, 99, -2, 4, 5, 99};
+  CHECK(memory.write(kFirstInputAddress, first.data(), sizeof(first)));
+  CHECK(memory.write(kSecondInputAddress, second.data(), sizeof(second)));
+  CHECK(memory.write(kThirdInputAddress, matrix.data(), sizeof(matrix)));
+  const auto a = pcaa_cost_vector(kFirstInputAddress, 3, 1);
+  const auto b = pcaa_cost_vector(kSecondInputAddress, 3, 1);
+  const auto c = pcaa_cost_vector(kThirdInputAddress, 3, 1);
+  const auto table = pcaa_cost_matrix(kThirdInputAddress, 2, 3, 4, 1);
+  std::array<pcaa_command_t, 7> commands{};
+  CHECK(pcaa_make_reduce2(a, b, kResultAddress, 0, &commands[0]) == 0);
+  CHECK(pcaa_make_reduce3(a, b, c, kResultAddress, 0, &commands[1]) == 0);
+  CHECK(pcaa_make_reduce2(a, b, kResultAddress, 1, &commands[2]) == 0);
+  CHECK(pcaa_make_reduce3(a, b, c, kResultAddress, 1, &commands[3]) == 0);
+  CHECK(pcaa_make_cost_add_vector(a, b, pcaa_cost_output(kResultAddress, 3, 1), &commands[4]) == 0);
+  CHECK(pcaa_make_minplus_project(table, b, pcaa_cost_output(kResultAddress, 2, 1), &commands[5]) ==
+        0);
+  CHECK(pcaa_make_minplus_map3_project(a, b, table, pcaa_argmin_output(kResultAddress, 2, 1),
+                                       &commands[6]) == 0);
+  for (const pcaa_command_t &command : commands) {
+    TestMemory reference(kTestMemorySize);
+    reference.data = memory.data;
+    reference_execute(reference, command);
+    accel_command_t encoded{};
+    CHECK(pcaa_encode_descriptor(&command, &encoded) == 0);
+    expect_done(initiator, memory, encoded);
+    const size_t result_bytes = command.kind == PCAA_COST_ADD_VECTOR   ? 3 * sizeof(int32_t)
+                                : command.kind == PCAA_MINPLUS_PROJECT ? 2 * sizeof(int32_t)
+                                : command.kind == PCAA_MINPLUS_MAP3_PROJECT
+                                    ? 2 * sizeof(accel_min_argmin_result_t)
+                                : command.kind == PCAA_MAP_ADD_REDUCE_MIN_ARGMIN ||
+                                        command.kind == PCAA_MAP_ADD3_REDUCE_MIN_ARGMIN
+                                    ? sizeof(accel_min_argmin_result_t)
+                                    : sizeof(int32_t);
+    std::array<unsigned char, 16> expected{};
+    std::array<unsigned char, 16> actual{};
+    CHECK(reference.read(kResultAddress, expected.data(), result_bytes));
+    CHECK(memory.read(kResultAddress, actual.data(), result_bytes));
+    EXPECT_EQ(actual, expected);
+  }
 }
 
 int sc_main(int argc, char **argv) {

@@ -29,7 +29,16 @@ function(pcaa_add_baremetal_headers)
   set_property(GLOBAL APPEND PROPERTY PCAA_BAREMETAL_HEADERS ${ARGN})
 endfunction()
 
+function(pcaa_add_baremetal_c_sources)
+  set_property(GLOBAL APPEND PROPERTY PCAA_BAREMETAL_C_SOURCES ${ARGN})
+endfunction()
+
+function(pcaa_add_baremetal_include_dirs)
+  set_property(GLOBAL APPEND PROPERTY PCAA_BAREMETAL_INCLUDE_DIRS ${ARGN})
+endfunction()
+
 include(cmake/Dependencies.cmake)
+add_subdirectory(pcaalib)
 add_subdirectory(accelerator)
 add_subdirectory(software)
 add_subdirectory(workload)

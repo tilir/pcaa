@@ -1,7 +1,7 @@
 # Programmable Cost Algebra Accelerator
 
 PCAA is a descriptor-driven accelerator for signed-integer cost algebra. Its
-ISA v1 performs min-plus reductions and projections, vector cost addition,
+ISA 1.0.0 performs min-plus reductions and projections, vector cost addition,
 argmin, and ordered batches over runtime-sized, strided data in guest physical
 memory. Software chooses and submits the work; graph topology and search stay
 outside the accelerator.
@@ -17,7 +17,7 @@ estimate, and an RV64 bare-metal integration through Spike. A PBQP runner
 exercises the accelerator; an independent Bellman–Ford probe checks the same
 cost-algebra vocabulary on shortest paths. Neither algorithm is built into
 the ISA. The command contract is in [the architecture specification](doc/arch.md),
-with its rationale in [the ISA v1 decision record](doc/isa-v1-decision.md).
+with its rationale in [the ISA decision record](doc/isa-v1-decision.md).
 
 ## Run a graph through PCAA
 

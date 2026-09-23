@@ -2,7 +2,7 @@
 
 ## Architecture specification
 
-Revision 1.0 (ISA v1)
+Revision 1.0 (ISA 1.0.0)
 
 ## 1. Scope
 
@@ -125,10 +125,13 @@ negative underflow cannot occur.
 Commands that return an index select the smallest index whose value equals the
 minimum. This is part of the observable result.
 
-## 5. Command descriptor
+## 5. Semantic commands and descriptor encoding
 
-The host writes one `accel_command_t` descriptor into guest memory for each
-submission.
+ISA 1.0.0 consists of the operations in section 8 over affine guest
+physical-memory views. The current `pcaalib` supports this ISA through the
+descriptor encoding specified below; see the [pcaalib API reference](pcaalib.md)
+for its API and versioning. The host writes one `accel_command_t` descriptor
+into guest memory for each submission.
 
 ```c
 typedef struct accel_command {
@@ -151,7 +154,7 @@ typedef struct accel_command {
 } accel_command_t;
 ```
 
-ISA v1 grows every descriptor to 80 bytes, naturally aligned to 8 bytes. The
+ISA 1.0.0 uses 80-byte descriptors, naturally aligned to 8 bytes. The
 original 56-byte prefix keeps its offsets and semantics for opcodes 1–5. The field
 offsets are fixed:
 
@@ -430,7 +433,7 @@ Extensions retain the following invariants:
 * software ownership of graph topology and irregular control flow.
 
 Structural batched descriptors, in which the block generates an inner
-iteration space, are not defined by this revision. ISA v1 already defines
+iteration space, are not defined by this revision. ISA 1.0.0 defines
 affine element strides for opcodes 6–8; richer addressing is outside its scope.
 
 Any future primitive that produces several independently reduced outputs in
