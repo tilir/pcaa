@@ -98,7 +98,7 @@ explicitly that its zero device cycles reflect software-core solving.
 
 ## Semantics to retain
 
-`ACCEL_INF` is `INT32_MAX / 4`. Any addition with `INF` produces `INF`; positive values reaching it saturate to it.  Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
+`ACCEL_INF` is `INT32_MAX / 4`. Valid input costs are finite values below it or exactly `ACCEL_INF`; greater values produce `STATUS_ERROR`, even alongside `INF`. Any addition of valid values with `INF` produces `INF`; positive sums reaching it saturate to it. Argmin commands select the first equal minimum. `n == 0`, unsupported opcodes, missing required source addresses, and failed memory accesses produce `STATUS_ERROR`.
 
 PBQP graph reduction remains software-owned. `software/pbqp/pbqp.h` is a C ABI; its implementation is C++17 and must remain freestanding-friendly (no heap, exceptions, RTTI, or C++ runtime requirement). Configure a `pbqp_solver_t` through `pbqp_solver_create`, then use `pbqp_solver_solve`; both software and accelerator modes must share that solver. Keep vector views explicit and account for accelerator scratch packing in `pbqp_statistics_t`.
 

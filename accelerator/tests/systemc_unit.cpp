@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstring>
+#include <initializer_list>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -154,6 +155,7 @@ void test_invalid_mmio(TestInitiator &initiator) {
 
 void test_batches(TestInitiator &initiator, TestMemory &memory);
 void test_vector_isa(TestInitiator &initiator, TestMemory &memory);
+void test_invalid_costs(TestInitiator &initiator, TestMemory &memory);
 
 TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(2, 3) == 5);
@@ -162,6 +164,12 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   CHECK(accel_cost_add(INT32_MIN, -1) == INT32_MIN);
   int32_t checked_sum = 0;
   CHECK(accel_cost_add_checked(INT32_MIN, -1, &checked_sum) != 0);
+  CHECK(accel_cost_add_checked(ACCEL_INF - 1, 0, &checked_sum) == 0);
+  CHECK(checked_sum == ACCEL_INF - 1);
+  CHECK(accel_cost_add_checked(ACCEL_INF, -1, &checked_sum) == 0);
+  CHECK(checked_sum == ACCEL_INF);
+  CHECK(accel_cost_add_checked(ACCEL_INF, ACCEL_INF + 1, &checked_sum) != 0);
+  CHECK(accel_cost_add_checked(INT32_MAX, -INT32_MAX, &checked_sum) != 0);
 
   TestMemory memory(kTestMemorySize);
   AccelTimingConfig timing;
@@ -210,6 +218,23 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   expect_done(initiator, memory, command);
   int32_t result = 0;
   CHECK(memory.read(kResultAddress, &result, sizeof(result)) && result == ACCEL_INF);
+  command.flags = 1;
+  command.m = 1;
+  command.k = 1;
+  command.reserved = 1;
+  command.src2 = kThirdInputAddress;
+  command.src0_stride = 17;
+  expect_done(initiator, memory, command);  // Opcode 1 ignores legacy and appended fields.
+  command = {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN,
+             0,
+             1,
+             0,
+             0,
+             0,
+             kFirstInputAddress,
+             kSecondInputAddress,
+             0,
+             kResultAddress};
 
   command.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN;
   command.n = 5;
@@ -318,6 +343,7 @@ TEST(SystemcAccelerator, ExecutesCommandsAndReportsErrors) {
   expect_done(initiator, memory, command);
   test_batches(initiator, memory);
   test_vector_isa(initiator, memory);
+  test_invalid_costs(initiator, memory);
   EXPECT_GT(accelerator.timing_statistics().primitive_count, 0);
   EXPECT_GE(accelerator.timing_statistics().batch_count, 7);
   EXPECT_GT(accelerator.timing_statistics().descriptor_cycles, 0);
@@ -491,6 +517,28 @@ void test_batches(TestInitiator &initiator, TestMemory &memory) {
   invalid_batch = batch;
   invalid_batch.n = 1;
   expect_done(initiator, memory, invalid_batch);
+
+  // A child may not rewrite a later child or the top-level descriptor.
+  children[0].dst = kBatchDescriptorAddress + sizeof(accel_command_t);
+  children[1] = children[0];
+  children[1].dst = kResultAddress;
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  expect_error(initiator, memory, batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  EXPECT_EQ(batch_result.completed, 0u);
+  EXPECT_EQ(batch_result.failed_index, 0u);
+  children[0].dst = kDescriptorAddress;
+  CHECK(memory.write(kBatchDescriptorAddress, children.data(), sizeof(children)));
+  expect_error(initiator, memory, batch);
+  CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
+  EXPECT_EQ(batch_result.failed_index, 0u);
+
+  // The batch's own result may not corrupt its descriptor array.
+  invalid_batch = batch;
+  invalid_batch.dst = kBatchDescriptorAddress;
+  expect_error(initiator, memory, invalid_batch);
+  invalid_batch.dst = kDescriptorAddress;
+  expect_error(initiator, memory, invalid_batch);
 }
 
 void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
@@ -517,6 +565,14 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   EXPECT_EQ(one, 7);
   add.n = 5;
   add.dst = kResultAddress;
+  add.src2 = UINT64_MAX;  // Unused addresses and strides are ignored.
+  add.src2_stride = 0;
+  add.src0_outer_stride = 19;
+  add.src2_outer_stride = 23;
+  expect_done(initiator, memory, add);
+  add.reserved = 1;
+  expect_error(initiator, memory, add);
+  add.reserved = 0;
   add.src0_stride = 0;
   expect_error(initiator, memory, add);
   add.src0_stride = 1;
@@ -526,17 +582,30 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   add.m = 1;
   expect_error(initiator, memory, add);
   add.m = 0;
+  const std::array<int32_t, 6> padded_first = {1, 99, 2, 99, 3, 99};
+  const std::array<int32_t, 6> padded_second = {4, 88, 5, 88, 6, 88};
+  CHECK(memory.write(kFirstInputAddress, padded_first.data(), sizeof(padded_first)));
+  CHECK(memory.write(kSecondInputAddress, padded_second.data(), sizeof(padded_second)));
+  add.n = 3;
+  add.src0_stride = add.src1_stride = add.dst_stride = 2;
+  add.dst = add.src1;
+  expect_done(initiator, memory, add);
+  std::array<int32_t, 6> aliased{};
+  CHECK(memory.read(kSecondInputAddress, aliased.data(), sizeof(aliased)));
+  EXPECT_EQ(aliased, (std::array<int32_t, 6>{5, 88, 7, 88, 9, 88}));
+  add.dst = add.src1 + sizeof(int32_t);
+  expect_error(initiator, memory, add);
+  add.dst = UINT64_MAX - sizeof(int32_t);
+  expect_error(initiator, memory, add);
+  add.src0_stride = add.src1_stride = add.dst_stride = 1;
+  add.dst = kResultAddress;
   const std::array<int32_t, 2> underflow = {1, INT32_MIN};
   const std::array<int32_t, 2> minus_one = {1, -1};
-  const std::array<int32_t, 2> sentinel = {73, 74};
   CHECK(memory.write(kFirstInputAddress, underflow.data(), sizeof(underflow)));
   CHECK(memory.write(kSecondInputAddress, minus_one.data(), sizeof(minus_one)));
-  CHECK(memory.write(kResultAddress, sentinel.data(), sizeof(sentinel)));
   add.n = 2;
   expect_error(initiator, memory, add);
   std::array<int32_t, 2> unchanged{};
-  CHECK(memory.read(kResultAddress, unchanged.data(), sizeof(unchanged)));
-  EXPECT_EQ(unchanged, sentinel);
 
   // Three padded rows, two reduced columns: row stride 4, inner stride 1.
   const std::array<int32_t, 12> matrix = {4, 1, 99, 99, -2, 6, 99, 99, ACCEL_INF, 0, 99, 99};
@@ -566,15 +635,22 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   project.src0_stride = 1;
   project.src0_outer_stride = 4;
   project.m = 3;
+  project.dst = project.src0;
+  expect_error(initiator, memory, project);
+  project.dst = kResultAddress;
   project.src1 = kInvalidElementAddress;
   expect_error(initiator, memory, project);
   project.src1 = kSecondInputAddress;
+  project.src2 = UINT64_MAX;
+  project.src2_stride = 0;
+  project.src2_outer_stride = 13;
+  expect_done(initiator, memory, project);
+  project.k = 1;
+  expect_error(initiator, memory, project);
+  project.k = 0;
   const std::array<int32_t, 2> underflow_unary = {INT32_MIN, 0};
   CHECK(memory.write(kSecondInputAddress, underflow_unary.data(), sizeof(underflow_unary)));
-  CHECK(memory.write(kResultAddress, sentinel.data(), sizeof(sentinel)));
   expect_error(initiator, memory, project);
-  CHECK(memory.read(kResultAddress, unchanged.data(), sizeof(unchanged)));
-  EXPECT_EQ(unchanged, sentinel);
 
   const std::array<int32_t, 2> zero = {0, 0};
   const std::array<int32_t, 2> fixed = {1, 1};
@@ -591,8 +667,12 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   map3.src2 = kFirstInputAddress;
   map3.dst = kResultAddress;
   map3.src0_stride = map3.src1_stride = map3.src2_stride = map3.dst_stride = 1;
+  map3.src0_outer_stride = 7;  // Unused by opcode 8.
   map3.src2_outer_stride = 4;
   expect_done(initiator, memory, map3);
+  map3.flags = 1;
+  expect_error(initiator, memory, map3);
+  map3.flags = 0;
   std::array<accel_min_argmin_result_t, 3> results{};
   CHECK(memory.read(kResultAddress, results.data(), sizeof(results)));
   EXPECT_EQ(results[0].value, 3);
@@ -623,10 +703,7 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   map3.dst = kResultAddress;
   const std::array<int32_t, 2> negative = {0, INT32_MIN};
   CHECK(memory.write(kSecondInputAddress, negative.data(), sizeof(negative)));
-  CHECK(memory.write(kResultAddress, sentinel.data(), sizeof(sentinel)));
   expect_error(initiator, memory, map3);
-  CHECK(memory.read(kResultAddress, unchanged.data(), sizeof(unchanged)));
-  EXPECT_EQ(unchanged, sentinel);
 
   // Ordered producer-consumer chain and fail-stop visibility.
   CHECK(memory.write(kSecondInputAddress, zero.data(), sizeof(zero)));
@@ -654,6 +731,53 @@ void test_vector_isa(TestInitiator &initiator, TestMemory &memory) {
   CHECK(memory.read(kBatchResultAddress, &batch_result, sizeof(batch_result)));
   EXPECT_EQ(batch_result.completed, 1u);
   EXPECT_EQ(batch_result.failed_index, 1u);
+}
+
+void test_invalid_costs(TestInitiator &initiator, TestMemory &memory) {
+  const int32_t invalid = ACCEL_INF + 1;
+  const int32_t infinity = ACCEL_INF;
+  const int32_t negative = -100;
+  CHECK(memory.write(kFirstInputAddress, &infinity, sizeof(infinity)));
+  CHECK(memory.write(kSecondInputAddress, &invalid, sizeof(invalid)));
+  CHECK(memory.write(kThirdInputAddress, &negative, sizeof(negative)));
+
+  accel_command_t command{};
+  command.n = 1;
+  command.src0 = kFirstInputAddress;
+  command.src1 = kSecondInputAddress;
+  command.src2 = kThirdInputAddress;
+  command.dst = kResultAddress;
+  for (uint32_t opcode :
+       {ACCEL_OPCODE_MAP_ADD_REDUCE_MIN, ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN,
+        ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN, ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN}) {
+    command.opcode = opcode;
+    expect_error(initiator, memory, command);
+  }
+  command.opcode = ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN;
+  CHECK(memory.write(kSecondInputAddress, &negative, sizeof(negative)));
+  CHECK(memory.write(kThirdInputAddress, &invalid, sizeof(invalid)));
+  expect_error(initiator, memory, command);  // Third operand is checked after INF.
+  const int32_t maximum = INT32_MAX;
+  CHECK(memory.write(kSecondInputAddress, &maximum, sizeof(maximum)));
+  command.opcode = ACCEL_OPCODE_MAP_ADD_REDUCE_MIN;
+  expect_error(initiator, memory, command);
+
+  command.src0_stride = command.src1_stride = command.src2_stride = command.dst_stride = 1;
+  command.src0_outer_stride = command.src2_outer_stride = 1;
+  command.m = 1;
+  command.opcode = ACCEL_OPCODE_MINPLUS_PROJECT;
+  CHECK(memory.write(kSecondInputAddress, &invalid, sizeof(invalid)));
+  expect_error(initiator, memory, command);
+  command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  expect_error(initiator, memory, command);
+  command.opcode = ACCEL_OPCODE_COST_ADD_VECTOR;
+  command.m = 0;
+  expect_error(initiator, memory, command);
+  CHECK(memory.write(kSecondInputAddress, &negative, sizeof(negative)));
+  CHECK(memory.write(kThirdInputAddress, &invalid, sizeof(invalid)));
+  command.opcode = ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  command.m = 1;
+  expect_error(initiator, memory, command);
 }
 
 int sc_main(int argc, char **argv) {

@@ -36,6 +36,28 @@ bool span(uint64_t base, uint32_t rows, uint32_t columns, uint32_t outer_stride,
 bool overlaps(uint64_t first, uint64_t first_end, uint64_t second, uint64_t second_end) {
   return first < second_end && second < first_end;
 }
+
+bool output_overlaps(const accel_command_t &command, uint64_t protected_begin,
+                     uint64_t protected_end) {
+  const bool vector_add = command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR;
+  const bool project = command.opcode == ACCEL_OPCODE_MINPLUS_PROJECT;
+  const bool map3 = command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
+  const uint32_t count = vector_add ? command.n : (project || map3 ? command.m : 1);
+  const uint32_t stride = vector_add || project || map3 ? command.dst_stride : 1;
+  const uint64_t width = map3 || command.opcode == ACCEL_OPCODE_MAP_ADD_REDUCE_MIN_ARGMIN ||
+                                 command.opcode == ACCEL_OPCODE_MAP_ADD3_REDUCE_MIN_ARGMIN
+                             ? sizeof(accel_min_argmin_result_t)
+                             : sizeof(int32_t);
+  uint64_t end = 0;
+  if (!span(command.dst, 1, count, 0, stride, width, &end))
+    return true;
+  for (uint32_t i = 0; i < count; ++i) {
+    const uint64_t address = command.dst + uint64_t(i) * stride * width;
+    if (overlaps(address, address + width, protected_begin, protected_end))
+      return true;
+  }
+  return false;
+}
 }  // namespace
 
 bool Accelerator::is_valid_mmio_transaction(const tlm::tlm_generic_payload &transaction) const {
@@ -157,8 +179,6 @@ bool Accelerator::is_valid_command(const accel_command_t &command) const {
     if (map3 && !span(command.src2, rows, columns, command.src2_outer_stride, command.src2_stride,
                       sizeof(int32_t), &third_end))
       return false;
-    if (!map3 && command.src2 != 0)
-      return false;
     if (add) {
       const bool first_alias =
           command.dst == command.src0 && command.dst_stride == command.src0_stride;
@@ -206,6 +226,15 @@ bool Accelerator::execute(sc_core::sc_time *delay) {
 
 bool Accelerator::execute_batch(const accel_command_t &command, sc_core::sc_time *delay) {
   (void)delay;
+  uint64_t children_end = 0;
+  uint64_t descriptor_end = 0;
+  uint64_t result_end = 0;
+  if (!span(command.src0, 1, command.n, 0, 1, sizeof(accel_command_t), &children_end) ||
+      !span(descriptor_address_, 1, 1, 0, 1, sizeof(accel_command_t), &descriptor_end) ||
+      !span(command.dst, 1, 1, 0, 1, sizeof(accel_batch_result_t), &result_end) ||
+      overlaps(command.dst, result_end, command.src0, children_end) ||
+      overlaps(command.dst, result_end, descriptor_address_, descriptor_end))
+    return false;
   if (timing_.mode != AccelTimingMode::kUntimed && timing_.descriptor_bytes_per_cycle != 0 &&
       timing_.memory_write_bytes_per_cycle != 0) {
     const uint64_t descriptor_cycles = (sizeof(command) + timing_.descriptor_bytes_per_cycle - 1) /
@@ -232,6 +261,8 @@ bool Accelerator::execute_batch(const accel_command_t &command, sc_core::sc_time
     }
     if (!memory_.read(address, &child, sizeof(child)) ||
         child.opcode == ACCEL_OPCODE_EXECUTE_BATCH || !is_valid_command(child) ||
+        output_overlaps(child, command.src0, children_end) ||
+        output_overlaps(child, descriptor_address_, descriptor_end) ||
         !execute_command(child, delay)) {
       result.completed = index;
       result.failed_index = index;
@@ -351,13 +382,6 @@ bool Accelerator::execute_vector_command(const accel_command_t &command) {
   const bool add = command.opcode == ACCEL_OPCODE_COST_ADD_VECTOR;
   const bool map3 = command.opcode == ACCEL_OPCODE_MINPLUS_MAP3_PROJECT;
   const uint32_t outputs = add ? command.n : command.m;
-  // Preflight all arithmetic before writing any output. This also makes exact
-  // src/dst aliases of COST_ADD_VECTOR safe on arithmetic failure.
-  for (uint32_t output = 0; output < outputs; ++output) {
-    accel_min_argmin_result_t result{};
-    if (!vector_output(command, output, &result))
-      return false;
-  }
   for (uint32_t output = 0; output < outputs; ++output) {
     accel_min_argmin_result_t result{};
     if (!vector_output(command, output, &result))

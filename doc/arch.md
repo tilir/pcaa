@@ -79,7 +79,9 @@ changing the descriptor ABI.
 
 ### 4.1 Cost values
 
-Input and scalar output costs use signed two's-complement `int32_t`.
+Input and output costs use signed two's-complement `int32_t`.
+All multi-byte architectural quantities in descriptors, cost operands, scalar
+outputs, `accel_min_argmin_result_t`, and `accel_batch_result_t` are little-endian.
 
 ```c
 #define ACCEL_INF (INT32_MAX / 4)
@@ -89,6 +91,7 @@ The cost addition used by currently defined commands has the following
 semantics:
 
 ```text
+input cost > INF           = command ERROR
 INF + x                    = INF
 x + INF                    = INF
 finite sum >= INF          = INF
@@ -96,9 +99,14 @@ finite sum < INT32_MIN     = command ERROR
 otherwise                  = exact signed sum
 ```
 
-`INF` is the absorbing element of cost addition: the implementation in
-`accelerator/src/cost_math.cpp` checks either operand for `INF` before it
-forms a sum, so `INF + x = INF` for every signed value of `x`. This is a
+The valid input domain is `INT32_MIN <= finite_cost < ACCEL_INF`, or exactly
+`ACCEL_INF` for infinity. A cost greater than `ACCEL_INF` is invalid and makes
+the command fail with `ERROR`, even when another addend is `INF`. This applies
+to every source element read by opcodes 1–4 and 6–8, including the third
+operand of ADD3 after an intermediate result has reached `INF`.
+
+`INF` is the absorbing element of cost addition for valid operands, so
+`INF + x = INF` for every valid cost `x`. This is a
 deliberate algebraic rule, not ordinary saturation, and `INF` remains a value
 in the data representation rather than an out-of-band validity flag.
 
@@ -107,7 +115,7 @@ at or above `INF` becomes `INF`: all such costs are forbidden/unreachable, so
 their ordering is immaterial. A finite sum below `INT32_MIN` has no analogous
 negative-infinity meaning. Clamping two distinct sums there would create a
 false tie and could change first-index argmin, so any command encountering
-negative underflow fails with `ERROR` and does not produce a result. The
+negative underflow fails with `ERROR`; the output on error is unspecified. The
 checked command-path helper is `accel_cost_add_checked`; bounded host
 algorithms may use `accel_cost_add` only when their input contract proves that
 negative underflow cannot occur.
@@ -123,20 +131,24 @@ The host writes one `accel_command_t` descriptor into guest memory for each
 submission.
 
 ```c
-struct accel_command {
-    uint32_t opcode;
-    uint32_t flags;
-
-    uint32_t n;
-    uint32_t m;
-    uint32_t k;
-    uint32_t reserved;
-
-    uint64_t src0;
-    uint64_t src1;
-    uint64_t src2;
-    uint64_t dst;
-};
+typedef struct accel_command {
+  uint32_t opcode;
+  uint32_t flags;
+  uint32_t n;
+  uint32_t m;
+  uint32_t k;
+  uint32_t reserved;
+  uint64_t src0;
+  uint64_t src1;
+  uint64_t src2;
+  uint64_t dst;
+  uint32_t src0_stride;
+  uint32_t src1_stride;
+  uint32_t src2_stride;
+  uint32_t dst_stride;
+  uint32_t src0_outer_stride;
+  uint32_t src2_outer_stride;
+} accel_command_t;
 ```
 
 ISA v1 grows every descriptor to 80 bytes, naturally aligned to 8 bytes. The
@@ -146,11 +158,11 @@ offsets are fixed:
 | Offset | Field | Meaning |
 | ---: | --- | --- |
 | `0x00` | `opcode` | operation selector |
-| `0x04` | `flags` | operation-specific flags; ignored by current commands |
-| `0x08` | `n` | vector length for current commands |
-| `0x0c` | `m` | reserved operation dimension; ignored by current commands |
-| `0x10` | `k` | reserved operation dimension; ignored by current commands |
-| `0x14` | `reserved` | reserved; ignored by current commands |
+| `0x04` | `flags` | ignored by opcodes 1–5; zero for opcodes 6–8 |
+| `0x08` | `n` | vector/reduction length, or batch child count |
+| `0x0c` | `m` | ignored by opcodes 1–5; zero for opcode 6; output count for 7–8 |
+| `0x10` | `k` | ignored by opcodes 1–5; zero for opcodes 6–8 |
+| `0x14` | `reserved` | ignored by opcodes 1–5; zero for opcodes 6–8 |
 | `0x18` | `src0` | first source vector physical address |
 | `0x20` | `src1` | second source vector physical address |
 | `0x28` | `src2` | third source vector physical address when required |
@@ -162,19 +174,26 @@ offsets are fixed:
 | `0x48` | `src0_outer_stride` | outer element stride of source 0 |
 | `0x4c` | `src2_outer_stride` | outer element stride of source 2 |
 
-For all baseline commands, `n` must be non-zero, and `src0`, `src1`, and
-`dst` must be non-zero. Commands requiring `src2` additionally require a
-non-zero `src2`.
+For opcodes 1–4 and 6–8, `n`, `src0`, `src1`, and `dst` must be non-zero.
+Commands requiring `src2` additionally require a non-zero `src2`.
+For opcode 5, `n`, `src0`, and `dst` must be non-zero; `src1` and `src2`
+are ignored.
 
-For opcodes 1–5, appended stride fields, `m`, `k`, and reserved fields are
+For opcodes 1–5, `flags`, `m`, `k`, `reserved`, and appended stride fields are
 ignored, preserving their semantics. For opcodes 6–8, `flags`, `k`, and
 `reserved` must be zero. `n` is the vector length for opcode 6 and the
 reduction length for opcodes 7–8; `m` is zero for opcode 6 and the output
 length for opcodes 7–8. Required addresses, dimensions, and inner strides
-must be nonzero. Outer stride zero is valid only for a one-output projection.
-Unused stride fields are ignored. All strides count elements of the addressed
-type (32-bit costs, or 8-byte result records for MAP3), not bytes. No lane or
-layout-mode bit appears in the descriptor.
+must be nonzero. A required outer stride may be zero only for a one-output
+projection.
+Unused source-address and stride fields are ignored, not required to be zero.
+All strides are unsigned and count elements of the addressed type (32-bit costs,
+or 8-byte result records for MAP3), not bytes. Each required inner stride is
+nonzero. `src0_outer_stride` is required only for opcode 7 with `m > 1`;
+`src2_outer_stride` is required only for opcode 8 with `m > 1`. Operand address
+spans must not overflow 64-bit physical addresses. Exchanging the inner and
+outer strides represents a column rather than a row projection; there is no
+transpose or lane bit.
 
 ## 6. MMIO control interface
 
@@ -229,10 +248,12 @@ The descriptor is owned by the host until doorbell submission and by PCAA
 until completion. The host must not modify the descriptor or referenced input
 and output regions while the command is outstanding. Overlap between source
 and destination regions is not defined for the baseline commands.
-Opcode 6 permits exact full-view `dst` aliasing with either input, but
-otherwise rejects overlapping output and input spans. Opcode 7 and 8 outputs
-must not overlap their inputs. New vector commands preflight all additions
-before writing outputs, so arithmetic underflow leaves output untouched.
+Opcode 6 permits exact full-view `dst` aliasing with either input (same base,
+length, and element stride), but otherwise rejects overlapping output and input
+address spans. Opcode 7 and 8 outputs must not overlap their input address
+spans. These span checks include gaps between strided elements. On `ERROR`,
+including arithmetic underflow, output contents are unspecified: earlier
+elements may have been written. A successful command writes every output.
 
 ## 8. Baseline operations
 
@@ -318,6 +339,12 @@ is `DONE`. If child `i` cannot be read, is invalid, or fails, descriptors before
 it remain completed, descriptors after it are not executed, and
 `{ completed = i, failed_index = i }` is stored before status becomes `ERROR`.
 Batch execution is fail-stop and non-transactional.
+The batch result and every child output must avoid all bytes of the child
+descriptor array and the top-level batch descriptor. A batch with an overlapping
+result is rejected before child execution; a child whose output overlaps either
+descriptor region fails at that child. Child input reads may overlap descriptor
+storage, but software must still keep descriptors and inputs stable until
+completion. Output overlap is checked at addressed elements, not padding gaps.
 
 ### 8.6 `COST_ADD_VECTOR` (opcode 6)
 
@@ -354,11 +381,11 @@ malformed cases are:
 * zero `src2` for opcodes `2` and `4`;
 * `EXECUTE_BATCH` with a nested batch child.
 
-A well-formed command also completes with `ERROR` if a finite cost addition
-underflows below `INT32_MIN`, including either addition of an ADD3 primitive.
+A well-formed command also completes with `ERROR` if it reads a cost above
+`ACCEL_INF` or if a finite addition underflows below `INT32_MIN`, including
+either addition of an ADD3 primitive.
 
-Apart from the opcode 6–8 arithmetic-underflow no-write guarantee above, an
-`ERROR` completion does not specify a result at `dst`. A subsequent valid
+An `ERROR` completion does not specify a result at `dst`. A subsequent valid
 submission is permitted and is independent of the preceding error.
 For opcodes 6–8, invalid dimensions/strides, arithmetic address-span
 overflow, or forbidden output/input overlap also cause `ERROR`.
@@ -392,9 +419,9 @@ status semantics, or guest-memory addressing.
 
 ## 12. Extension space
 
-Future opcodes may use `flags`, `m`, `k`, and additional descriptor semantics
-to express vector operations, reductions, broadcast operations, matrix/table
-projections, and normalization. Extensions retain the following invariants:
+Future opcodes may use `flags`, `k`, or additional descriptor semantics for
+indexed, gather, or segmented access and other cost-algebra operations.
+Extensions retain the following invariants:
 
 * runtime-defined problem dimensions;
 * descriptor-based submission;
@@ -403,8 +430,8 @@ projections, and normalization. Extensions retain the following invariants:
 * software ownership of graph topology and irregular control flow.
 
 Structural batched descriptors, in which the block generates an inner
-iteration space, and stride-aware operand descriptors remain unresolved future
-choices. Neither is defined by this revision.
+iteration space, are not defined by this revision. ISA v1 already defines
+affine element strides for opcodes 6–8; richer addressing is outside its scope.
 
 Any future primitive that produces several independently reduced outputs in
 one descriptor must apply first-index argmin separately within each output

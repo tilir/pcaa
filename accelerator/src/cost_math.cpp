@@ -9,6 +9,9 @@ int accel_cost_add_checked(int32_t left, int32_t right, int32_t *result) {
   if (result == nullptr) {
     return -1;
   }
+  if (left > ACCEL_INF || right > ACCEL_INF) {
+    return -1;
+  }
   if (left == ACCEL_INF || right == ACCEL_INF) {
     *result = ACCEL_INF;
     return 0;

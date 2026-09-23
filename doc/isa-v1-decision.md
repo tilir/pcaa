@@ -27,13 +27,20 @@ for exact offsets, dimension rules, and operand formulas. Affine addressing
 expresses rows, columns, and padding without row-major/transpose modes.
 There is no architectural lane width.
 
-All operations use signed 32-bit costs, `INF = INT32_MAX / 4`, absorbing INF,
-positive saturation to INF, and `ERROR` on finite underflow below INT32_MIN.
-Within each independent reduction, the first minimum index wins. A new vector
-command preflights arithmetic before modifying its output. `COST_ADD_VECTOR`
-allows exact destination aliasing with an input; other output/input overlap
-is invalid. A successful child batch write is visible to the immediately next
-child. Batches remain ordered, fail-stop, non-transactional, and unnested.
+All multi-byte guest-memory quantities are little-endian. Valid costs are
+finite signed 32-bit values below `INF = INT32_MAX / 4`, or exactly `INF`;
+larger values cause `ERROR` even when another operand is `INF`. Valid `INF`
+absorbs addition, positive finite sums saturate to `INF`, and finite underflow
+below `INT32_MIN` causes `ERROR`. Within each independent reduction, the first
+minimum index wins. A vector command may have written earlier output elements
+when it fails; no-error atomicity is promised. `COST_ADD_VECTOR` allows exact
+full-view destination aliasing with an input; other output/input address-span
+overlap is invalid. Opcode 7–8 outputs may not overlap inputs. Opcodes 6–8
+require `flags`, `k`, and `reserved` to be zero, while unused source addresses
+and strides are ignored. A successful child batch write is visible to the
+immediately next child, but neither child outputs nor the batch result may
+overlap child or top-level descriptor bytes. Batches remain ordered, fail-stop,
+non-transactional, and unnested.
 
 ## Evidence and exclusions
 

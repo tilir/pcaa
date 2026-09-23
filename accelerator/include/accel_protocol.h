@@ -39,7 +39,10 @@ extern "C" {
  * registers. ISA v1 uses an 80-byte, naturally 8-byte-aligned layout. The
  * first 56 bytes preserve the offsets and meaning of opcodes 1-5; appended
  * strides are ignored by those opcodes. Addresses are guest physical, never
- * host pointers. Strides are unsigned counts of the addressed element type.
+ * host pointers. All multi-byte guest-memory fields, operands, and results
+ * are little-endian. Valid input costs are finite values below ACCEL_INF or
+ * exactly ACCEL_INF; larger int32_t values cause command ERROR.
+ * Strides are unsigned counts of the addressed element type.
  *
  * opcode selects the operation. The scalar map/reduce commands use n as their runtime
  * vector length and interpret source elements as int32_t values. For
@@ -53,8 +56,10 @@ extern "C" {
  * m is the output length for projections and zero for COST_ADD_VECTOR.
  * src{0,1,2}_stride and dst_stride count addressed elements, not bytes.
  * src0_outer_stride and src2_outer_stride are also element strides.
- * Required inner strides must be nonzero. An outer stride may be zero only
- * when its output dimension is one. Unused stride fields are ignored.
+ * Required inner strides must be nonzero. A required outer stride may be zero
+ * only when its output dimension is one: src0_outer_stride for opcode 7 and
+ * src2_outer_stride for opcode 8. Unused source addresses and stride fields
+ * are ignored. flags, m, k, and reserved are ignored by opcodes 1-5.
  *
  * COST_ADD_VECTOR reads src0[i], src1[i] and writes dst[i]. Exact full-view
  * dst aliasing with either input is allowed; all other output/input overlap
@@ -62,6 +67,8 @@ extern "C" {
  * MINPLUS_MAP3_PROJECT reads src0[j], src1[j], src2[i,j] and writes
  * accel_min_argmin_result_t dst[i]. Projection output must not overlap any
  * input. Each result's argmin is local to that output, with first-index ties.
+ * ERROR leaves output unspecified. In a batch, child outputs and the batch
+ * result must not overlap child or top-level descriptor bytes.
  */
 typedef struct accel_command {
   uint32_t opcode;

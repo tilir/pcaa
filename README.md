@@ -6,7 +6,8 @@ argmin, and ordered batches over runtime-sized, strided data in guest physical
 memory. Software chooses and submits the work; graph topology and search stay
 outside the accelerator.
 
-Costs are signed 32-bit integers. `INF` absorbs addition, positive sums
+Costs are signed 32-bit integers below `INF = INT32_MAX / 4`, or `INF` itself.
+Larger input values report `ERROR`; `INF` absorbs addition, positive sums
 reaching it saturate, and negative underflow reports `ERROR`. Argmin ties
 select the first index. A batch executes in order and stops at the first
 failing command; completed results remain visible.
