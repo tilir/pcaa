@@ -58,7 +58,7 @@ TEST(BellmanFordTest, DetectsReachableNegativeCycle) {
   EXPECT_TRUE(result.has_negative_cycle);
 }
 
-// Review regression: once 1 and 2 saturate at INT32_MIN, cost_add keeps
+// Oracle regression: once 1 and 2 saturate at INT32_MIN, its cost addition keeps
 // them there, so an int32-only check sees no further relaxation even though
 // the reachable cycle 1->2->1 has weight -2.
 TEST(BellmanFordTest, DetectsNegativeCycleAfterSaturation) {

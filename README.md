@@ -88,19 +88,20 @@ their graph-size limits are not accelerator ISA limits.
 
 ## Beyond PBQP: Bellman–Ford
 
-The host-only [Bellman–Ford probe](doc/generality-probe.md) computes
-single-source shortest paths with per-vertex min-plus/argmin relaxations—the
-same operation shape exposed by PCAA's two-input argmin primitive. It tests
-negative weights, unreachable vertices, ties, and negative cycles:
+The host-only [Bellman–Ford probe](doc/generality-probe.md) runs
+single-source shortest paths through pcaalib and the SystemC accelerator,
+then checks the results against an independent software implementation. It
+covers negative weights, unreachable vertices, ties, and fixed-point road
+distances:
 
 ```sh
-cmake --build build --target probes_unit
-build/probes_unit --gtest_filter='BellmanFordTest.*'
+cmake --build build --target probes_device_unit probes_unit
+ctest --test-dir build -R '^probes(_device)?_unit$' --output-on-failure
 ```
 
-This is an ISA-generality check, not a device benchmark: the probe does not
-submit SystemC descriptors. Negative-cycle detection uses a separate exact
-64-bit check because bounded PCAA costs cannot represent unbounded decreases.
+This checks ISA generality, not device speed. The software-only tests also
+study negative cycles; the device test checks that a path causing finite
+negative underflow reports an error instead of silently saturating.
 
 ## Build and verify
 

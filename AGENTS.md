@@ -67,8 +67,9 @@ Document public ABI structs directly where they are declared: state their purpos
 * `software/pbqp`: allocator-aware C ABI and freestanding C++17 PBQP implementation.
 * `software/tests`: deterministic and fixed-seed differential ELFs.
 * `workload`: host-only C++ graph generation and logical workload characterization.
-* `probes`: host-only, non-PBQP cost-algebra workloads (e.g. Bellman-Ford) used only to
-  stress-test opcode generality; never PBQP-specific and never RTL/ABI/SystemC.
+* `probes`: host-only, non-PBQP cost-algebra workloads (e.g. Bellman-Ford) used to
+  test opcode generality through pcaalib and the SystemC model against an independent
+  software oracle; never PBQP-specific and never RTL or a new ABI.
 * `tools/pbqp_run.cpp`: host-side PBQP text-format runner through the SystemC model.
 * `examples`: user-facing PBQP text inputs for the host runner.
 * `examples/regalloc`: real PBQP graphs extracted from LLVM's RegAllocPBQP allocator; see

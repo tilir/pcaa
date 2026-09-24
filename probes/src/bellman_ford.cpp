@@ -5,7 +5,6 @@
 #include "bellman_ford.h"
 
 #include "accel_protocol.h"
-#include "cost_math.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,8 +13,18 @@
 namespace pcaa::probes {
 namespace {
 
-// Conceptually PCAA's MAP_ADD_REDUCE_MIN_ARGMIN (opcode 4, restricted to
-// same-length inputs so it matches opcode 3's two-input shape): for
+int32_t reference_cost_add(int32_t first, int32_t second) {
+  if (first == ACCEL_INF || second == ACCEL_INF)
+    return ACCEL_INF;
+  const int64_t sum = int64_t(first) + second;
+  if (sum >= ACCEL_INF)
+    return ACCEL_INF;
+  if (sum < INT32_MIN)
+    return INT32_MIN;
+  return static_cast<int32_t>(sum);
+}
+
+// Independent software equivalent of MAP_ADD_REDUCE_MIN_ARGMIN (opcode 3): for
 // 0 <= i < n, value[i] = cost_add(a[i], b[i]); returns the minimum value and
 // the index of its first occurrence, matching PCAA's tie-break rule.
 struct MinArgmin {
@@ -26,7 +35,7 @@ struct MinArgmin {
 MinArgmin AddReduceMinArgmin(const std::vector<int32_t> &a, const std::vector<int32_t> &b) {
   MinArgmin result{ACCEL_INF, -1};
   for (size_t i = 0; i < a.size(); ++i) {
-    const int32_t value = accel_cost_add(a[i], b[i]);
+    const int32_t value = reference_cost_add(a[i], b[i]);
     if (result.index < 0 || value < result.value) {
       result.value = value;
       result.index = static_cast<int>(i);
@@ -87,7 +96,7 @@ ShortestPathResult BellmanFord(int vertex_count, const std::vector<Edge> &edges,
 
   // Exact shadow of the same relaxation in 64 bits. The int32 check above
   // cannot see a reachable negative cycle whose vertices already sit at the
-  // saturated INT32_MIN floor: cost_add keeps them there, so nothing appears
+  // saturated INT32_MIN floor: the software cost addition keeps them there, so nothing appears
   // to relax further. Edges with ACCEL_INF weight never relax, as in cost_add.
   constexpr int64_t kUnreached = std::numeric_limits<int64_t>::max();
   std::vector<int64_t> exact(static_cast<size_t>(vertex_count), kUnreached);

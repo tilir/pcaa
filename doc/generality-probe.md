@@ -2,16 +2,21 @@
 
 This checks whether PCAA's opcode set is expressible for a non-PBQP
 min-plus workload, or accidentally PBQP-specific. It is a host-only,
-non-PBQP-graph probe (`probes/`) — no RTL, ABI change, SystemC use, or new
-opcode. PBQP's topology and RN/branch-and-bound control flow are absent
+non-PBQP-graph probe (`probes/`) with two paths: an independent software
+oracle and a pcaalib client executing reductions through the hosted SystemC
+model. It adds no RTL, ABI change, or new opcode. PBQP's topology and RN/branch-and-bound control flow are absent
 here on purpose, so whatever this probe *does* need is a generic
 cost-algebra requirement, not a PBQP one.
 
 ## 1. What it computes and how
 
-`probes/src/bellman_ford.cpp` implements single-source shortest paths over
-a directed, weighted graph in the min-plus semiring. Each relaxation round
-does one conceptual `MAP_ADD_REDUCE_MIN_ARGMIN`-shaped call **per vertex**,
+`probes/src/bellman_ford.cpp` implements the independent software oracle for
+single-source shortest paths over a directed, weighted graph in the min-plus
+semiring. `probes/tests/bellman_ford_device_unit.cpp` executes the same
+vertex-local schedule through pcaalib's `pcaa_make_reduce2` builder,
+`pcaa_device_submit`/`pcaa_device_wait`, guest-memory staging, and the SystemC
+target socket. Each relaxation round does one
+`MAP_ADD_REDUCE_MIN_ARGMIN` call **per vertex**,
 over that vertex's incoming edges: `value[i] = cost_add(dist[u_i], w_i)`
 for each predecessor `u_i`, then the minimum value and the edge that
 achieved it (for path reconstruction). This is the natural vertex-local
@@ -19,10 +24,14 @@ framing of the min-plus relaxation `dist[v] = min(dist[v], min_u(dist[u] +
 w(u,v)))` — not the more common textbook per-edge framing, chosen
 specifically because it maps directly onto PCAA's existing reduce-to-a-scalar
 shape instead of needing per-edge synchronization. `ACCEL_INF`
-(`accel_protocol.h`) represents an unreached vertex; `accel_cost_add`
-(`pcaa_cost_math`, the same function PBQP's own solver uses) does the
-add-with-saturation. Eight GoogleTest cases (`probes_unit`, in the main
-CTest suite) check a negative-weight detour, an unreachable vertex, a
+(`accel_protocol.h`) represents an unreached vertex; the oracle has its own
+cost addition, independent from the accelerator implementation. The device
+path runs in `probes_device_unit` and
+compares the resulting distances and predecessors with the oracle for a
+negative-weight detour, an unreachable vertex, a tie, and the road-distance
+sample. It also verifies that finite negative underflow becomes a typed
+device error, not a saturated result. Eight software-only GoogleTest cases
+(`probes_unit`, in the main CTest suite) check a negative-weight detour, an unreachable vertex, a
 reachable negative cycle (also one whose vertices already sit at the
 `INT32_MIN` floor), saturated-but-acyclic distances, and — deliberately
 constructed so the tie is presented to a single argmin call rather than
@@ -62,18 +71,13 @@ any min-plus DP with an irregular, per-node fan-in (Viterbi/HMM decoding
 has the same shape) would hit the same one-vertex-at-a-time limit.
 
 **The cost representation, not the opcode shape, is where this probe hit a
-real limit.** PCAA's `cost_add` saturates finite sums at `INT32_MIN`. For
-PBQP this is harmless: `pbqp_max_finite_cost` restricts inputs so no
-reduction can reach the floor. Shortest paths have no such guarantee — a
-negative cycle keeps lowering distances — and once a cycle's vertices sit
-at `INT32_MIN`, saturating addition leaves them there, so a relaxation
-built only from PCAA arithmetic cannot tell "still decreasing" from
-"converged". The probe therefore answers negative-cycle detection (and
-flags distances below `INT32_MIN` as `distance_saturated`) with a separate
-exact 64-bit relaxation, outside anything PCAA would compute. A non-PBQP
-workload with unbounded negative accumulation needs either an input-range
-contract like PBQP's or a wider cost type/overflow flag; the current
-architecture offers neither.
+real limit.** Finite negative underflow is a device error; the software oracle
+retains a saturated 32-bit path only to study values outside the executable
+cost domain. Its separate exact 64-bit relaxation detects negative cycles and
+reports distances below `INT32_MIN`. Such cases are not claimed as successful
+accelerator workloads. A non-PBQP workload with unbounded negative
+accumulation needs an input-range contract like PBQP's or a wider cost
+type/overflow facility; the current architecture offers neither.
 
 ## 4. Would it benefit from the item-5 vector-output primitive, or needs something structurally different?
 
@@ -105,7 +109,8 @@ structurally different, larger one.
 
 ## 5. Limitations
 
-- Host-only reference implementation; no timing, cycle, or speedup claim.
+- Host-only SystemC accelerator exercise plus independent software oracle;
+  no timing, cycle, or speedup claim.
 - Only single-source Bellman-Ford was implemented; Viterbi/HMM decoding and
   all-pairs shortest path are named as structurally similar or
   structurally different (respectively) but not implemented here.
