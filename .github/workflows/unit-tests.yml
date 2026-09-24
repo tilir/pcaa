@@ -43,10 +43,14 @@ jobs:
       - name: Build Spike with extlib support
         run: |
           git clone --depth=1 https://github.com/riscv-software-src/riscv-isa-sim.git spike-source
+          # Keep CI independent of changes to Spike's moving default branch.
+          git -C spike-source fetch --depth=1 origin 19609434bb3d83448eec8796e8f0367c868efbda
+          git -C spike-source checkout --detach FETCH_HEAD
           mkdir spike-build
           cd spike-build
           ../spike-source/configure --prefix="$PWD/install"
-          make --jobs="$(nproc)"
+          # The hosted runner may expose more CPUs than its memory can support.
+          make --jobs=2
           make install
 
       - name: Configure and test Debug
