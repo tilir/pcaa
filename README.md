@@ -131,5 +131,5 @@ spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 bui
 ```
 
 The other generated ELFs run with the same Spike options. For architecture
-details and test methodology, see [`doc`](doc); for the public C descriptor
-ABI, see [`accel_protocol.h`](accelerator/include/accel_protocol.h).
+details and test methodology, see [`doc`](doc); for the compact wire-format
+constants and MMIO ABI, see [`accel_protocol.h`](accelerator/include/accel_protocol.h).
