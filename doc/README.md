@@ -15,6 +15,7 @@ start with [the research synthesis as of 1 October 2026](research-summary-2026-1
 | Document | Scope |
 | --- | --- |
 | [Architecture](arch.md) | MMIO, descriptor encoding, operand dimensions/strides, arithmetic, outputs, ordering, and errors |
+| [Microarchitecture (MAS 1.0.0)](mas.md) | ISA 1.0.0 implementation specification for future L2/RTL: one engine, tiled projections, bounded storage, memory ordering, and errors |
 | [pcaalib](pcaalib.md) | Semantic C API, codec, backends, and typed submission/completion statuses |
 | [Model and workload design](design.md) | L0–L3 refinement route, simulation ownership, trace/CSV methodology, and measurement revisions |
 | [L1 performance model](l1-performance-model.md) | Current service-cycle formulas, assumptions, and 28-cycle triangle calibration |
