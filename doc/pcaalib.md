@@ -142,7 +142,10 @@ For a batch, `pcaa_completion_t` has `has_batch_result`, `completed`, and
 `failed_index`. If the device wrote the batch result, `has_batch_result` is
 nonzero even when `wait` returns `PCAA_STATUS_DEVICE_ERROR`; then
 `failed_index` identifies the first failing child and `completed` counts
-successful children. If no result was written, `has_batch_result` is zero
+successful children. If the hosted backend cannot read the batch result,
+`wait` returns `PCAA_STATUS_MEMORY_ERROR` even if MMIO reports `ERROR`;
+`has_batch_result` stays zero because child progress is unavailable.
+If no result was written, `has_batch_result` is zero
 and the other fields are not diagnostic. The public API cannot distinguish
 bad cost data from a failed operand read on ISA 1.0.0: both yield device
 `ERROR`. It does not invent a more specific reason.

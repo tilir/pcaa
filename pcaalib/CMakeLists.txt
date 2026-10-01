@@ -31,7 +31,8 @@ pcaa_add_format_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/error_host.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/baremetal_device.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/systemc_device.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/pcaa_unit.cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/pcaa_unit.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/systemc_device_unit.cpp)
 pcaa_add_baremetal_c_sources(${CMAKE_CURRENT_SOURCE_DIR}/src/pcaa.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/codec.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/submission.c
@@ -49,3 +50,7 @@ pcaa_add_baremetal_headers(${CMAKE_CURRENT_SOURCE_DIR}/include/pcaa.h
 add_executable(pcaa_unit tests/pcaa_unit.cpp)
 target_link_libraries(pcaa_unit PRIVATE GTest::gtest_main pcaalib_host)
 add_test(NAME pcaa_unit COMMAND pcaa_unit)
+
+add_executable(pcaa_systemc_device_unit tests/systemc_device_unit.cpp)
+target_link_libraries(pcaa_systemc_device_unit PRIVATE GTest::gtest pcaa_core pcaalib_systemc)
+add_test(NAME pcaa_systemc_device_unit COMMAND pcaa_systemc_device_unit)

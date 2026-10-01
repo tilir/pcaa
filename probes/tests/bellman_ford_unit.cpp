@@ -120,6 +120,20 @@ TEST(BellmanFordTest, TieBreaksToFirstMinimalIncomingEdge) {
   EXPECT_EQ(result.predecessor[3], 1);
 }
 
+TEST(BellmanFordTest, InvalidEndpointsReturnAllUnreached) {
+  constexpr int kVertexCount = 2;
+  const std::vector<Edge> invalid = {
+      {-1, 1, 1}, {kVertexCount, 1, 1}, {0, -1, 1}, {0, kVertexCount, 1}};
+  for (const Edge &edge : invalid) {
+    // Validate the entire input before relaxing even a preceding valid edge.
+    const ShortestPathResult result = BellmanFord(kVertexCount, {{0, 1, 3}, edge}, 0);
+    EXPECT_EQ(result.distance, (std::vector<int32_t>{ACCEL_INF, ACCEL_INF}));
+    EXPECT_EQ(result.predecessor, (std::vector<int>{-1, -1}));
+    EXPECT_FALSE(result.has_negative_cycle);
+    EXPECT_FALSE(result.distance_saturated);
+  }
+}
+
 TEST(BellmanFordTest, SourceOutOfRangeReturnsAllUnreached) {
   const std::vector<Edge> edges = {{0, 1, 1}};
   const ShortestPathResult result = BellmanFord(2, edges, 5);

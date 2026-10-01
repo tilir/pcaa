@@ -14,7 +14,8 @@ extern "C" {
 #endif
 
 /* Optional detail from the batch result. Valid even on DEVICE_ERROR when the
- * failing child wrote a result; unavailable for failures before child execution. */
+ * failing child wrote a readable result; unavailable before child execution or
+ * when the backend cannot read the result (MEMORY_ERROR, even on device ERROR). */
 typedef struct pcaa_completion {
   int has_batch_result;
   uint32_t completed;

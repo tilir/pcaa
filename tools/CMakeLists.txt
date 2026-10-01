@@ -2,12 +2,20 @@
 # Copyright (C) 2026 PCAA contributors
 # Defines host graph-runner, generator, and reproducible characterization targets.
 
+add_library(pcaa_runner_kernel STATIC pbqp_model_kernel.cpp)
+target_link_libraries(pcaa_runner_kernel PUBLIC pcaa_core pcaa_pbqp pcaalib_systemc)
+target_include_directories(pcaa_runner_kernel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(pbqp_model_kernel_unit tests/pbqp_model_kernel_unit.cpp)
+target_link_libraries(pbqp_model_kernel_unit PRIVATE pcaa_runner_kernel GTest::gtest)
+add_test(NAME pbqp_model_kernel_unit COMMAND pbqp_model_kernel_unit)
+
 add_executable(pbqp_graph_generate pbqp_graph_generate.cpp)
 target_link_libraries(pbqp_graph_generate PRIVATE pcaa_graph_generator)
 
 add_executable(pcaa_graph_run_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_model PRIVATE PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_core pcaa_pbqp pcaalib_systemc)
+target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_runner_kernel)
 
 add_executable(pcaa_graph_run pbqp_run_launcher.cpp)
 add_dependencies(pcaa_graph_run pcaa_graph_run_model)
@@ -16,7 +24,7 @@ add_executable(pcaa_graph_run_timed_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_timed_model PRIVATE
   PCAA_GRAPH_RUN_TIMED
   PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_core pcaa_pbqp pcaalib_systemc)
+target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_runner_kernel)
 
 add_executable(pcaa_graph_run_timed pbqp_run_launcher.cpp)
 target_compile_definitions(pcaa_graph_run_timed PRIVATE
@@ -68,6 +76,9 @@ add_custom_target(fork_parallelism_characterization
   COMMENT "Characterizing exact-search fork domains against Model-C epoch work")
 
 pcaa_add_format_sources(
+  ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_model_kernel.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_model_kernel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbqp_model_kernel_unit.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run_launcher.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_graph_generate.cpp)

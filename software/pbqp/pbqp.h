@@ -165,7 +165,10 @@ typedef struct {
   size_t column_stride;
 } pbqp_matrix_view_t;
 
-/* One ordered MINPLUS_PROJECT -> COST_ADD_VECTOR chain. */
+/* One ordered MINPLUS_PROJECT -> COST_ADD_VECTOR chain. Each job owns its
+ * scores destination (matrix.rows elements); jobs may share that same view
+ * to accumulate projections in submission order. temporary has matrix.rows
+ * elements for backends that use caller-owned projection scratch. */
 typedef struct {
   pbqp_matrix_view_t matrix;
   pbqp_vector_view_t unary;

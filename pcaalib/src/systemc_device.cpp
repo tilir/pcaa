@@ -133,7 +133,7 @@ pcaa_status_t PcaaSystemCDevice::wait(pcaa_completion_t *completion) {
     return status == ACCEL_STATUS_DONE ? PCAA_STATUS_OK : PCAA_STATUS_DEVICE_ERROR;
   accel_batch_result_t result{};
   if (!memory_.read(batch_result_address_, &result, sizeof(result)))
-    return status == ACCEL_STATUS_DONE ? PCAA_STATUS_MEMORY_ERROR : PCAA_STATUS_DEVICE_ERROR;
+    return PCAA_STATUS_MEMORY_ERROR;
   if (completion != nullptr && (result.completed != 0 || result.failed_index != UINT32_MAX)) {
     completion->has_batch_result = 1;
     completion->completed = result.completed;

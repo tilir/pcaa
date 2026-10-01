@@ -55,6 +55,10 @@ ShortestPathResult BellmanFord(int vertex_count, const std::vector<Edge> &edges,
   if (vertex_count <= 0 || source < 0 || source >= vertex_count) {
     return result;
   }
+  for (const Edge &edge : edges) {
+    if (edge.from < 0 || edge.from >= vertex_count || edge.to < 0 || edge.to >= vertex_count)
+      return result;
+  }
   result.distance[static_cast<size_t>(source)] = 0;
 
   // Group edges by destination once, so each relaxation round below is

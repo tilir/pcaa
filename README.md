@@ -67,6 +67,8 @@ selection, `--maximum-search-nodes N` to bound exact branch search, and
 `--rn-batching per-edge` to compare against the retained scalar path. Run
 `build/pcaa_graph_run --help` for all options, including `--verbose` and
 machine-readable `--trace FILE`.
+Host cost-kernel failures report the specific PCAA status on stderr, including
+descriptor range errors and guest staging exhaustion.
 
 Input is line-oriented. Declare the node count, then node costs and row-major
 edge costs; blank lines and `#` comments are allowed. `INF` marks an

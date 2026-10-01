@@ -36,6 +36,8 @@ struct ShortestPathResult {
   bool distance_saturated;
 };
 
+// Invalid vertex count, source, or either edge endpoint returns all vertices
+// unreached, predecessors -1, and both diagnostic flags false.
 // Single-source shortest paths via Bellman-Ford. Each relaxation round does
 // one conceptual MAP_ADD_REDUCE_MIN_ARGMIN pass per vertex over its
 // incoming edges: cost-add each predecessor's current distance with the
