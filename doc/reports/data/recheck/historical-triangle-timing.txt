@@ -1,0 +1,37 @@
+command ["/tmp/pcaa-report-baseline/build/pcaa_graph_run_timed", "--solver", "bare-metal", "--verbose", "examples/triangle.pbqp"]
+optimum -3
+assignment 1 0 1
+solution heuristic
+strategy HEURISTIC_RN
+timing cycles=50 descriptor=32 operands=10 compute=6 result=8 primitives=6 batches=2
+projection project-scalar cycles=0 descriptor=0 operands=0 compute=0 result=0 descriptors=0
+projection project-vector cycles=0 descriptor=0 operands=0 compute=0 result=0 descriptors=0
+projection map3-scalar cycles=28 descriptor=16 operands=8 compute=4 result=4 descriptors=4
+projection map3-partial cycles=14 descriptor=8 operands=4 compute=4 result=2 descriptors=2
+projection map3-full cycles=10 descriptor=4 operands=3 compute=4 result=2 descriptors=1
+pcaa: doorbell descriptor=0x230
+pcaa: batch children=4
+pcaa: child=0 descriptor=0x148
+pcaa: primitive opcode=4 n=2 value=1 argmin=1
+pcaa: child=1 descriptor=0x180
+pcaa: primitive opcode=4 n=2 value=-4 argmin=1
+pcaa: child=2 descriptor=0x1b8
+pcaa: primitive opcode=4 n=2 value=6 argmin=1
+pcaa: child=3 descriptor=0x1f0
+pcaa: primitive opcode=4 n=2 value=1 argmin=1
+pcaa: doorbell descriptor=0x1a0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x128
+pcaa: primitive opcode=3 n=2 value=2 argmin=0
+pcaa: child=1 descriptor=0x160
+pcaa: primitive opcode=3 n=2 value=-1 argmin=0
+pcaa: reductions R0=1 R1=1 R2=1 RN=0 projections=0 projection_primitives=0 commits=0
+pcaa: RN core first=0 nodes/0 edges max=0 nodes/0 edges episodes=0 degree=0..0 after-RN R0=0 R1=0 R2=0 cascade-total=0 cascade-max=0
+pcaa: rn_cascades rn_episodes=0 rn_cascade_r0_total=0 rn_cascade_r1_total=0 rn_cascade_r2_total=0 rn_cascade_exact_total=0 rn_cascade_mean=0.000000 rn_cascade_max=0
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=0 cascade_len_2=0 cascade_len_3=0
+pcaa: RN traffic projection-read=0 projection-write=0 score-accumulation=0 commit-bytes=0
+pcaa: condition traffic operations=0 elements=0 matrix-read=0 unary-read=0 unary-write=0
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=4 project-accumulate-elements=0 slice-elements=0 map3-elements=8 argmin-elements=0 descriptors=6 batches=2 operand-bytes=128 result-bytes=48 bytes=176
+pcaa: views contiguous=6 strided=10
+pcaa: exact search nodes=0 branches=0 max-depth=0 limit-hits=0 pruned=0

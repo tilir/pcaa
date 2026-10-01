@@ -3,9 +3,15 @@
 # Copyright (C) 2026 PCAA contributors
 # Analyzes fixed-point encoding of DIMACS road-graph coordinate distances.
 
+require "csv"
 require "zlib"
 
-abort "usage: cost_representation_analyze.rb GRAPH.co.gz GRAPH.gr.gz" unless ARGV.length == 2
+unless (2..3).cover?(ARGV.length)
+  abort "usage: cost_representation_analyze.rb GRAPH.co.gz GRAPH.gr.gz [ARCS.csv.gz]"
+end
+raw = ARGV[2] && Zlib::GzipWriter.open(ARGV[2])
+raw.mtime = 0 if raw
+raw&.write(CSV.generate_line(%w[arc source target published_weight distance_m millimetres error_m]))
 
 coordinates = {}
 Zlib::GzipReader.open(ARGV[0]) do |file|
@@ -34,9 +40,16 @@ Zlib::GzipReader.open(ARGV[1]) do |file|
     haversine = Math.sin(latitude_delta / 2)**2 +
                 Math.cos(first_latitude) * Math.cos(second_latitude) *
                 Math.sin(longitude_delta / 2)**2
-    distances << 2 * earth_radius_metres * Math.asin(Math.sqrt(haversine))
+    distance = 2 * earth_radius_metres * Math.asin(Math.sqrt(haversine))
+    distances << distance
+    millimetres = (distance * 1_000).round
+    raw&.write(CSV.generate_line([distances.length - 1, fields[1], fields[2], fields[3],
+                                distance, millimetres,
+                                (millimetres / 1_000.0 - distance).abs]))
   end
 end
+
+raw&.close
 
 sorted = distances.sort
 quantile = lambda do |fraction|

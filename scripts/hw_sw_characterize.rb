@@ -4,9 +4,11 @@
 # Builds hypothetical HW/SW epochs from public PBQP JSONL solver traces.
 
 require "csv"
+require "fileutils"
 require "json"
 require "open3"
 require "tempfile"
+require "zlib"
 
 RUNNER = ENV.fetch("PCAA_RUNNER", "build/pcaa_graph_run")
 GENERATOR = ENV.fetch("PCAA_GENERATOR", "build/pbqp_graph_generate")
@@ -97,17 +99,30 @@ end
 header = %w[family seed solver policy model events project project_accumulate slice map3 argmin
             primitive_descriptors structural_operations operand_bytes result_bytes r0 r1 r2 rn]
 rows = []
+trace_dir = ENV["PCAA_TRACE_DIR"]
+FileUtils.mkdir_p(trace_dir) if trace_dir
+
 FAMILIES.each do |family, profile|
   (1001..1010).each do |seed|
     Tempfile.create(["pcaa-hwsw-", ".pbqp"]) do |graph|
       graph.write(invoke(GENERATOR, "--family", family, "--profile", profile, "--nodes", "20",
                          "--seed", seed.to_s))
       graph.flush
+      if trace_dir
+        File.write(File.join(trace_dir, "#{family}-#{seed}.pbqp"), File.read(graph.path))
+      end
       ([["local-search", "min-degree"]] + POLICIES.map { |policy| ["heuristic-rn", policy] } +
        POLICIES.map { |policy| ["heuristic-rn-local-search", policy] }).each do |solver, policy|
         Tempfile.create(["pcaa-events-", ".jsonl"]) do |trace|
           invoke(RUNNER, "--solver", "local", "--strategy", solver, "--rn-policy", policy,
                  "--trace", trace.path, graph.path)
+          if trace_dir
+            path = File.join(trace_dir, "#{family}-#{seed}-#{solver}-#{policy}.jsonl.gz")
+            Zlib::GzipWriter.open(path) do |raw|
+              raw.mtime = 0
+              raw.write(File.read(trace.path))
+            end
+          end
           events = File.readlines(trace.path, chomp: true).reject(&:empty?).map { |line| JSON.parse(line) }
           models = solver == "local-search" ? %w[LS-A-node LS-B-sweep] :
                    solver == "heuristic-rn-local-search" ? %w[A-operation B-reduction C-rn-cascade D-heuristic LS-A-node LS-B-sweep] :

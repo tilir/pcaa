@@ -1,0 +1,15 @@
+command ["timeout", "30s", "/tmp/pcaa-report-baseline/build/pcaa_graph_run", "--solver", "local", "--strategy", "exact-branch-reduce", "--maximum-search-nodes", "2000000", "--verbose", "--trace", "/home/tilir/pqbpaccel/doc/reports/data/recheck/search-25.jsonl", "/home/tilir/pqbpaccel/doc/reports/data/recheck/search-25.pbqp"]
+optimum -133
+assignment 1 0 1 1 1 1 0 0 1 1 0 1 1 0 1 1 1 1 1 1 0 1 0 0 0
+solution exact
+strategy EXACT_BRANCH_REDUCE
+pcaa: reductions R0=7582 R1=7582 R2=7582 RN=0 projections=0 projection_primitives=0 commits=0
+pcaa: RN core first=0 nodes/0 edges max=0 nodes/0 edges episodes=0 degree=0..0 after-RN R0=0 R1=0 R2=0 cascade-total=0 cascade-max=0
+pcaa: rn_cascades rn_episodes=0 rn_cascade_r0_total=0 rn_cascade_r1_total=0 rn_cascade_r2_total=0 rn_cascade_exact_total=0 rn_cascade_mean=0.000000 rn_cascade_max=0
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=0 cascade_len_2=0 cascade_len_3=0 cascade_len_4=0 cascade_len_5=0 cascade_len_6=0 cascade_len_7=0 cascade_len_8=0 cascade_len_9=0 cascade_len_10=0 cascade_len_11=0 cascade_len_12=0 cascade_len_13=0 cascade_len_14=0 cascade_len_15=0 cascade_len_16=0 cascade_len_17=0 cascade_len_18=0 cascade_len_19=0 cascade_len_20=0 cascade_len_21=0 cascade_len_22=0 cascade_len_23=0 cascade_len_24=0 cascade_len_25=0
+pcaa: RN traffic projection-read=0 projection-write=0 score-accumulation=0 commit-bytes=0
+pcaa: condition traffic operations=178700 elements=1372972 matrix-read=5491888 unary-read=5491888 unary-write=5491888
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=30328 project-accumulate-elements=0 slice-elements=1372972 map3-elements=60656 argmin-elements=0 descriptors=45492 batches=15164 operand-bytes=11954272 result-bytes=5855824 bytes=17810096
+pcaa: views contiguous=45492 strided=75820
+pcaa: exact search nodes=178701 branches=178700 max-depth=22 limit-hits=0 pruned=89318

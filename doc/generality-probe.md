@@ -4,8 +4,8 @@ This checks whether PCAA's opcode set is expressible for a non-PBQP
 min-plus workload, or accidentally PBQP-specific. It is a host-only,
 non-PBQP-graph probe (`probes/`) with two paths: an independent software
 oracle and a pcaalib client executing reductions through the hosted SystemC
-model. It adds no RTL, ABI change, or new opcode. PBQP's topology and RN/branch-and-bound control flow are absent
-here on purpose, so whatever this probe *does* need is a generic
+model. It adds no RTL, ABI change, or new opcode. PBQP topology and
+RN/branch-and-bound control flow are absent here, so whatever this probe *does* need is a generic
 cost-algebra requirement, not a PBQP one.
 
 ## 1. What it computes and how
@@ -30,10 +30,10 @@ path runs in `probes_device_unit` and
 compares the resulting distances and predecessors with the oracle for a
 negative-weight detour, an unreachable vertex, a tie, and the road-distance
 sample. It also verifies that finite negative underflow becomes a typed
-device error, not a saturated result. Eight software-only GoogleTest cases
-(`probes_unit`, in the main CTest suite) check a negative-weight detour, an unreachable vertex, a
-reachable negative cycle (also one whose vertices already sit at the
-`INT32_MIN` floor), saturated-but-acyclic distances, and — deliberately
+device error, not a saturated result. Software-only GoogleTest cases
+(`probes_unit`, in CTest) check negative-weight detours, unreachable vertices,
+invalid sources and edge endpoints, reachable negative cycles (including one
+whose vertices already sit at the `INT32_MIN` floor), saturated-but-acyclic distances, and — deliberately
 constructed so the tie is presented to a single argmin call rather than
 resolved by relaxation-round ordering — a genuine tie, confirming PCAA's
 "first equal minimum" rule produces a valid predecessor.
@@ -56,56 +56,51 @@ distance-only variant is a strict subset of what opcode 3 already covers.
 Opcodes 2/4 (`ADD3`) are not naturally used: relaxation here is a two-input
 map (predecessor distance + edge weight), not three.
 
-## 3. Where it needs something different from opcodes 1-4
+## 3. Limits of the current mapping
 
-Nothing about *arity or tie-breaking* needed to change — opcode 3's
-two-input, argmin-with-first-tie-wins shape was sufficient exactly as
-specified for PBQP. The one real gap is **granularity, not shape**: today,
-one call to this primitive handles one vertex's relaxation (`n` = that
-vertex's in-degree). A full Bellman-Ford round relaxes every vertex, i.e.
-issues one such call *per vertex per round*, exactly mirroring PBQP RN
-scoring's "one scalar-shaped op per graph decision" pattern (see
-[primitive-shape-study.md](primitive-shape-study.md)) — this is a property
-of the current opcode set's per-vertex granularity, not of PBQP itself:
-any min-plus DP with an irregular, per-node fan-in (Viterbi/HMM decoding
-has the same shape) would hit the same one-vertex-at-a-time limit.
+Opcode 3 handles one vertex's incoming-edge reduction and returns the local
+argmin index needed for predecessor reconstruction. The current probe retains
+that vertex-local schedule and gathers predecessor distances in software.
+It does not use opcodes 6–8.
 
-**The cost representation, not the opcode shape, is where this probe hit a
-real limit.** Finite negative underflow is a device error; the software oracle
-retains a saturated 32-bit path only to study values outside the executable
-cost domain. Its separate exact 64-bit relaxation detects negative cycles and
-reports distances below `INT32_MIN`. Such cases are not claimed as successful
-accelerator workloads. A non-PBQP workload with unbounded negative
-accumulation needs an input-range contract like PBQP's or a wider cost
-type/overflow facility; the current architecture offers neither.
+ISA 1.0.0 now has vector-output projections, but they require a rectangular
+affine matrix and shared vectors. A general edge list has varying in-degree
+and arbitrary predecessor indices. Opcode 7 also returns values without
+argmins; opcode 8 returns argmins, but still requires a regular matrix/vector
+shape. Neither directly consumes a flattened edge list with destination ids.
 
-## 4. Would it benefit from the item-5 vector-output primitive, or needs something structurally different?
+A dense, padded adjacency matrix could express several vertices using opcode 8
+with an additional zero vector and `INF` for absent edges. That changes staging
+and processes absent edges. Using one shared distance snapshot also changes
+the current in-place vertex-by-vertex relaxation schedule, so equivalence of
+predecessor/tie behavior would need a separate test. The existing probe does
+not establish that such a conversion is useful.
 
-**Yes, the same way RN projection would.** A hypothetical primitive that
-relaxes *all* vertices of a round in one descriptor — taking a
-flattened edge list (predecessor distances, weights, and a
-destination-vertex index per edge) and producing the whole updated
-distance/predecessor vector via internal segmented reduction — would
-collapse "one descriptor per vertex per round" to "one descriptor per
-round." That is architecturally the *same* generalization
-`primitive-shape-study.md` §3 already identifies for RN's PROJECT category
-(a length-D output computed from many independent reductions in one call);
-Bellman-Ford is further evidence it is a generic cost-algebra need, not a
-PBQP one.
+Finite negative underflow is another limit: it is a device error. The software
+oracle retains saturated 32-bit distances only to study out-of-domain paths;
+its exact 64-bit shadow detects negative cycles and distances below
+`INT32_MIN`. Those cases are not successful accelerator workloads. An
+unbounded-negative workload needs an input-range contract or wider arithmetic.
 
-**All-pairs shortest path is a different, higher generality tier**, and
-this probe deliberately did not implement it: all-pairs (Floyd-Warshall,
-or repeated Bellman-Ford squaring) is a genuine **matrix-matrix min-plus
-product** — `D[i][j] = min_k(D[i][k] + D[k][j])` over *all* `(i,j)` pairs
-at once, an `O(V^3)`-shaped operation with a full matrix output, not a
-vector one. This is exactly the same distinction
-`primitive-shape-study.md` §2 draws for PBQP's own R2/MAP3_REDUCE between
-a "partial vector-output" primitive (ratio D) and a "full matrix-output"
-primitive (ratio D^2) — all-pairs shortest path would want the matrix-output
-tier, single-source Bellman-Ford only needs the vector-output tier. Do not
-conflate the two when scoping a future primitive: single-source (this
-probe) motivates a vector primitive; all-pairs would motivate a
-structurally different, larger one.
+The public oracle validates `vertex_count`, `source`, and both endpoints of
+every edge before relaxation. Invalid input returns all vertices unreached,
+all predecessors -1, and both diagnostic flags false; no valid prefix is
+partially relaxed. This is covered by `probes_unit`.
+
+## 4. Possible larger operations
+
+A segmented reduction over a flattened edge list could produce all vertex
+results in one command, preserving separate reductions for each destination.
+That would require a different operand contract (segment boundaries or
+destination indices, and a predecessor gather), not merely increasing `m`
+on an existing projection. It is not part of ISA 1.0.0 or this probe.
+
+All-pairs shortest paths require another shape: for example,
+`D[i,j] = min_k(D[i,k] + D[k,j])` has a matrix output over all `(i,j)` pairs.
+Current opcode 8 produces one vector of independent reductions, not a complete
+matrix/matrix product. The [historical primitive-shape study](reports/primitive-shape-study.md)
+compares partial-vector and full-matrix work, but no full-matrix opcode was
+adopted. This probe implements single-source Bellman–Ford only.
 
 ## 5. Limitations
 
@@ -114,5 +109,5 @@ structurally different, larger one.
 - Only single-source Bellman-Ford was implemented; Viterbi/HMM decoding and
   all-pairs shortest path are named as structurally similar or
   structurally different (respectively) but not implemented here.
-- No new opcode, descriptor field, or ABI change was made or proposed;
-  this is evidence for a later ISA discussion, not that discussion itself.
+- The probe adds no opcode, descriptor field, or ABI change. Segmented and
+  matrix-output operations remain exploratory.

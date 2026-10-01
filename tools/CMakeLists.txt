@@ -44,6 +44,16 @@ add_custom_target(solver_characterization
 
 add_custom_target(rn_characterization DEPENDS solver_characterization)
 
+add_test(NAME solver_characterization_smoke
+  COMMAND ${RUBY_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/rn_characterize.rb
+    --runner $<TARGET_FILE:pcaa_graph_run>
+    --generator $<TARGET_FILE:pbqp_graph_generate>
+    --seeds 1001
+    --output ${PROJECT_BINARY_DIR}/solver-characterization-smoke.csv
+    --summary ${PROJECT_BINARY_DIR}/solver-characterization-smoke.md)
+set_tests_properties(solver_characterization_smoke
+  PROPERTIES PASS_REGULAR_EXPRESSION "rows=88 reduce-only-irreducible=")
+
 add_custom_target(hw_sw_characterization
   COMMAND ${CMAKE_COMMAND} -E env
     PCAA_RUNNER=$<TARGET_FILE:pcaa_graph_run>

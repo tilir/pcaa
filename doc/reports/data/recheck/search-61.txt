@@ -1,0 +1,1 @@
+command ["timeout", "45s", "/tmp/pcaa-report-baseline/build/pcaa_graph_run", "--solver", "local", "--strategy", "exact-branch-reduce", "--maximum-search-nodes", "1000000", "--verbose", "--trace", "/home/tilir/pqbpaccel/doc/reports/data/recheck/search-61.jsonl", "/home/tilir/pqbpaccel/examples/regalloc/044-instcombine-instcombiner-replaceinstuseswith-n16-d16-r1.pbqp"]

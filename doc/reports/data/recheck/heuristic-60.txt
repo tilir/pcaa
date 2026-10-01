@@ -1,0 +1,5 @@
+command ["timeout", "45s", "/tmp/pcaa-report-baseline/build/pcaa_graph_run", "--solver", "local", "--strategy", "heuristic-rn", "--trace", "/home/tilir/pqbpaccel/doc/reports/data/recheck/heuristic-60.jsonl", "/home/tilir/pqbpaccel/examples/regalloc/037-instcombine-densemapbase-grow-n20-d17.pbqp"]
+optimum 3000
+assignment 1 2 2 1 2 1 2 1 1 1 1 3 1 2 1 4 3 3 2 2
+solution heuristic
+strategy HEURISTIC_RN

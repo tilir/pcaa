@@ -73,15 +73,23 @@ Document public ABI structs directly where they are declared: state their purpos
 * `tools/pbqp_run.cpp`: host-side PBQP text-format runner through the SystemC model.
 * `examples`: user-facing PBQP text inputs for the host runner.
 * `examples/regalloc`: real PBQP graphs extracted from LLVM's RegAllocPBQP allocator; see
-  `doc/llvm-corpus-characterization.md`.
+  `doc/reports/llvm-corpus-characterization.md`.
+
+Keep measurement reports in `doc/reports/`, with their raw inputs/results in
+`doc/reports/data/`, checksums, reproduction commands, and verification scope.
+Keep historical measurement reports explicit about their solver/encoding
+revision. Do not relabel old descriptor counts or cycle tables as current,
+or resume an old characterization CSV with a different implementation revision.
+Keep timing formulas in `doc/l1-performance-model.md` and the model refinement
+route in `doc/design.md`; `doc/arch.md` states only observable contracts.
 
 Host tests use GoogleTest. Keep SystemC tests behind the required `sc_main` entry point, which
 initializes and runs GoogleTest; bare-metal ELFs remain freestanding and do not use GoogleTest.
 
 Keep `doc/arch.md` confined to architectural block facts. Put workload methodology, trace schemas,
 and unresolved interface-analysis material in `doc/design.md` and factual corpus output in
-`doc/workload-characterization.md` or a scoped solver report in `doc/`. The workload generator is host-only and may use standard C++
-containers; never enlarge bare-metal PBQP limits merely to characterize workloads.
+`doc/reports/`; keep the workload overview in `doc/workload-characterization.md`.
+The workload generator is host-only and may use standard C++ containers; never enlarge bare-metal PBQP limits merely to characterize workloads.
 
 `pcaa_graph_run` is the supported hands-on host entry point. Preserve its
 line-oriented `nodes`/`node`/`edge` format and its `INF` literal unless a
@@ -98,8 +106,10 @@ when its storage fits that environment.
 Only `EXACT_CORE_ENUMERATION` and `EXACT_BRANCH_REDUCE` may label a completed
 result exact; `LOCAL_SEARCH` must label its result a local optimum.
 The runner default is `HEURISTIC_RN`.
-The local mode's 65,536-choice practical domain limit is determined by the
-runner's reusable guest-memory staging area, not the PCAA protocol.
+The local mode's 65,536-choice input guard is a host-runner capacity policy,
+separate from the compact protocol's 65,535 maximum primitive dimension.
+Preserve checked narrowing: accepting a graph at the host guard must not
+silently encode an oversized command.
 
 `pcaa_graph_run` is intentionally untimed. Keep L1 reporting in the separate
 `pcaa_graph_run_timed` executable, whose fixed four-lane streaming configuration

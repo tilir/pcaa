@@ -318,7 +318,7 @@ REDUCTIONS_RE = /reductions R0=(\d+) R1=(\d+) R2=(\d+) RN=(\d+) projections=(\d+
 RN_CORE_RE = /RN core first=(\d+) nodes\/(\d+) edges max=(\d+) nodes\/(\d+) edges episodes=(\d+) degree=(\d+)\.\.(\d+) after-RN R0=(\d+) R1=(\d+) R2=(\d+) cascade-total=(\d+) cascade-max=(\d+)/
 CASCADES_RE = /rn_cascades rn_episodes=(\d+) rn_cascade_r0_total=(\d+) rn_cascade_r1_total=(\d+) rn_cascade_r2_total=(\d+) rn_cascade_exact_total=(\d+) rn_cascade_mean=([0-9.]+) rn_cascade_max=(\d+)/
 OPERATION_MIX_RE = /operation mix project-elements=(\d+) project-accumulate-elements=(\d+) slice-elements=(\d+) map3-elements=(\d+) argmin-elements=(\d+) descriptors=(\d+) batches=(\d+) operand-bytes=(\d+) result-bytes=(\d+) bytes=(\d+)/
-ISA_MIX_RE = /scalar-project-descriptors=(\d+) vector-project-descriptors=(\d+) vector-add-descriptors=(\d+) scalar-map3-descriptors=(\d+) partial-map3-descriptors=(\d+)/
+ISA_MIX_RE = /scalar-project-descriptors=(\d+) vector-project-descriptors=(\d+) vector-add-descriptors=(\d+)(?: vector-add-[^= ]+=\d+)* scalar-map3-descriptors=(\d+) partial-map3-descriptors=(\d+)/
 VIEWS_RE = /views contiguous=(\d+) strided=(\d+)/
 LOCAL_SEARCH_RE = /local search evaluations=(\d+) sweeps=(\d+) accepted-moves=(\d+) slices=(\d+) slice-elements=(\d+) argmin=(\d+)/
 

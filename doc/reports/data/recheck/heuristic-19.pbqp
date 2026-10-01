@@ -1,0 +1,302 @@
+# family=degree-4 profile=binary nodes=100 seed=1002 domain-size=2
+nodes 100
+node 2 2 -4
+node 2 4 -5
+node 2 1 1
+node 2 5 1
+node 2 -2 -1
+node 2 2 2
+node 2 2 -4
+node 2 -1 1
+node 2 0 2
+node 2 0 3
+node 2 0 -1
+node 2 -1 5
+node 2 0 -4
+node 2 1 -5
+node 2 -5 -5
+node 2 3 -5
+node 2 1 -3
+node 2 1 2
+node 2 -4 5
+node 2 0 3
+node 2 -1 0
+node 2 0 -4
+node 2 2 0
+node 2 2 3
+node 2 -3 -1
+node 2 -2 1
+node 2 -1 4
+node 2 4 3
+node 2 -1 -4
+node 2 1 3
+node 2 -2 -5
+node 2 3 -3
+node 2 -3 -3
+node 2 -5 2
+node 2 0 -3
+node 2 -4 -2
+node 2 0 -3
+node 2 -2 3
+node 2 -5 1
+node 2 -1 0
+node 2 -1 -5
+node 2 -3 -2
+node 2 -1 -3
+node 2 -1 -5
+node 2 3 3
+node 2 -4 2
+node 2 3 2
+node 2 3 4
+node 2 -1 -1
+node 2 -3 1
+node 2 2 -5
+node 2 -5 -3
+node 2 1 5
+node 2 5 1
+node 2 3 5
+node 2 3 -5
+node 2 4 -1
+node 2 3 -3
+node 2 -4 5
+node 2 0 -1
+node 2 2 5
+node 2 1 1
+node 2 0 -5
+node 2 -3 -5
+node 2 1 -1
+node 2 2 5
+node 2 5 -3
+node 2 0 3
+node 2 2 4
+node 2 1 -1
+node 2 3 -5
+node 2 2 -4
+node 2 -1 -3
+node 2 5 5
+node 2 1 -3
+node 2 4 3
+node 2 1 -4
+node 2 4 -2
+node 2 -3 -3
+node 2 5 3
+node 2 2 5
+node 2 -4 4
+node 2 -5 -2
+node 2 5 -3
+node 2 -1 -1
+node 2 -3 2
+node 2 0 -4
+node 2 0 -5
+node 2 1 -1
+node 2 0 -2
+node 2 -2 -4
+node 2 2 3
+node 2 -1 2
+node 2 -4 1
+node 2 4 -1
+node 2 -2 -2
+node 2 5 -4
+node 2 -5 3
+node 2 -2 1
+node 2 3 1
+edge 0 1 2 1 -3 -5
+edge 0 2 2 -3 -3 0
+edge 1 2 1 -3 -1 4
+edge 1 3 -2 4 5 5
+edge 2 3 1 4 2 3
+edge 2 4 2 -5 -1 -3
+edge 3 4 2 2 -2 4
+edge 3 5 -4 -1 4 1
+edge 4 5 0 4 4 2
+edge 4 6 -4 1 3 3
+edge 5 6 3 -5 -2 -1
+edge 5 7 -2 3 5 -3
+edge 6 7 0 2 2 -3
+edge 6 8 4 -5 -2 -1
+edge 7 8 -5 -2 5 1
+edge 7 9 -1 -2 -3 1
+edge 8 9 -5 -3 -4 -1
+edge 8 10 1 -3 2 -4
+edge 9 10 -1 -1 1 -4
+edge 9 11 -3 5 -3 -2
+edge 10 11 -5 -3 -4 3
+edge 10 12 -3 5 -2 -4
+edge 11 12 4 -3 5 -3
+edge 11 13 1 -3 -2 -3
+edge 12 13 3 -2 2 4
+edge 12 14 5 -4 3 3
+edge 13 14 -4 -2 0 0
+edge 13 15 0 -4 4 0
+edge 14 15 -1 -5 -4 3
+edge 14 16 -1 -4 2 0
+edge 15 16 -3 2 5 -5
+edge 15 17 -3 5 -5 0
+edge 16 17 5 -3 5 1
+edge 16 18 2 -2 1 -2
+edge 17 18 1 -2 4 4
+edge 17 19 -5 3 0 2
+edge 18 19 -4 -3 -5 -2
+edge 18 20 0 5 -2 -4
+edge 19 20 -1 2 -4 -5
+edge 19 21 -4 -5 -1 -5
+edge 20 21 -4 -1 5 -2
+edge 20 22 -5 -3 -1 3
+edge 21 22 -4 2 -1 -5
+edge 21 23 -3 -3 5 0
+edge 22 23 1 -2 -4 -4
+edge 22 24 4 1 -5 -2
+edge 23 24 3 -5 -2 -2
+edge 23 25 4 0 -2 4
+edge 24 25 4 3 0 -4
+edge 24 26 -2 -1 -1 5
+edge 25 26 1 -3 0 4
+edge 25 27 4 -5 3 5
+edge 26 27 0 3 -2 -4
+edge 26 28 2 -2 -1 3
+edge 27 28 1 5 2 2
+edge 27 29 1 -3 1 0
+edge 28 29 -1 -2 5 3
+edge 28 30 5 4 0 1
+edge 29 30 4 -2 3 0
+edge 29 31 -4 -5 -3 2
+edge 30 31 4 -2 1 -1
+edge 30 32 -3 -4 3 -3
+edge 31 32 3 -4 2 5
+edge 31 33 -2 1 5 -1
+edge 32 33 2 4 -5 3
+edge 32 34 4 5 5 -3
+edge 33 34 -1 -3 3 3
+edge 33 35 -3 0 5 4
+edge 34 35 5 5 -2 -3
+edge 34 36 3 1 0 5
+edge 35 36 3 2 -3 0
+edge 35 37 5 3 4 -4
+edge 36 37 5 -4 0 5
+edge 36 38 5 -1 -3 5
+edge 37 38 -3 1 1 -4
+edge 37 39 0 5 5 1
+edge 38 39 -1 -1 0 5
+edge 38 40 3 4 5 -2
+edge 39 40 -4 1 1 0
+edge 39 41 0 -1 -5 -2
+edge 40 41 3 5 -2 -1
+edge 40 42 3 -4 5 3
+edge 41 42 -2 4 5 -5
+edge 41 43 5 2 -2 -4
+edge 42 43 -4 -3 0 0
+edge 42 44 -5 -5 -5 0
+edge 43 44 4 -3 0 4
+edge 43 45 1 -1 1 -5
+edge 44 45 -3 -1 -5 -4
+edge 44 46 2 5 -2 -4
+edge 45 46 -2 4 -2 -5
+edge 45 47 -1 -5 -1 5
+edge 46 47 -2 -4 2 4
+edge 46 48 -5 -5 4 -1
+edge 47 48 -4 5 -1 -3
+edge 47 49 2 -4 0 -3
+edge 48 49 0 -5 1 -1
+edge 48 50 0 0 -2 4
+edge 49 50 -2 -4 -1 0
+edge 49 51 4 -4 0 -2
+edge 50 51 3 1 4 -2
+edge 50 52 -3 0 -2 -1
+edge 51 52 -3 -1 3 -4
+edge 51 53 -4 -3 0 -3
+edge 52 53 -5 -2 -2 5
+edge 52 54 2 -3 2 -3
+edge 53 54 3 -2 1 3
+edge 53 55 2 5 -1 -2
+edge 54 55 5 4 -5 1
+edge 54 56 2 4 -4 1
+edge 55 56 4 2 3 5
+edge 55 57 3 -2 4 -5
+edge 56 57 0 -4 4 -4
+edge 56 58 5 1 4 2
+edge 57 58 -3 1 5 -4
+edge 57 59 -4 -2 4 1
+edge 58 59 -5 -5 -2 -3
+edge 58 60 -2 -3 -5 1
+edge 59 60 1 4 -3 -1
+edge 59 61 -2 4 -1 4
+edge 60 61 3 2 -1 4
+edge 60 62 -5 0 0 -4
+edge 61 62 -5 0 0 3
+edge 61 63 3 -1 -2 3
+edge 62 63 -3 5 4 5
+edge 62 64 1 -4 4 -3
+edge 63 64 3 3 1 1
+edge 63 65 -1 -4 -4 0
+edge 64 65 1 0 -3 -5
+edge 64 66 -3 -1 -4 -4
+edge 65 66 4 -3 -3 -2
+edge 65 67 4 -4 -5 -1
+edge 66 67 4 3 -3 2
+edge 66 68 -5 4 1 -3
+edge 67 68 -5 0 -1 -5
+edge 67 69 -4 5 0 0
+edge 68 69 3 -2 2 4
+edge 68 70 0 0 0 2
+edge 69 70 4 -3 3 4
+edge 69 71 -2 0 -1 -3
+edge 70 71 2 -3 4 1
+edge 70 72 -2 -3 -4 3
+edge 71 72 1 -1 1 3
+edge 71 73 3 3 2 2
+edge 72 73 -4 -1 5 -1
+edge 72 74 -4 5 0 5
+edge 73 74 2 1 3 3
+edge 73 75 -3 -2 -2 -4
+edge 74 75 3 -5 1 1
+edge 74 76 4 -2 -1 4
+edge 75 76 -1 3 -3 -2
+edge 75 77 4 0 -1 5
+edge 76 77 0 -2 5 0
+edge 76 78 5 2 -4 3
+edge 77 78 -3 -5 -4 3
+edge 77 79 1 0 0 1
+edge 78 79 -5 -5 5 -4
+edge 78 80 -4 -3 0 -2
+edge 79 80 3 1 0 -2
+edge 79 81 1 1 3 -5
+edge 80 81 -5 -2 4 5
+edge 80 82 4 5 -3 -3
+edge 81 82 3 -2 -3 4
+edge 81 83 -5 4 1 2
+edge 82 83 1 -5 0 2
+edge 82 84 3 5 0 0
+edge 83 84 -5 4 -4 2
+edge 83 85 -3 5 2 4
+edge 84 85 -5 -5 -2 4
+edge 84 86 -2 2 -1 -1
+edge 85 86 -2 0 -5 -5
+edge 85 87 1 0 1 -1
+edge 86 87 -3 -3 -5 -2
+edge 86 88 -2 -3 5 -4
+edge 87 88 -3 5 1 0
+edge 87 89 -5 2 5 -4
+edge 88 89 -4 2 0 2
+edge 88 90 4 4 5 4
+edge 89 90 -3 -3 -5 2
+edge 89 91 5 -3 1 4
+edge 90 91 -4 2 -5 -3
+edge 90 92 1 4 -5 -1
+edge 91 92 4 3 5 3
+edge 91 93 4 4 -4 5
+edge 92 93 -2 2 -3 2
+edge 92 94 -1 5 1 -1
+edge 93 94 5 -1 3 5
+edge 93 95 -5 5 -2 -5
+edge 94 95 -2 -4 -3 5
+edge 94 96 3 4 0 5
+edge 95 96 -5 1 -3 4
+edge 95 97 5 -1 -4 -1
+edge 96 97 2 3 5 -3
+edge 96 98 -5 -4 3 4
+edge 97 98 2 4 -4 -3
+edge 97 99 5 5 -5 5
+edge 98 99 4 -5 1 -4
+edge 0 98 -2 0 -5 -4
+edge 0 99 -1 -3 2 0
+edge 1 99 -5 5 3 -5

@@ -1,18 +1,23 @@
 # ISA-decision data-gathering: index
 
-This is a pure index over the first six work items (`prompt-gather.md`) and
-round 3's seven follow-ups (`prompt-arch.md`). It points at each item's data
-and report and lists the open questions that item raised but did not answer.
-It contains no synthesis or recommendation — the ISA decision itself is a
-separate, later conversation, using this data as input.
+This is the historical evidence index from the pre-ISA data-gathering rounds
+(report revision `dd1402b`). The adopted outcome is recorded in
+[isa-v1-decision.md](isa-v1-decision.md); current command contracts and report
+status are indexed in [README.md](README.md). Questions below describe what
+each original work item measured, not a list of all currently unresolved work.
+
+ISA 1.0.0 subsequently adopted vector projection/add, partial-vector MAP3,
+affine strides, and per-output first-index ties. Compact encoding then replaced
+the fixed-width descriptor. The current Bellman–Ford probe additionally executes
+opcode 3 through SystemC; it is no longer software-oracle-only.
 
 ## Item 1: real PBQP graph extraction from LLVM RegAllocPBQP
 
 - **Data**: `examples/regalloc/*.pbqp` (491 graphs). Instrumentation:
   `llc -pcaa-pbqp-dump-dir=<dir>` in a local LLVM checkout (patch not part
   of this repo).
-- **Report**: [doc/llvm-corpus-characterization.md](llvm-corpus-characterization.md)
-  §1-7.
+- **Report**: [doc/reports/llvm-corpus-characterization.md](reports/llvm-corpus-characterization.md)
+  §1–6.
 - **Open questions this item raised but did not answer**:
   - Only 4 compilation units (2 LLVM, 2 CUDD) were sampled; how much would
     N/D distribution shift with a broader, more diverse corpus (different
@@ -31,8 +36,8 @@ separate, later conversation, using this data as input.
 - **Data**: same `build/scaling-runs.csv`, rows tagged `sweeps=corpus`,
   `family=llvm-regalloc` (491 rows). Script:
   `scripts/scaling_characterize.rb --corpus-dir`.
-- **Report**: [doc/llvm-corpus-characterization.md](llvm-corpus-characterization.md)
-  §8.
+- **Report**: [doc/reports/llvm-corpus-characterization.md](reports/llvm-corpus-characterization.md)
+  §7.
 - **Open questions**:
   - RN-policy comparison (max-degree/min-work) was not run against the
     real corpus, only min-degree — `--corpus-policy` exists on the script
@@ -42,30 +47,28 @@ separate, later conversation, using this data as input.
     whether individual fill edges are created and simply outweighed by
     removals, or never created at all, is unresolved.
   - Only graphs that solved under the sweep's default timeout are
-    represented; whether the ~450 uncharacterized real graphs (this item
-    covered all 491, but item 3's exact-search subset did not) follow the
-    same RN-fragmentation pattern at larger N is untested.
+    represented; exact-search behavior of the ~450 graphs omitted from item 3's
+    tractability-selected subset is untested; heuristic RN was measured
+    on all 491 graphs in this item.
 
 ## Item 3: branch-and-bound pruning
 
-- **Data**: `/tmp/.../branch-bound-synthetic.csv` and
-  `branch-bound-corpus*.csv` (not committed — regenerate via the commands
-  in the report; the pruning statistic itself, `search_nodes_pruned`, is
-  in every `pcaa_graph_run --verbose` exact-branch-reduce run and in
-  `pbqp_statistics_t`). Code: `software/pbqp/pbqp.cpp`
-  (`SolveBranchAndReduce`, `RemainingCoreLowerBound`), test:
+- **Data**: [explicit search inputs and results](reports/data/recheck/branch-bound.csv),
+  with per-input stdout/diagnostic summaries and JSONL traces alongside it.
+  The 2026-10-01 recheck replaces the original unspecified real sample.
+  Code: `SolveBranchAndReduce`, `RemainingCoreLowerBound`; RV64 regression:
   `software/tests/pbqp_rn.c`.
-- **Report**: [doc/branch-bound-characterization.md](branch-bound-characterization.md).
+- **Report**: [doc/reports/branch-bound-characterization.md](reports/branch-bound-characterization.md).
 - **Open questions**:
   - Level (parallel) frontier width was not measured: the trace carries no
     per-event depth. Only depth and the exact depth-first open-node bound
     `1 + depth * (D_max - 1)` are reported; tree sizes (up to ~178k visited
     nodes) leave level width unbounded by the data.
   - Pruning effectiveness on real graphs with RN 4-8 was highly
-    graph-dependent (0.5%-86.4% pruned in a 7-graph sample) and not
+    graph-dependent (1.9%-87.7% pruned in the explicit 7-completion sample) and not
     predictable from RN count alone; the underlying cause (cost-value
     separation) was not characterized further.
-  - Only 39 of 491 real corpus graphs were exact-search-tractable within
+  - Only 39 of 491 real corpus graphs were selected, and 37 completed within
     this pass's timeouts; the larger-RN majority's branch-and-bound shape
     is unknown.
 
@@ -75,7 +78,7 @@ separate, later conversation, using this data as input.
   (270 rows, strategies `local-search`/`heuristic-rn-local-search`, N up
   to 100/50, D=2,4,8). Script: `scripts/scaling_characterize.rb --sweeps
   local-search`.
-- **Report**: [doc/scaling-characterization.md](scaling-characterization.md#10-local-search-at-scale).
+- **Report**: [doc/reports/scaling-characterization.md](reports/scaling-characterization.md#10-local-search-at-scale).
 - **Open questions**:
   - N was capped well below the main reduction/RN sweep (100 vs 1000) because
     of local search's cost; whether the observed linear-in-N sweep-count
@@ -94,23 +97,24 @@ separate, later conversation, using this data as input.
   columns (`project_elements`, `projection_primitives`, `map3_elements`,
   etc.) from the graph-size/domain-size sweeps; no new runs. Code read:
   `software/pbqp/pbqp.cpp` (`ReduceRN`, `ReduceR2`, `RunLocalDescent`).
-- **Report**: [doc/primitive-shape-study.md](primitive-shape-study.md).
+- **Report**: [doc/reports/primitive-shape-study.md](reports/primitive-shape-study.md).
 - **Open questions**:
   - The D-ratio findings (D for PROJECT, D or D^2 for MAP3 depending on
     primitive generality) are descriptor-*count* projections only; whether
     a fused primitive is worth its added hardware complexity at any
     specific D is explicitly out of scope (no cycle/area estimate exists
     yet to weigh against it).
-  - PROJECT_ACCUMULATE and SLICE_ACCUMULATE have zero current descriptors
-    (pure host arithmetic); how much host CPU time that actually costs
+  - In the scalar baseline, PROJECT_ACCUMULATE and SLICE_ACCUMULATE had no
+    device descriptors; default RN accumulation now uses opcode 6, while
+    conditioning/local-search slice accumulation stays in software; how much host CPU time that actually costs
     today, and whether it is a bottleneck worth moving to the device, was
     not measured (this item is data-shape only, not a host-timing study).
 
 ## Item 6: generality probe (Bellman-Ford)
 
-- **Data**: `probes/src/bellman_ford.cpp`, tested by `probes_unit` (8
-  GoogleTest cases, in the main CTest suite).
-- **Report**: [doc/generality-probe.md](generality-probe.md).
+- **Data**: `probes/src/bellman_ford.cpp`, tested by `probes_unit`, plus the
+  SystemC device comparison in `probes_device_unit` (both in CTest).
+- **Report**: [doc/reports/generality-probe.md](generality-probe.md).
 - **Open questions**:
   - Only single-source Bellman-Ford was implemented. Viterbi/HMM decoding
     was named as structurally similar (irregular per-node fan-in, same
@@ -132,7 +136,7 @@ separate, later conversation, using this data as input.
   `build/isa-round3-per-edge.csv` (control), and the corresponding
   `build/vector-cycle-*.csv` timed subsets. Code: `ReduceRN` and
   `--rn-batching per-node|per-edge`.
-- **Report**: [doc/batch-restructuring-study.md](batch-restructuring-study.md).
+- **Report**: [doc/reports/batch-restructuring-study.md](reports/batch-restructuring-study.md).
 - **Open questions**:
   - The L1 model prices each removed top-level batch descriptor at five
     cycles but contains no host/device round-trip latency; measured hardware
@@ -147,7 +151,7 @@ separate, later conversation, using this data as input.
   D=2..32 points and all 491 LLVM graphs by
   `scripts/vector_cycle_project.rb`.
 - **Report**:
-  [doc/vector-primitive-cycle-projection.md](vector-primitive-cycle-projection.md).
+  [doc/reports/vector-primitive-cycle-projection.md](reports/vector-primitive-cycle-projection.md).
 - **Open questions**:
   - The projection assumes perfect descriptor-local reuse and today's
     four-lane throughput; control, buffering, and stride-unit costs need an
@@ -161,7 +165,7 @@ separate, later conversation, using this data as input.
   `pbqp_solver_event_t::branch_domain`, the JSON writer, and
   `scripts/fork_parallelism_characterize.rb`.
 - **Report**:
-  [doc/fork-parallelism-characterization.md](fork-parallelism-characterization.md).
+  [doc/reports/fork-parallelism-characterization.md](reports/fork-parallelism-characterization.md).
 - **Open questions**:
   - Branching factor times a per-graph Model-C epoch is a work proxy, not the
     true cost or overlap of exact child bounds.
@@ -175,7 +179,7 @@ separate, later conversation, using this data as input.
   `scripts/cost_representation_analyze.rb`; published every-100,000th-arc
   samples in `probes_unit`; direct source audit of PBQP, accelerator, and probe
   arithmetic.
-- **Report**: [doc/cost-representation-study.md](cost-representation-study.md).
+- **Report**: [doc/reports/cost-representation-study.md](reports/cost-representation-study.md).
 - **Open questions**:
   - A scale/rebasing policy belongs to each future non-PBQP workload; the
     descriptor ABI has no representation metadata today.
@@ -186,13 +190,12 @@ separate, later conversation, using this data as input.
 
 ## Round 3, Item E: arithmetic and future tie semantics
 
-- **Specification diff**: [doc/arch.md](arch.md) §4.1 names `INF` as the
-  unconditional absorbing element (`INF + x = INF` for either sign), and §12
-  requires every output of a future vector-reduction primitive to apply its
-  own local first-index tie break.
+- **Specification diff**: [doc/reports/arch.md](arch.md) §4.1 names `INF` as the
+  absorbing element for valid costs (`INF + x = INF` for either sign), and §8.8
+  specifies each output's independent first-index tie break.
 - **Open questions**:
-  - No vector-output opcode exists, so output layout and how local argmins are
-    represented remain future descriptor-design work.
+  - Resolved for current ISA 1.0.0: opcode 7 writes costs and opcode 8 writes
+    independent `{value, index}` records. Cross-output tie ordering is unnecessary.
 
 ## Round 3, Item F: negative underflow is an error
 
@@ -200,7 +203,7 @@ separate, later conversation, using this data as input.
   command-path addition used by `accelerator/src/accelerator.cpp` and the
   software primitive kernel in `software/pbqp/pbqp.cpp`; regression:
   `accelerator/tests/systemc_unit.cpp`.
-- **Specification diff**: [doc/arch.md](arch.md) §4.1 and §9.
+- **Specification diff**: [doc/reports/arch.md](arch.md) §4.1 and §9.
 - **Resolution**: negative saturation was replaced by command `ERROR`.
   Keeping the clamp would merge distinct very-negative sums and create a
   false argmin tie. A global input-bound contract was rejected because the
@@ -220,11 +223,11 @@ separate, later conversation, using this data as input.
   existing scaling/RN CSVs; full results are in
   `build/isa-round3-scaling.csv`.
 - **Report**:
-  [doc/matrix-access-pattern-study.md](matrix-access-pattern-study.md).
-- **Design note**: if a future matrix/vector-output primitive is introduced,
-  give every operand an explicit stride (using the descriptor's reserved
-  `m`/`k` extension route) rather than a row/column layout mode. Current
-  storage has one row-major padded representation; rows and columns are the
+  [doc/reports/matrix-access-pattern-study.md](reports/matrix-access-pattern-study.md).
+- **Design note**: the study recommended explicit operand strides for a
+  future matrix/vector-output primitive rather than layout modes.
+  ISA 1.0.0 adopted affine strides; compact encoding has `n`/`m` dimensions
+  and no universal `k` field. Current storage has one row-major padded representation; rows and columns are the
   same view type with different stride values, not different layouts.
 - **Open questions**:
   - Existing counters are global per solve and cannot attribute shape to

@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 PCAA contributors
+// Records the RV64 size of the historical batch adapter context.
+
+#include "pbqp_accelerator.h"
+int pcaa_report_context_bytes = sizeof(pbqp_accelerator_kernel_context_t);

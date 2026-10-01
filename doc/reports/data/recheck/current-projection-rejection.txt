@@ -1,0 +1,3 @@
+command ["ruby", "scripts/vector_cycle_project.rb", "--rn-batching", "per-node", "--output", "/tmp/pcaa-unsupported-projection.csv"]
+exit status: 1
+projection requires a scalar baseline; rerun with --rn-batching per-edge

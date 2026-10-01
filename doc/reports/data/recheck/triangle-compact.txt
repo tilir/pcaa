@@ -1,0 +1,27 @@
+command ["build/pcaa_graph_run", "--solver", "bare-metal", "--strategy", "heuristic-rn", "--verbose", "examples/triangle.pbqp"]
+optimum -3
+assignment 1 0 1
+solution heuristic
+strategy HEURISTIC_RN
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x170
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x128
+pcaa: primitive kind=2 n=2 value=2 argmin=0
+pcaa: child=1 descriptor=0x148
+pcaa: primitive kind=2 n=2 value=-1 argmin=0
+pcaa: reductions R0=1 R1=1 R2=1 RN=0 projections=0 projection_primitives=0 commits=0
+pcaa: RN core first=0 nodes/0 edges max=0 nodes/0 edges episodes=0 degree=0..0 after-RN R0=0 R1=0 R2=0 cascade-total=0 cascade-max=0
+pcaa: rn_cascades rn_episodes=0 rn_cascade_r0_total=0 rn_cascade_r1_total=0 rn_cascade_r2_total=0 rn_cascade_exact_total=0 rn_cascade_mean=0.000000 rn_cascade_max=0
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=0 cascade_len_2=0 cascade_len_3=0
+pcaa: RN traffic projection-read=0 projection-write=0 score-accumulation=0 commit-bytes=0
+pcaa: condition traffic operations=0 elements=0 matrix-read=0 unary-read=0 unary-write=0
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=4 project-accumulate-elements=0 slice-elements=0 map3-elements=8 argmin-elements=0 descriptors=4 batches=2 operand-bytes=128 result-bytes=48 bytes=176 scalar-project-descriptors=2 vector-project-descriptors=0 vector-add-descriptors=0 vector-add-dst-src0=0 vector-add-dst-src1=0 vector-add-inplace=0 vector-add-general=0 scalar-map3-descriptors=0 partial-map3-descriptors=2
+pcaa: views contiguous=6 strided=10
+pcaa: encoding old-fixed-bytes=480 compact-bytes=256 child-bytes=192 vector-add-total=0 dst-src0=0 dst-src1=0 inplace=0 general=0
+pcaa: encoding primitive-counts op1=0 op2=0 op3=2 op4=0 op5=0 op6=0 op7=0 op8=2
+pcaa: exact search nodes=0 branches=0 max-depth=0 limit-hits=0 pruned=0

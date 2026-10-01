@@ -1,0 +1,7 @@
+source,location,unit,technology,metric,value,url
+Horowitz 2014,figure 1.1.9,integer-add-32,45nm 0.9V,energy_pJ,0.1,https://doi.org/10.1109/ISSCC.2014.6757323
+Horowitz 2014,figure 1.1.9,floating-add-32,45nm 0.9V,energy_pJ,0.9,https://doi.org/10.1109/ISSCC.2014.6757323
+Zhang et al. 2018,table 2,merged-DP-dual-SP,Virtex-5,LUTs,1565,https://doi.org/10.1049/IET-CDT.2016.0200
+Zhang et al. 2018,table 2,merged-DP-dual-SP,Stratix-III,ALUTs,1686,https://doi.org/10.1049/IET-CDT.2016.0200
+Zhang et al. 2018,section 4.1,merged-DP-dual-SP,both devices,latency_cycles,6,https://doi.org/10.1049/IET-CDT.2016.0200
+Zhang et al. 2018,table 4,SP-IP-LUT-only,Virtex-5,LUTs,395,https://doi.org/10.1049/IET-CDT.2016.0200

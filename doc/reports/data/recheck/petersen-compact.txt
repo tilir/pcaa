@@ -1,0 +1,63 @@
+command ["build/pcaa_graph_run", "--solver", "bare-metal", "--strategy", "heuristic-rn", "--verbose", "examples/petersen.pbqp"]
+optimum 0
+assignment 0 0 0 0 0 0 0 0 0 0
+solution heuristic
+strategy HEURISTIC_RN
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x170
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x128
+pcaa: primitive kind=2 n=2 value=0 argmin=0
+pcaa: child=1 descriptor=0x148
+pcaa: primitive kind=2 n=2 value=3 argmin=0
+pcaa: reductions R0=1 R1=1 R2=6 RN=2 projections=6 projection_primitives=6 commits=12
+pcaa: RN core first=10 nodes/15 edges max=10 nodes/15 edges episodes=2 degree=3..3 after-RN R0=1 R1=1 R2=6 cascade-total=8 cascade-max=5
+pcaa: rn_cascades rn_episodes=2 rn_cascade_r0_total=1 rn_cascade_r1_total=1 rn_cascade_r2_total=6 rn_cascade_exact_total=8 rn_cascade_mean=4.000000 rn_cascade_max=5
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=0 cascade_len_2=0 cascade_len_3=1 cascade_len_4=0 cascade_len_5=1 cascade_len_6=0 cascade_len_7=0 cascade_len_8=0 cascade_len_9=0 cascade_len_10=0
+pcaa: RN traffic projection-read=192 projection-write=48 score-accumulation=12 commit-bytes=144
+pcaa: condition traffic operations=2 elements=12 matrix-read=48 unary-read=48 unary-write=48
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=28 project-accumulate-elements=12 slice-elements=12 map3-elements=48 argmin-elements=0 descriptors=26 batches=9 operand-bytes=992 result-bytes=352 bytes=1344 scalar-project-descriptors=2 vector-project-descriptors=6 vector-add-descriptors=6 vector-add-dst-src0=0 vector-add-dst-src1=6 vector-add-inplace=6 vector-add-general=0 scalar-map3-descriptors=0 partial-map3-descriptors=12
+pcaa: views contiguous=56 strided=38
+pcaa: encoding old-fixed-bytes=2800 compact-bytes=1600 child-bytes=1312 vector-add-total=6 dst-src0=0 dst-src1=6 inplace=6 general=0
+pcaa: encoding primitive-counts op1=0 op2=0 op3=2 op4=0 op5=0 op6=6 op7=6 op8=12
+pcaa: exact search nodes=0 branches=0 max-depth=0 limit-hits=0 pruned=0

@@ -1,0 +1,2 @@
+command: spike --extlib=/tmp/pcaa-report-baseline/build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 /tmp/pcaa-report-baseline/build/pbqp_rn.elf
+exit status: 0 (bare-metal tests report success through tohost; no stdout)

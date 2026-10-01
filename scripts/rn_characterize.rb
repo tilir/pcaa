@@ -101,7 +101,7 @@ def solve(runner, path, strategy, policy: "min-degree", exact_limit: 0)
     /operation mix project-elements=(\d+) project-accumulate-elements=(\d+) slice-elements=(\d+) map3-elements=(\d+) argmin-elements=(\d+) descriptors=(\d+) batches=(\d+) operand-bytes=(\d+) result-bytes=(\d+) bytes=(\d+)/,
     "operation mix")
   result[:isa_mix] = metrics(diagnostics,
-    /scalar-project-descriptors=(\d+) vector-project-descriptors=(\d+) vector-add-descriptors=(\d+) scalar-map3-descriptors=(\d+) partial-map3-descriptors=(\d+)/,
+    /scalar-project-descriptors=(\d+) vector-project-descriptors=(\d+) vector-add-descriptors=(\d+)(?: vector-add-[^= ]+=\d+)* scalar-map3-descriptors=(\d+) partial-map3-descriptors=(\d+)/,
     "ISA descriptor mix")
   result[:views] = metrics(diagnostics,
     /views contiguous=(\d+) strided=(\d+)/,

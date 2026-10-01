@@ -42,7 +42,7 @@ larger values cause `ERROR` even when another operand is `INF`. Valid `INF`
 absorbs addition, positive finite sums saturate to `INF`, and finite underflow
 below `INT32_MIN` causes `ERROR`. Within each independent reduction, the first
 minimum index wins. A vector command may have written earlier output elements
-when it fails; no-error atomicity is promised. `COST_ADD_VECTOR` allows exact
+when it fails; no error atomicity is promised. `COST_ADD_VECTOR` allows exact
 full-view destination aliasing with an input; other output/input address-span
 overlap is invalid. Opcode 7–8 outputs may not overlap inputs. Opcodes 6–8
 require zero flags and reserved bytes. A successful child batch write is visible to the
@@ -55,12 +55,12 @@ non-transactional, and unnested. `child_bytes` delimits the stream; exactly
 
 | Omitted from ISA 1.0.0 | Reason |
 | --- | --- |
-| Full-matrix MAP3 output | The [cycle projection](vector-primitive-cycle-projection.md) shows a small incremental corpus gain over partial-vector output; buffering and interface cost are not justified. |
-| Fused `PROJECT_ACCUMULATE` and `SLICE_ACCUMULATE` | The [primitive-shape study](primitive-shape-study.md) identifies these as software-only arithmetic, not descriptor-count bottlenecks; ordered projection→vector-add already composes the needed RN operation. |
-| PBQP graph, branch/frontier, and snapshot instructions | The [fork study](fork-parallelism-characterization.md) exposes irregular graph-dependent state and uncertain frontier width. It supports keeping this control in software, not encoding it in the cost engine. |
-| Architectural workers or lanes | The [cycle projection](vector-primitive-cycle-projection.md) uses lanes as a model parameter; runtime work size, not implementation parallelism, is the ISA contract. |
-| Row/column layout modes | The [access-pattern study](matrix-access-pattern-study.md) finds both contiguous and strided views; affine element strides directly cover both and padded matrices. |
-| FP32 costs, negative saturation, graph-wide overflow | The [cost study](cost-representation-study.md) finds no ISA 1.0.0 case compelling enough to replace exact signed-int32/INF behavior, and explicitly identifies order-sensitive arithmetic concerns. |
+| Full-matrix MAP3 output | The [cycle projection](reports/vector-primitive-cycle-projection.md) shows a small incremental corpus gain over partial-vector output; buffering and interface cost are not justified. |
+| Fused `PROJECT_ACCUMULATE` and `SLICE_ACCUMULATE` | The [primitive-shape study](reports/primitive-shape-study.md) identifies these as software-only arithmetic, not descriptor-count bottlenecks; ordered projection→vector-add already composes the needed RN operation. |
+| PBQP graph, branch/frontier, and snapshot instructions | The [fork study](reports/fork-parallelism-characterization.md) exposes irregular graph-dependent state and uncertain frontier width. It supports keeping this control in software, not encoding it in the cost engine. |
+| Architectural workers or lanes | The [cycle projection](reports/vector-primitive-cycle-projection.md) uses lanes as a model parameter; runtime work size, not implementation parallelism, is the ISA contract. |
+| Row/column layout modes | The [access-pattern study](reports/matrix-access-pattern-study.md) finds both contiguous and strided views; affine element strides directly cover both and padded matrices. |
+| FP32 costs, negative saturation, graph-wide overflow | The [cost study](reports/cost-representation-study.md) finds no ISA 1.0.0 case compelling enough to replace exact signed-int32/INF behavior, and explicitly identifies order-sensitive arithmetic concerns. |
 | Cross-output argmin tie semantics | Outputs are independent reductions; only the existing first-index tie within each output is meaningful. |
 | Nested batches or dependency scheduling | Ordered producer-consumer visibility supplies the needed composition without a new scheduler or graph protocol. |
 

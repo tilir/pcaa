@@ -1,0 +1,106 @@
+{
+  "CUDD_revision": "d47718fedea39fa2ef7d4907432b92b032a8ff72",
+  "LLVM_extraction": {
+    "IR_bytes": {
+      "InstCombineAddSub": 2323158,
+      "MachineBasicBlock": 942507,
+      "cuddAddAbs": 45659,
+      "cuddBddAbs": 55314
+    },
+    "clamped_values": 0,
+    "commands": "inputs/llvm/extraction-commands.json",
+    "file_open_errors": 0,
+    "identical_graphs": 491,
+    "local_patch": "inputs/llvm/RegAllocPBQP.patch",
+    "translation_units": 4
+  },
+  "LLVM_revision": "9517d7182766f9d16dda05a97464660e27ce91f3",
+  "binary_sha256": {
+    "/home/tilir/llvm-project/build/bin/llc": "6f358dbc8fabba683b47cab973ef3de9ead4c554f65778eaff5c6170bf279ca0",
+    "/tmp/pcaa-report-baseline/build/libpcaa_spike_device.so": "f0631eaa231f38632b345d6aab1e3598b2ce4d076cced34556d5d6e07812a6d2",
+    "/tmp/pcaa-report-baseline/build/pbqp_graph_generate": "3a55cd3a1bc760472207cd5ad68bbc2f2faac92d95c6b1819d362756eb58b7a0",
+    "/tmp/pcaa-report-baseline/build/pbqp_rn.elf": "b881a5e8687251347c03f6a772ed867fec361000ad6c9bc4f1766f908494b712",
+    "/tmp/pcaa-report-baseline/build/pcaa_graph_run": "c4c6f075d1486eb70485c90dfeec2d6d29b4dd43ac1838c87201e5e6737cfec0",
+    "/tmp/pcaa-report-baseline/build/pcaa_graph_run_model": "cb6e7d7ec9b01ecd3e82223fb8cca9f83bedb3c3bb4549d56657951026a824d3",
+    "/tmp/pcaa-report-baseline/build/pcaa_graph_run_timed": "fff040bd4ffd937239a26eabbdd09f8b15027a20af40a145a81ebc720a900c1a",
+    "/tmp/pcaa-report-baseline/build/pcaa_graph_run_timed_model": "b337298529eab39d9e77524201074b2a625287ab60730ad2b160e5e7d0ffb32e",
+    "/tmp/pcaa-report-solver/build/pbqp_graph_generate": "3a55cd3a1bc760472207cd5ad68bbc2f2faac92d95c6b1819d362756eb58b7a0",
+    "/tmp/pcaa-report-solver/build/pcaa_graph_run_model": "17973d3d9934b2f26991243350cedbfc3bbf84dcf44adbae64628118456f3870",
+    "build/pcaa_graph_run_model": "a577e1e024d21cc7d4191ad65db1b22a85619f49832f8d85f645164d0a634ea4",
+    "build/pcaa_graph_run_timed_model": "706db4256beaff3365ba3709e724de49e8ab639378f4fbe8f8b2d2b4260e13c0"
+  },
+  "comparison_exclusions": [
+    "wall_time_seconds",
+    "temporary generated graph filenames in timed CSVs",
+    "None versus empty strings in old uneven unsuccessful CSV rows"
+  ],
+  "current_script_checks": {
+    "scaling_rows": 32,
+    "solver_rows": 88,
+    "timed_scalar_rows": 180,
+    "vector_baseline_rejection": "explicit --rn-batching per-node exits 1 with scalar-baseline diagnostic"
+  },
+  "date": "2026-10-01",
+  "exact_search": {
+    "completed": 63,
+    "inputs": 65,
+    "partial_traces": "Final JSONL line may be truncated; missing completion statistics remain blank.",
+    "real_node_limit": 1000000,
+    "real_seconds": 45,
+    "real_selection": "39 filenames retained in historical fork CSV, not the unrecorded original branch report sample",
+    "synthetic_node_limit": 2000000,
+    "synthetic_seconds": 30,
+    "timeouts": 2
+  },
+  "historical_host_build": {
+    "cmake_options": [
+      "-DSPIKE_SOURCE_DIR=/home/tilir/riscv-isa-sim",
+      "-DCMAKE_BUILD_TYPE=Release"
+    ],
+    "compiler_flags": "CMake Release defaults (-O3 -DNDEBUG); C++17",
+    "configuration": "Release",
+    "other_measurements_revision": "dd1402b",
+    "solver_revision": "e80c21c"
+  },
+  "host": {
+    "clang": "Ubuntu clang version 21.1.8 (6ubuntu1)",
+    "cmake": "cmake version 4.2.3",
+    "cxx": "c++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+    "machine": "x86_64",
+    "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "python": "3.14.4",
+    "ruby": "ruby 3.3.8 (2025-04-09 revision b200bad6cd) [x86_64-linux-gnu]",
+    "rv64_gcc": "riscv64-unknown-elf-gcc (14.2.0+19) 14.2.0"
+  },
+  "literature": {
+    "removed_claim": "137/4184 um^2 textbook synthesis illustration lacked underlying inputs; not retained as a verified measurement.",
+    "sources": [
+      "https://doi.org/10.1109/ISSCC.2014.6757323",
+      "https://gwern.net/doc/cs/hardware/2014-horowitz-2.pdf",
+      "https://doi.org/10.1049/IET-CDT.2016.0200"
+    ],
+    "status": "Factual numeric anchors manually checked against primary research publications on 2026-10-01; no local synthesis inputs exist."
+  },
+  "original_collection_script_sha256": {
+    "scripts/recheck_search_report.py": "9d0177c2bec2dc47822cd2afa81af7a22c1f15e133f9162b5322d6d6197eb506",
+    "scripts/verify_report_data.py": "a05056513725cf9287e42b2813a8fbd8549607221d91474a4fc12842c32868ea"
+  },
+  "raw_csv_provenance": "Recovered from build/*.csv without embedded source revisions; all deterministic fields independently reproduced at the attributed revisions.",
+  "revisions": {
+    "86d76b1": "86d76b10a96801803a55265df163ba1281098f44",
+    "91a3bbe": "91a3bbe7c7faaa7f651ef036e05ef7a43a02eec8",
+    "dd1402b": "dd1402bdf93c4d5d666e9c2ed4b3973f1f5de9a6",
+    "e80c21c": "e80c21cdf0794d0e0cbb38b6bd69dd7358573af6",
+    "fcdb6dd": "fcdb6dd77c925f60442f014a4575b284ed3a0391"
+  },
+  "scope": "Logical/functional measurements and L1 model arithmetic; no hardware synthesis or speedup validation.",
+  "script_sha256": {
+    "scripts/cost_representation_analyze.rb": "3d12dc27e98072ddb4a9a0181c2205a2059d97f846419bfc171c71ace2561c92",
+    "scripts/hw_sw_characterize.rb": "a0ffa5742d7cbdfd7315d46b2aa8edf751bd47f54b1d7153d84a012059ecd75e",
+    "scripts/rn_characterize.rb": "afe910a59393ffdf5181dcbc6a1cef943fab0362cb4dabc13f40776db54e347e",
+    "scripts/scaling_characterize.rb": "df40db64d7277f7c92cd9dccfe7f1c53b4a414de3fa6380c44642317b43f6e1e",
+    "scripts/vector_cycle_project.rb": "31cdacdf6ed16c29b9997908dbc6d913f54ee40975f111e0faf0520300fea2cc",
+    "scripts/recheck_search_report.rb": "19d057e032ebf273d819d1de06aec60c39db89e66169c2f56b96e05cbbbf4e03",
+    "scripts/verify_report_data.rb": "9183ef2b90c5cf46526119db720a7f95d01bfd3c27efc5af9e4580b4db87efab"
+  }
+}

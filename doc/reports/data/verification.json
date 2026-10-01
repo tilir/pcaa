@@ -1,0 +1,137 @@
+{
+  "batching": {
+    "real": {
+      "after": 15363.0,
+      "before": 71288.0,
+      "solves": 491
+    },
+    "synthetic": {
+      "after": 92838.0,
+      "before": 868034.0,
+      "solves": 407
+    }
+  },
+  "compact": {
+    "compact_bytes": 7840,
+    "examples": 4,
+    "old_bytes": 14160
+  },
+  "cycle_projection": {
+    "identical_per_edge_rows": 671,
+    "identical_per_node_rows": 671
+  },
+  "epoch_tables": [
+    {
+      "epochs": 200,
+      "family": "degree-3",
+      "model": "B-reduction"
+    },
+    {
+      "epochs": 50,
+      "family": "degree-3",
+      "model": "C-rn-cascade"
+    },
+    {
+      "epochs": 10,
+      "family": "degree-3",
+      "model": "D-heuristic"
+    },
+    {
+      "epochs": 200,
+      "family": "degree-4",
+      "model": "B-reduction"
+    },
+    {
+      "epochs": 20,
+      "family": "degree-4",
+      "model": "C-rn-cascade"
+    },
+    {
+      "epochs": 10,
+      "family": "degree-4",
+      "model": "D-heuristic"
+    },
+    {
+      "epochs": 200,
+      "family": "mixed-degree",
+      "model": "B-reduction"
+    },
+    {
+      "epochs": 153,
+      "family": "mixed-degree",
+      "model": "C-rn-cascade"
+    },
+    {
+      "epochs": 10,
+      "family": "mixed-degree",
+      "model": "D-heuristic"
+    }
+  ],
+  "forks": {
+    "archived_forks": 298434,
+    "identical_completed_searches": 63,
+    "partial_timeout_searches": 2,
+    "repeated_heuristic_inputs": 65
+  },
+  "historical/hw-sw-epochs.csv.gz": {
+    "matching_repeated_rows": 49522
+  },
+  "historical/isa-round3-per-edge.csv.gz": {
+    "matching_repeated_rows": 898
+  },
+  "historical/isa-round3-scaling.csv.gz": {
+    "matching_repeated_rows": 898
+  },
+  "historical/solver-characterization.csv.gz": {
+    "matching_repeated_rows": 880
+  },
+  "historical/vector-cycle-per-edge.csv.gz": {
+    "matching_repeated_rows": 671
+  },
+  "historical/vector-cycle-projection.csv.gz": {
+    "matching_repeated_rows": 671
+  },
+  "hmm": {
+    "log_weight_samples": 29,
+    "maximum_error_bound": 0.0005
+  },
+  "llvm_corpus": {
+    "domain_histogram": {
+      "7": 2773,
+      "8": 2,
+      "10": 51,
+      "11": 126,
+      "12": 219,
+      "13": 643,
+      "14": 870,
+      "15": 1660,
+      "16": 9568,
+      "17": 550
+    },
+    "graphs": 491,
+    "identical_reextracted_graphs": 491,
+    "nodes": 16462
+  },
+  "primitive_shapes": {
+    "R2_elements": "r2 * D^3",
+    "RN_scalar_descriptors": "projections * D",
+    "uniform_domain_rows": 407
+  },
+  "road": {
+    "count": "733846",
+    "max_m": "3696.9690046352007",
+    "max_mm_error": "0.0004999993588228335",
+    "mean_m": "129.41156209161005",
+    "mean_mm_error": "0.00024995486126738904",
+    "median_m": "95.18222608790465",
+    "min_m": "0.08356020859360817",
+    "p01_m": "13.93005605890495",
+    "p25_m": "68.78709161160752",
+    "p75_m": "161.63206924295298",
+    "p99_m": "546.5113872032435"
+  },
+  "scaling": {
+    "local_search_rows": 270,
+    "repeated_rows": 1128
+  }
+}

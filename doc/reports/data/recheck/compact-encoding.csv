@@ -1,0 +1,5 @@
+graph,descriptors,batches,scalar-project-descriptors,vector-project-descriptors,vector-add-descriptors,partial-map3-descriptors,vector-add-dst-src0,vector-add-dst-src1,vector-add-inplace,vector-add-general,old_bytes,compact_bytes
+triangle,4,2,2,0,0,2,0,0,0,0,480,256
+petersen,26,9,2,6,6,12,0,6,6,0,2800,1600
+chvatal,44,11,2,16,16,10,0,16,16,0,4400,2336
+random-20,62,19,2,18,18,24,0,18,18,0,6480,3648

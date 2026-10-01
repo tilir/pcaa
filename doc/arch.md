@@ -2,7 +2,7 @@
 
 ## Architecture specification
 
-Revision 1.0 (ISA 1.0.0)
+Revision 1.1 (semantic ISA 1.0.0; compact encoding used by pcaalib 2.0.0)
 
 ## 1. Scope
 
@@ -24,7 +24,10 @@ host software.
 The architectural boundary is deliberately independent of a particular CPU,
 bus protocol, simulator, or implementation technology. The current reference
 integration uses RISC-V MMIO and guest physical addresses, but the block ABI is
-defined by this document.
+defined by this document. It specifies commands, memory-visible results,
+ordering, and errors. Service-cycle estimates are described separately in
+[the L1 performance model](l1-performance-model.md); the implementation
+refinement route is in [the design note](design.md#model-refinement-route).
 
 For batch-capable operation, responsibility is divided as follows:
 
@@ -115,10 +118,7 @@ at or above `INF` becomes `INF`: all such costs are forbidden/unreachable, so
 their ordering is immaterial. A finite sum below `INT32_MIN` has no analogous
 negative-infinity meaning. Clamping two distinct sums there would create a
 false tie and could change first-index argmin, so any command encountering
-negative underflow fails with `ERROR`; the output on error is unspecified. The
-checked command-path helper is `accel_cost_add_checked`; bounded host
-algorithms may use `accel_cost_add` only when their input contract proves that
-negative underflow cannot occur.
+negative underflow fails with `ERROR`; the output on error is unspecified.
 
 ### 4.2 Tie breaking
 
@@ -140,7 +140,18 @@ All multi-byte fields are little-endian. The common header is `opcode:u8` at
 `0x00`, `format:u8` at `0x01`, `flags:u16` at `0x02`, `n:u16` at `0x04`, and
 `m:u16` at `0x06`. `flags` and every reserved byte must be zero. `n` is the
 reduction/vector length and `m` the projection output count; both are nonzero
-where used. Batch instead has `n = m = 0` in the header. Address fields are
+where used. Their meanings are opcode-specific:
+
+| Opcode | `n` | `m` | Output shape |
+| --- | --- | --- | --- |
+| 1–4, scalar map/reduce | Number of input elements reduced | Zero, unused | One cost or one minimum/argmin record |
+| 5, batch | Zero, unused | Zero, unused | One batch completion record; count is `child_count` |
+| 6, vector add | Number of elements in each input and the output | Zero, unused | `n` costs |
+| 7–8, projection | Number of columns reduced per output | Number of output rows | `m` costs (7) or `m` minimum/argmin records (8) |
+
+For primitives, used dimensions range from 1 through 65,535. A nonzero `m`
+on opcode 1–6 is malformed; it does not request additional vector-add outputs.
+Neither dimension encodes a lane count or a byte length. Address fields are
 full 64-bit guest physical byte addresses; required addresses are nonzero.
 Dimensions and strides are unsigned 16-bit values. Required strides are
 nonzero; a projection's outer stride may be zero only when `m == 1`. Strides
@@ -156,8 +167,8 @@ spans must not overflow 64-bit physical addresses.
 | 5 `EXECUTE_BATCH` | 5 | 32 | `08:child_stream:u64`, `10:result:u64`, `18:child_count:u32`, `1c:child_bytes:u32` |
 | 6 `COST_ADD_VECTOR_GENERAL` | 6 | 48 | `08:src0:u64`, `10:src1:u64`, `18:dst:u64`; `20:src0_stride:u16`, `22:src1_stride:u16`, `24:dst_stride:u16`; `26..2f` reserved, `m=0` |
 | 7 `COST_ADD_VECTOR_INPLACE` | 6 | 32 | `08:src0_and_dst:u64`, `10:src1:u64`; `18:src0_dst_stride:u16`, `1a:src1_stride:u16`; `1c..1f` reserved, `m=0` |
-| 8 `MINPLUS_PROJECT` | 7 | 48 | `08:src0:u64`, `10:src1:u64`, `18:dst:u64`; `20:src0_inner_stride:u16`, `22:src0_outer_stride:u16`, `24:src1_stride:u16`, `26:dst_stride:u16`; `28..2f` reserved |
-| 9 `MINPLUS_MAP3_PROJECT` | 8 | 64 | `08:src0:u64`, `10:src1:u64`, `18:src2:u64`, `20:dst:u64`; `28:src0_stride:u16`, `2a:src1_stride:u16`, `2c:src2_inner_stride:u16`, `2e:src2_outer_stride:u16`, `30:dst_stride:u16`; `32..3f` reserved |
+| 8 `MINPLUS_PROJECT` | 7 | 48 | `08:src0:u64`, `10:src1:u64`, `18:dst:u64`; `20:src0_stride:u16`, `22:src0_outer_stride:u16`, `24:src1_stride:u16`, `26:dst_stride:u16`; `28..2f` reserved |
+| 9 `MINPLUS_MAP3_PROJECT` | 8 | 64 | `08:src0:u64`, `10:src1:u64`, `18:src2:u64`, `20:dst:u64`; `28:src0_stride:u16`, `2a:src1_stride:u16`, `2c:src2_stride:u16`, `2e:src2_outer_stride:u16`, `30:dst_stride:u16`; `32..3f` reserved |
 
 The format ID is distinct from the semantic opcode. Every opcode/format pair
 has one exact size; incompatible pairs and nonzero reserved fields are malformed.
@@ -196,7 +207,7 @@ accesses, byte enables, and burst accesses are invalid transactions.
 | `2` | `DONE` | the command completed and its result was written |
 | `3` | `ERROR` | the command could not complete |
 
-The baseline command queue has one outstanding command. A doorbell submission
+The block accepts one outstanding command. A doorbell submission
 sets `BUSY`, then eventually sets either `DONE` or `ERROR`. The functional
 reference model may complete before the doorbell transaction returns; software
 must nevertheless treat completion as asynchronous and poll `STATUS`.
@@ -297,7 +308,7 @@ occurrence. All three source addresses are required.
 
 ### 8.5 `EXECUTE_BATCH`
 
-Opcode: `5`
+Opcode: `5`. Both common-header dimensions `n` and `m` are zero.
 
 `child_count` is a non-zero 32-bit count of commands in the encoded stream at
 guest physical address `child_stream`; `child_bytes` is its exact non-zero
@@ -315,7 +326,12 @@ On success, `{ completed = child_count, failed_index = UINT32_MAX }` is stored a
 is `DONE`. If child `i` cannot be read, is invalid, or fails, descriptors before
 it remain completed, descriptors after it are not executed, and
 `{ completed = i, failed_index = i }` is stored before status becomes `ERROR`.
-Batch execution is fail-stop and non-transactional.
+Batch execution is fail-stop and non-transactional. If all `child_count`
+children complete but trailing stream bytes remain, status is `ERROR` and the
+result is `{ completed = child_count, failed_index = child_count }`; that index
+identifies the invalid stream end, not an executed child. If the completion
+record itself cannot be written, status is `ERROR` and its contents are
+unavailable or unspecified.
 The batch result and every child output must avoid all bytes of
 `[child_stream, child_stream + child_bytes)` and the 32-byte top-level batch
 descriptor. A batch with an overlapping
@@ -324,27 +340,123 @@ descriptor region fails at that child. Child input reads may overlap descriptor
 storage, but software must still keep descriptors and inputs stable until
 completion. Output overlap is checked at addressed elements, not padding gaps.
 
-### 8.6 `COST_ADD_VECTOR` (opcode 6)
+### 8.6 `COST_ADD_VECTOR`
 
-For `0 <= i < n`, `dst[i * dst_stride] =
-cost_add(src0[i * src0_stride], src1[i * src1_stride])`.
-`m` must be zero. Exact full-view output aliasing with either input is legal.
+Opcode: `6`
 
-### 8.7 `MINPLUS_PROJECT` (opcode 7)
+This is elementwise addition of two length-`n` cost vectors, producing a
+length-`n` cost vector. `n` must be nonzero; `m` is unused and must be zero.
+There is no reduction and no argmin result.
 
-For each `0 <= i < m`, write a 32-bit cost to `dst[i * dst_stride]` equal to
-`min_{0 <= j < n} cost_add(src0[i * src0_outer_stride + j * src0_stride],
-src1[j * src1_stride])`. This is an affine matrix view, not a layout mode.
+| Field | Meaning |
+| --- | --- |
+| `src0`, `src1` | Guest physical base addresses of the two input cost vectors |
+| `dst` | Guest physical base address of the output cost vector |
+| `src0_stride`, `src1_stride` | Distance between consecutive input elements, in 4-byte costs |
+| `dst_stride` | Distance between consecutive output elements, in 4-byte costs |
 
-### 8.8 `MINPLUS_MAP3_PROJECT` (opcode 8)
+For every `0 <= i < n`:
 
-For each `0 <= i < m`, write one `accel_min_argmin_result_t` to
-`dst[i * dst_stride]`. Its value/index are the minimum and first minimizing
-`j` of `cost_add(cost_add(src0[j * src0_stride],
-src1[j * src1_stride]), src2[i * src2_outer_stride + j * src2_stride])`
-for `0 <= j < n`. The tie rule is local to each output; there is no tie
-ordering across output coordinates. One external coordinate is fixed by
-software, the other is vectorized by `i`.
+```text
+a = read_cost(src0 + 4 * i * src0_stride)
+b = read_cost(src1 + 4 * i * src1_stride)
+write_cost(dst + 4 * i * dst_stride, cost_add(a, b))
+```
+
+All three strides must be nonzero. Exact full-view destination aliasing with
+either input is allowed: the base address, length, and stride must match.
+Other output/input span overlap is invalid, including overlap across stride
+gaps (section 7). A separate destination uses the 48-byte general format;
+an exact alias uses the 32-byte in-place format described in section 5.
+These formats implement the same operation.
+
+For example, `n = 3`, unit strides, `src0 = [2, INF, -4]`, and
+`src1 = [3, 7, 1]` produce `[5, INF, -3]`. Here the arrays describe contents
+at the supplied base addresses, not values embedded in a descriptor.
+
+### 8.7 `MINPLUS_PROJECT`
+
+Opcode: `7`
+
+This is an affine matrix/vector min-plus projection. `src0` supplies a logical
+`m × n` matrix; `src1` supplies one length-`n` vector reused for every row.
+The output is `m` costs. Both `n` (columns per reduction) and `m` (independent
+output rows) must be nonzero. The command returns minimum values only.
+
+| Field | Meaning |
+| --- | --- |
+| `src0` | Guest physical base address of the matrix |
+| `src0_stride` | Matrix column/inner stride, in 4-byte costs |
+| `src0_outer_stride` | Matrix row/outer stride, in 4-byte costs |
+| `src1`, `src1_stride` | Base address and element stride of the shared input vector |
+| `dst`, `dst_stride` | Base address and element stride of the `m` output costs |
+
+For every `0 <= i < m`:
+
+```text
+for 0 <= j < n:
+  a = read_cost(src0 + 4 * (i * src0_outer_stride + j * src0_stride))
+  b = read_cost(src1 + 4 * j * src1_stride)
+  candidate[j] = cost_add(a, b)
+write_cost(dst + 4 * i * dst_stride, min(candidate[0..n-1]))
+```
+
+Column, vector, and output strides must be nonzero. The matrix row stride may
+be zero only when `m = 1`, since there is then no next row. A contiguous
+row-major matrix uses `src0_stride = 1` and `src0_outer_stride = n`; padding
+or exchanging the row/column strides expresses other affine views. No layout
+mode or implicit transpose is involved. Output/input span overlap is invalid.
+
+For example, `m = 2`, `n = 3`, matrix rows `[1, 4, 0]`, `[5, -2, 3]`, and
+vector `[2, 1, 3]` produce `[3, -1]`. Each row is reduced separately. If every
+candidate in a row is `INF`, that row's output is `INF`.
+
+### 8.8 `MINPLUS_MAP3_PROJECT`
+
+Opcode: `8`
+
+This computes `m` independent three-input min-plus reductions and returns a
+minimum/argmin record for each. `src0` and `src1` are length-`n` vectors shared
+by all outputs; `src2` is a logical `m × n` matrix. Both `n` and `m` must be
+nonzero. Each output's index refers to its own reduced column `j`, not to a
+matrix byte offset or the output row `i`.
+
+| Field | Meaning |
+| --- | --- |
+| `src0`, `src1` | Guest physical base addresses of the shared cost vectors |
+| `src0_stride`, `src1_stride` | Input-vector element strides, in 4-byte costs |
+| `src2` | Guest physical base address of the matrix |
+| `src2_stride`, `src2_outer_stride` | Matrix column and row strides, in 4-byte costs |
+| `dst` | Guest physical base address of the `m` output records |
+| `dst_stride` | Distance between outputs, in **8-byte records** |
+
+For every `0 <= i < m`:
+
+```text
+for 0 <= j < n:
+  a = read_cost(src0 + 4 * j * src0_stride)
+  b = read_cost(src1 + 4 * j * src1_stride)
+  c = read_cost(src2 + 4 * (i * src2_outer_stride + j * src2_stride))
+  candidate[j] = cost_add(cost_add(a, b), c)
+value = min(candidate[0..n-1])
+index = smallest j with candidate[j] == value
+write_min_argmin(dst + 8 * i * dst_stride, {value, index})
+```
+
+The two additions use exactly the grouping shown; saturation and underflow
+are checked at each addition as specified in section 4.1. Every output has
+an `int32_t value` at record offset 0 and a `uint32_t index` at offset 4, both
+little-endian. All vector, column, and output strides must be nonzero; the
+matrix row stride may be zero only for `m = 1`. Output/input span overlap is
+invalid. A contiguous output vector uses `dst_stride = 1`, so records begin
+8 bytes apart, unlike the 4-byte outputs of opcode 7.
+
+Using the matrix from section 8.7, `src0 = [2, 1, 3]`, and
+`src1 = [0, 0, 0]` gives `[{3, 0}, {-1, 1}]`: row 0 has two candidates equal
+to 3, and index 0 wins. If all candidates in a row are `INF`, its result is
+`{INF, 0}`. Tie breaking is local to each row; outputs have no cross-row
+ordering rule. Software may use this operation for any affine three-input
+reduction; it has no graph-coordinate fields.
 
 ## 9. Error behavior
 
@@ -369,55 +481,21 @@ submission is permitted and is independent of the preceding error.
 For opcodes 6–8, invalid dimensions/strides, arithmetic address-span
 overflow, or forbidden output/input overlap also cause `ERROR`.
 
-## 10. L1 timing model
+## 10. Compatibility boundary
 
-The L1 reference model optionally annotates modeled service time in TLM using a
-nominal cycle period. It has untimed, sequential, and idealized streaming
-overlap modes. Configurable lanes affect only the timing estimate: a logical
-length `n` uses `ceil(n / lanes)` chunks. Descriptor fetch, operand reads,
-compute, and result writes are separate modeled categories.
+Timing and implementation parallelism do not change command encoding,
+cost arithmetic and its grouping, result layouts, first-index tie breaking,
+submission ordering, error semantics, or guest physical addressing. The ISA
+does not guarantee a clock frequency, a service latency, or a lane count.
+Software must observe completion through `STATUS` rather than assuming a
+fixed duration.
 
-The timing model does not define a clock frequency, physical pipeline, queues,
-or a scheduling policy. Its formulas and experiment parameters are documented
-in `doc/l1-performance-model.md`.
+Future encoding or semantic changes require an explicit versioned contract;
+reserved bytes in the current encoding remain zero. Deferred interface ideas
+are described in [the ISA exploration](isa-2x-local-vector-rf.md), and the
+implementation refinement route is documented in [design.md](design.md#model-refinement-route).
 
-## 11. Timing and refinement
-
-The initial model is a functional, untimed realization of this block. It
-preserves the same MMIO and descriptor contract as later implementations.
-
-| Profile | Permitted refinement |
-| --- | --- |
-| functional | immediate command execution; no meaningful simulated time |
-| loosely timed | annotated transaction delay and explicit command latency |
-| approximately timed | pipelined map/reduce and modeled memory concurrency |
-| mixed TLM/RTL | replacement of selected datapath blocks with RTL models |
-
-No timing refinement may alter command encoding, result values, tie breaking,
-status semantics, or guest-memory addressing.
-
-## 12. Extension space
-
-Future opcodes may use `flags`, `k`, or additional descriptor semantics for
-indexed, gather, or segmented access and other cost-algebra operations.
-Extensions retain the following invariants:
-
-* runtime-defined problem dimensions;
-* descriptor-based submission;
-* guest physical memory operands;
-* deterministic cost arithmetic where specified;
-* software ownership of graph topology and irregular control flow.
-
-Structural batched descriptors, in which the block generates an inner
-iteration space, are not defined by this revision. ISA 1.0.0 defines
-affine element strides for opcodes 6–8; richer addressing is outside its scope.
-
-Any future primitive that produces several independently reduced outputs in
-one descriptor must apply first-index argmin separately within each output
-element's own reduction domain. It must not introduce a cross-output
-tie-break: none exists in the currently characterized algorithms or workloads.
-
-## 13. Exclusions
+## 11. Exclusions
 
 The baseline block does not define:
 

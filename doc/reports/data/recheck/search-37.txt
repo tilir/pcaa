@@ -1,0 +1,15 @@
+command ["timeout", "45s", "/tmp/pcaa-report-baseline/build/pcaa_graph_run", "--solver", "local", "--strategy", "exact-branch-reduce", "--maximum-search-nodes", "1000000", "--verbose", "--trace", "/home/tilir/pqbpaccel/doc/reports/data/recheck/search-37.jsonl", "/home/tilir/pqbpaccel/examples/regalloc/060-instcombine-patternmatch-match-n8-d16.pbqp"]
+optimum 0
+assignment 1 1 2 4 3 1 2 1
+solution exact
+strategy EXACT_BRANCH_REDUCE
+pcaa: reductions R0=17 R1=17 R2=18 RN=0 projections=0 projection_primitives=0 commits=0
+pcaa: RN core first=0 nodes/0 edges max=0 nodes/0 edges episodes=0 degree=0..0 after-RN R0=0 R1=0 R2=0 cascade-total=0 cascade-max=0
+pcaa: rn_cascades rn_episodes=0 rn_cascade_r0_total=0 rn_cascade_r1_total=0 rn_cascade_r2_total=0 rn_cascade_exact_total=0 rn_cascade_mean=0.000000 rn_cascade_max=0
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=0 cascade_len_2=0 cascade_len_3=0 cascade_len_4=0 cascade_len_5=0 cascade_len_6=0 cascade_len_7=0 cascade_len_8=0
+pcaa: RN traffic projection-read=0 projection-write=0 score-accumulation=0 commit-bytes=0
+pcaa: condition traffic operations=16 elements=752 matrix-read=3008 unary-read=3008 unary-write=3008
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=4080 project-accumulate-elements=0 slice-elements=752 map3-elements=69120 argmin-elements=0 descriptors=4591 batches=35 operand-bytes=868096 result-bytes=39736 bytes=907832
+pcaa: views contiguous=8942 strided=4560
+pcaa: exact search nodes=17 branches=16 max-depth=1 limit-hits=0 pruned=14

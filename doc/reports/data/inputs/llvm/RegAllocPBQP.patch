@@ -1,0 +1,178 @@
+diff --git a/llvm/lib/CodeGen/RegAllocPBQP.cpp b/llvm/lib/CodeGen/RegAllocPBQP.cpp
+index b4a214f75ff9..d8a02a39e658 100644
+--- a/llvm/lib/CodeGen/RegAllocPBQP.cpp
++++ b/llvm/lib/CodeGen/RegAllocPBQP.cpp
+@@ -73,7 +73,9 @@
+ #include "llvm/Support/raw_ostream.h"
+ #include <algorithm>
+ #include <cassert>
++#include <cmath>
+ #include <cstddef>
++#include <cstdint>
+ #include <limits>
+ #include <map>
+ #include <memory>
+@@ -99,6 +101,17 @@ PBQPCoalescing("pbqp-coalescing",
+                 cl::desc("Attempt coalescing during PBQP register allocation."),
+                 cl::init(false), cl::Hidden);
+ 
++// pqbpaccel data-gathering instrumentation (not upstream LLVM functionality):
++// when set, dump every solved PBQP graph as pqbpaccel's line-oriented .pbqp
++// text into this directory, for later replay against an external PBQP
++// solver. Zero effect unless explicitly requested; safe to revert as one
++// self-contained diff. See pqbpaccel's doc/llvm-corpus-characterization.md.
++static cl::opt<std::string> PCAAPBQPDumpDir(
++    "pcaa-pbqp-dump-dir",
++    cl::desc("Dump each solved PBQP graph as pqbpaccel .pbqp text into this "
++             "directory (default: disabled)."),
++    cl::init(""));
++
+ #ifndef NDEBUG
+ static cl::opt<bool>
+ PBQPDumpGraphs("pbqp-dump-graphs",
+@@ -793,6 +806,105 @@ void RegAllocPBQP::postOptimization(Spiller &VRegSpiller, LiveIntervals &LIS) {
+   DeadRemats.clear();
+ }
+ 
++namespace {
++
++// Fixed-point quantization for the pqbpaccel dumper below: three decimal
++// digits of precision (scale 1000), clamped to the same finite-cost bound
++// pqbpaccel's own solver computes for a graph of this size
++// (software/pbqp/pbqp.cpp's pbqp_max_finite_cost: (ACCEL_INF - 1) /
++// (node_count + edge_count), where ACCEL_INF is INT32_MAX / 4), with
++// +/-infinity mapped to the INF literal. This mirrors that function rather
++// than a project-independent guess so a dumped graph is always accepted by
++// pqbpaccel's own cost-range check.
++class PCAAPBQPCostQuantizer {
++public:
++  PCAAPBQPCostQuantizer(unsigned NumNodes, unsigned NumEdges)
++      : MaxFinite(computeMaxFinite(NumNodes, NumEdges)) {}
++
++  std::string quantize(PBQP::PBQPNum Value) {
++    if (std::isinf(Value))
++      return "INF";
++    constexpr double Scale = 1000.0;
++    double Scaled = std::round(static_cast<double>(Value) * Scale);
++    if (Scaled > static_cast<double>(MaxFinite)) {
++      Scaled = static_cast<double>(MaxFinite);
++      ++Clamped;
++    } else if (Scaled < -static_cast<double>(MaxFinite)) {
++      Scaled = -static_cast<double>(MaxFinite);
++      ++Clamped;
++    }
++    return std::to_string(static_cast<int64_t>(Scaled));
++  }
++
++  unsigned clampedCount() const { return Clamped; }
++
++private:
++  static int64_t computeMaxFinite(unsigned NumNodes, unsigned NumEdges) {
++    constexpr int64_t AccelInf = 2147483647LL / 4;
++    const int64_t Terms = static_cast<int64_t>(NumNodes) + NumEdges;
++    return Terms == 0 ? (AccelInf - 1) : (AccelInf - 1) / Terms;
++  }
++
++  int64_t MaxFinite;
++  unsigned Clamped = 0;
++};
++
++} // end anonymous namespace
++
++// Writes G in pqbpaccel's line-oriented .pbqp text format
++// (nodes N / node D c0..c(D-1) / edge i j <D_i*D_j costs, row-major>).
++// NodeId is a dense 0-based index for a freshly built graph (see
++// llvm/include/llvm/CodeGen/PBQP/Graph.h), so it is used directly as the
++// pqbpaccel node index. Returns the number of cost values that had to be
++// clamped to the finite-cost bound (see doc/llvm-corpus-characterization.md
++// in the pqbpaccel repo for observed rates).
++static unsigned writePCAAPBQPGraph(const PBQP::RegAlloc::PBQPRAGraph &G,
++                                    raw_ostream &OS) {
++  PCAAPBQPCostQuantizer Q(G.getNumNodes(), G.getNumEdges());
++  OS << "nodes " << G.getNumNodes() << "\n";
++  for (auto NId : G.nodeIds()) {
++    const PBQP::Vector &Costs = G.getNodeCosts(NId);
++    OS << "node " << Costs.getLength();
++    for (unsigned I = 0; I < Costs.getLength(); ++I)
++      OS << ' ' << Q.quantize(Costs[I]);
++    OS << "\n";
++  }
++  for (auto EId : G.edgeIds()) {
++    const PBQP::Matrix &M = G.getEdgeCosts(EId);
++    OS << "edge " << G.getEdgeNode1Id(EId) << ' ' << G.getEdgeNode2Id(EId);
++    for (unsigned R = 0; R < M.getRows(); ++R)
++      for (unsigned C = 0; C < M.getCols(); ++C)
++        OS << ' ' << Q.quantize(M[R][C]);
++    OS << "\n";
++  }
++  return Q.clampedCount();
++}
++
++// Replaces path separators so a fully-qualified module.function name is safe
++// to use as a flat file name, and truncates+hashes names longer than common
++// filesystem limits (heavily templated C++ produces mangled names well past
++// 255 bytes; losing those graphs silently would bias the corpus toward
++// simpler code, so disambiguate with an FNV-1a hash instead of erroring).
++static std::string sanitizePCAAFileName(StringRef Name) {
++  std::string Result;
++  Result.reserve(Name.size());
++  for (char C : Name)
++    Result.push_back(C == '/' || C == '\\' ? '_' : C);
++  constexpr size_t MaxLength = 160;
++  if (Result.size() > MaxLength) {
++    uint64_t Hash = 1469598103934665603ULL; // FNV-1a offset basis
++    for (char C : Result) {
++      Hash ^= static_cast<unsigned char>(C);
++      Hash *= 1099511628211ULL; // FNV-1a prime
++    }
++    std::ostringstream Hex;
++    Hex << std::hex << Hash;
++    Result.resize(MaxLength);
++    Result += "_" + Hex.str();
++  }
++  return Result;
++}
++
+ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
+   LiveIntervals &LIS = getAnalysis<LiveIntervalsWrapperPass>().getLIS();
+   MachineBlockFrequencyInfo &MBFI =
+@@ -832,11 +944,12 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
+   // Find the vreg intervals in need of allocation.
+   findVRegIntervalsToAlloc(MF, LIS);
+ 
+-#ifndef NDEBUG
++  // Needed unconditionally: the debug -pbqp-dump-graphs hook below is
++  // NDEBUG-only, but the always-available -pcaa-pbqp-dump-dir hook also
++  // uses this name.
+   const Function &F = MF.getFunction();
+   std::string FullyQualifiedName =
+     F.getParent()->getModuleIdentifier() + "." + F.getName().str();
+-#endif
+ 
+   // If there are non-empty intervals allocate them using pbqp.
+   if (!VRegsToAlloc.empty()) {
+@@ -874,6 +987,24 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
+       }
+ #endif
+ 
++      if (!PCAAPBQPDumpDir.empty()) {
++        std::string GraphFileName = PCAAPBQPDumpDir + "/" +
++            sanitizePCAAFileName(FullyQualifiedName) + "." +
++            std::to_string(Round) + ".pbqp";
++        std::error_code EC;
++        raw_fd_ostream OS(GraphFileName, EC, sys::fs::OF_Text);
++        if (EC) {
++          errs() << "pcaa-pbqp-dump-dir: could not open " << GraphFileName
++                 << ": " << EC.message() << "\n";
++        } else {
++          OS << "# " << FullyQualifiedName << " round " << Round << "\n";
++          unsigned Clamped = writePCAAPBQPGraph(G, OS);
++          if (Clamped != 0)
++            errs() << "pcaa-pbqp-dump-dir: " << GraphFileName << ": clamped "
++                   << Clamped << " cost value(s) to the finite-cost bound\n";
++        }
++      }
++
+       PBQP::Solution Solution = PBQP::RegAlloc::solve(G);
+       PBQPAllocComplete = mapPBQPToRegAlloc(G, Solution, VRM, *VRegSpiller);
+       ++Round;

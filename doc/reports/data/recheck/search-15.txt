@@ -1,0 +1,15 @@
+command ["timeout", "30s", "/tmp/pcaa-report-baseline/build/pcaa_graph_run", "--solver", "local", "--strategy", "exact-branch-reduce", "--maximum-search-nodes", "2000000", "--verbose", "--trace", "/home/tilir/pqbpaccel/doc/reports/data/recheck/search-15.jsonl", "/home/tilir/pqbpaccel/doc/reports/data/recheck/search-15.pbqp"]
+optimum -191
+assignment 0 1 1 1 1 0 1 0 0 0 1 0 1 1 0 1 0 0 0 0 1 0 1 0 0 1 0 0 1 0 1 1 0 0 0 0 1 0 0 1 0 1 0 1 1 0 0 0 1 1
+solution exact
+strategy EXACT_BRANCH_REDUCE
+pcaa: reductions R0=4 R1=4 R2=184 RN=0 projections=0 projection_primitives=0 commits=0
+pcaa: RN core first=0 nodes/0 edges max=0 nodes/0 edges episodes=0 degree=0..0 after-RN R0=0 R1=0 R2=0 cascade-total=0 cascade-max=0
+pcaa: rn_cascades rn_episodes=0 rn_cascade_r0_total=0 rn_cascade_r1_total=0 rn_cascade_r2_total=0 rn_cascade_exact_total=0 rn_cascade_mean=0.000000 rn_cascade_max=0
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=0 cascade_len_2=0 cascade_len_3=0 cascade_len_4=0 cascade_len_5=0 cascade_len_6=0 cascade_len_7=0 cascade_len_8=0 cascade_len_9=0 cascade_len_10=0 cascade_len_11=0 cascade_len_12=0 cascade_len_13=0 cascade_len_14=0 cascade_len_15=0 cascade_len_16=0 cascade_len_17=0 cascade_len_18=0 cascade_len_19=0 cascade_len_20=0 cascade_len_21=0 cascade_len_22=0 cascade_len_23=0 cascade_len_24=0 cascade_len_25=0 cascade_len_26=0 cascade_len_27=0 cascade_len_28=0 cascade_len_29=0 cascade_len_30=0 cascade_len_31=0 cascade_len_32=0 cascade_len_33=0 cascade_len_34=0 cascade_len_35=0 cascade_len_36=0 cascade_len_37=0 cascade_len_38=0 cascade_len_39=0 cascade_len_40=0 cascade_len_41=0 cascade_len_42=0 cascade_len_43=0 cascade_len_44=0 cascade_len_45=0 cascade_len_46=0 cascade_len_47=0 cascade_len_48=0 cascade_len_49=0 cascade_len_50=0
+pcaa: RN traffic projection-read=0 projection-write=0 score-accumulation=0 commit-bytes=0
+pcaa: condition traffic operations=6 elements=40 matrix-read=160 unary-read=160 unary-write=160
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=16 project-accumulate-elements=0 slice-elements=40 map3-elements=1472 argmin-elements=0 descriptors=744 batches=188 operand-bytes=18112 result-bytes=6112 bytes=24224
+pcaa: views contiguous=744 strided=1480
+pcaa: exact search nodes=7 branches=6 max-depth=2 limit-hits=0 pruned=2

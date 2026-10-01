@@ -1,0 +1,119 @@
+command ["build/pcaa_graph_run", "--solver", "bare-metal", "--strategy", "heuristic-rn", "--verbose", "examples/random-20.pbqp"]
+optimum -17
+assignment 1 0 0 0 0 1 0 1 1 0 1 1 0 1 0 0 0 0 0 1
+solution heuristic
+strategy HEURISTIC_RN
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x260
+pcaa: batch children=6
+pcaa: child=0 descriptor=0x168
+pcaa: child=1 descriptor=0x198
+pcaa: child=2 descriptor=0x1b8
+pcaa: child=3 descriptor=0x1e8
+pcaa: child=4 descriptor=0x208
+pcaa: child=5 descriptor=0x238
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x1e0
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x158
+pcaa: child=1 descriptor=0x198
+pcaa: doorbell descriptor=0x170
+pcaa: batch children=2
+pcaa: child=0 descriptor=0x128
+pcaa: primitive kind=2 n=2 value=-8 argmin=0
+pcaa: child=1 descriptor=0x148
+pcaa: primitive kind=2 n=2 value=-12 argmin=0
+pcaa: reductions R0=1 R1=1 R2=12 RN=6 projections=18 projection_primitives=18 commits=36
+pcaa: RN core first=20 nodes/33 edges max=20 nodes/33 edges episodes=6 degree=3..3 after-RN R0=1 R1=1 R2=12 cascade-total=14 cascade-max=5
+pcaa: rn_cascades rn_episodes=6 rn_cascade_r0_total=1 rn_cascade_r1_total=1 rn_cascade_r2_total=12 rn_cascade_exact_total=14 rn_cascade_mean=2.333333 rn_cascade_max=5
+pcaa: rn_cascade_histogram cascade_len_0=0 cascade_len_1=3 cascade_len_2=0 cascade_len_3=2 cascade_len_4=0 cascade_len_5=1 cascade_len_6=0 cascade_len_7=0 cascade_len_8=0 cascade_len_9=0 cascade_len_10=0 cascade_len_11=0 cascade_len_12=0 cascade_len_13=0 cascade_len_14=0 cascade_len_15=0 cascade_len_16=0 cascade_len_17=0 cascade_len_18=0 cascade_len_19=0 cascade_len_20=0
+pcaa: RN traffic projection-read=576 projection-write=144 score-accumulation=36 commit-bytes=432
+pcaa: condition traffic operations=6 elements=36 matrix-read=144 unary-read=144 unary-write=144
+pcaa: local search evaluations=0 sweeps=0 accepted-moves=0 slices=0 slice-elements=0 argmin=0
+pcaa: operation mix project-elements=76 project-accumulate-elements=36 slice-elements=36 map3-elements=96 argmin-elements=0 descriptors=62 batches=19 operand-bytes=2336 result-bytes=832 bytes=3168 scalar-project-descriptors=2 vector-project-descriptors=18 vector-add-descriptors=18 vector-add-dst-src0=0 vector-add-dst-src1=18 vector-add-inplace=18 vector-add-general=0 scalar-map3-descriptors=0 partial-map3-descriptors=24
+pcaa: views contiguous=132 strided=70
+pcaa: encoding old-fixed-bytes=6480 compact-bytes=3648 child-bytes=3040 vector-add-total=18 dst-src0=0 dst-src1=18 inplace=18 general=0
+pcaa: encoding primitive-counts op1=0 op2=0 op3=2 op4=0 op5=0 op6=18 op7=18 op8=24
+pcaa: exact search nodes=0 branches=0 max-depth=0 limit-hits=0 pruned=0

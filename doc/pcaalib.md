@@ -130,13 +130,17 @@ outstanding. The common calls are:
 | `PCAA_STATUS_OK` | Submission accepted or execution completed successfully. |
 | `PCAA_STATUS_INVALID_ARGUMENT` | Null or otherwise missing API argument. |
 | `PCAA_STATUS_INVALID_COMMAND` | Command cannot be encoded for the current descriptor. |
-| `PCAA_STATUS_RANGE` | A semantic dimension, stride, or child count does not fit a descriptor field. |
+| `PCAA_STATUS_RANGE` | A semantic dimension, stride, child count, or child-stream byte length does not fit a descriptor field. |
 | `PCAA_STATUS_BUSY` | A submission is already outstanding, or hosted completion has not arrived yet. A caller can retry `wait` after progress. |
 | `PCAA_STATUS_NO_PENDING` | `wait` called without an outstanding submission. |
 | `PCAA_STATUS_NO_SPACE` | Backend staging area or batch capacity is exhausted. |
 | `PCAA_STATUS_MEMORY_ERROR` | Hosted guest-memory staging or result access failed. |
 | `PCAA_STATUS_TRANSPORT_ERROR` | Transport failed before a device result could be observed. |
 | `PCAA_STATUS_DEVICE_ERROR` | The accelerator reported `ERROR`, or a completed batch result was inconsistent. ISA 1.0.0 does not identify the cause of a primitive failure. |
+
+Individual primitive dimensions/strides fit through 65,535; the host runner's
+separate 65,536-choice input guard does not make larger primitive dimensions
+encodable. Such a command returns `PCAA_STATUS_RANGE`.
 
 For a batch, `pcaa_completion_t` has `has_batch_result`, `completed`, and
 `failed_index`. If the device wrote the batch result, `has_batch_result` is
@@ -174,7 +178,7 @@ linked into freestanding RV64 ELFs; those can pass `pcaa_status_string()` to
 their own output routine.
 
 The shared PBQP solver's cost-kernel callbacks retain their generic `int`
-status contract. The RV64 adapter returns the numeric `pcaa_status_t` value
+status contract. Both hosted and RV64 adapters return the numeric `pcaa_status_t` value
 without collapsing it to `-1`. If a callback fails, `pbqp_solver_solve`
 returns `PBQP_KERNEL_ERROR` and leaves the original callback status in
 `pbqp_solver_t.last_kernel_status`; callers can interpret a PCAA-backed

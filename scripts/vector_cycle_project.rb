@@ -17,13 +17,13 @@ COMPONENTS = %w[project-scalar project-vector map3-scalar map3-partial map3-full
 
 options = { runner: "build/pcaa_graph_run_timed", generator: "build/pbqp_graph_generate",
             corpus_dir: "examples/regalloc", output: "build/vector-cycle-projection.csv",
-            rn_batching: "per-node" }
+            rn_batching: "per-edge" }
 OptionParser.new do |parser|
   parser.on("--runner PATH") { |value| options[:runner] = value }
   parser.on("--generator PATH") { |value| options[:generator] = value }
   parser.on("--corpus-dir PATH") { |value| options[:corpus_dir] = value }
   parser.on("--output PATH") { |value| options[:output] = value }
-  parser.on("--rn-batching MODE", %w[per-node per-edge]) do |value|
+  parser.on("--rn-batching MODE", %w[per-node per-edge], "Scalar control defaults to per-edge") do |value|
     options[:rn_batching] = value
   end
 end.parse!
@@ -44,6 +44,10 @@ def characterize(runner, path, batching)
     match = text.match(/projection #{name} cycles=(\d+) descriptor=(\d+) operands=(\d+) compute=(\d+) result=(\d+) descriptors=(\d+)/)
     abort "missing #{name} projection for #{path}" unless match
     [name, match.captures.map(&:to_i)]
+  end
+  isa_mix = text.match(/vector-project-descriptors=(\d+).*partial-map3-descriptors=(\d+)/)
+  if isa_mix && isa_mix.captures.any? { |value| value.to_i.positive? }
+    abort "projection requires a scalar baseline; rerun with --rn-batching per-edge"
   end
   actual = timing[1].to_i
   project_scalar = components.fetch("project-scalar")[0]

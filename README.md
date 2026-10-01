@@ -18,6 +18,11 @@ exercises the accelerator; an independent Bellman–Ford probe checks the same
 cost-algebra vocabulary on shortest paths. Neither algorithm is built into
 the ISA. The command contract is in [the architecture specification](doc/arch.md),
 with its rationale in [the ISA decision record](doc/isa-v1-decision.md).
+The [documentation index](doc/README.md) distinguishes current references
+from historical measurements and deferred designs. Measurement reports and their
+verified raw data are in [doc/reports](doc/reports/README.md).
+The [research synthesis](doc/research-summary-2026-10-01.md) explains the main
+findings and design decisions as of 1 October 2026.
 
 ## Run a graph through PCAA
 
@@ -55,7 +60,8 @@ Choose a solver environment explicitly:
   nodes, six choices per node, and 2,016 edges. It rejects graphs outside
   those capacities or its safe finite-cost range.
 - `--solver local` uses host allocation for larger graphs; the runner accepts
-  up to 65,536 choices per node.
+  up to 65,536 choices per node at input validation. Individual accelerator
+  command dimensions fit through 65,535; larger commands report a range error.
 
 The default `--strategy heuristic-rn` returns a deterministic heuristic
 assignment, not a proof of optimality. `reduce-only` reports `IRREDUCIBLE` if

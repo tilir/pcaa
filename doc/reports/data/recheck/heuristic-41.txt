@@ -1,0 +1,5 @@
+command ["timeout", "45s", "/tmp/pcaa-report-baseline/build/pcaa_graph_run", "--solver", "local", "--strategy", "heuristic-rn", "--trace", "/home/tilir/pqbpaccel/doc/reports/data/recheck/heuristic-41.jsonl", "/home/tilir/pqbpaccel/examples/regalloc/064-instcombine-patternmatch-match-n8-d16.pbqp"]
+optimum 0
+assignment 1 1 4 3 2 2 1 1
+solution heuristic
+strategy HEURISTIC_RN
