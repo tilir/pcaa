@@ -3,7 +3,7 @@
 # Defines host graph-runner, generator, and reproducible characterization targets.
 
 add_library(pcaa_runner_kernel STATIC pbqp_model_kernel.cpp)
-target_link_libraries(pcaa_runner_kernel PUBLIC pcaa_core pcaa_pbqp pcaalib_systemc)
+target_link_libraries(pcaa_runner_kernel PUBLIC pcaa_core pcaa_l2 pcaa_pbqp pcaalib_systemc)
 target_include_directories(pcaa_runner_kernel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(pbqp_model_kernel_unit tests/pbqp_model_kernel_unit.cpp)
@@ -92,3 +92,26 @@ pcaa_add_format_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_run_launcher.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_graph_generate.cpp)
+
+add_executable(pcaa_graph_run_l2_model pbqp_run.cpp)
+target_compile_definitions(pcaa_graph_run_l2_model PRIVATE PCAA_GRAPH_RUN_L2
+                          PCAA_VERSION="${PROJECT_VERSION}")
+target_link_libraries(pcaa_graph_run_l2_model PRIVATE pcaa_runner_kernel)
+add_executable(pcaa_graph_run_l2 pbqp_run_launcher.cpp)
+target_compile_definitions(pcaa_graph_run_l2 PRIVATE PCAA_GRAPH_RUN_MODEL_NAME="pcaa_graph_run_l2_model")
+add_dependencies(pcaa_graph_run_l2 pcaa_graph_run_l2_model)
+add_executable(pcaa_l2_microbench l2_microbench.cpp)
+target_include_directories(pcaa_l2_microbench PRIVATE ${PROJECT_SOURCE_DIR}/accelerator/tests)
+target_link_libraries(pcaa_l2_microbench PRIVATE pcaa_l2 pcaa_core)
+add_test(NAME l2_microbench_smoke COMMAND pcaa_l2_microbench --smoke)
+pcaa_add_format_sources(${CMAKE_CURRENT_SOURCE_DIR}/l2_microbench.cpp)
+
+add_test(NAME l2_characterization_smoke
+  COMMAND ${RUBY_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/l2_characterize.rb
+          --smoke --build ${PROJECT_BINARY_DIR} --output ${PROJECT_BINARY_DIR}/l2-smoke)
+add_test(NAME pcaa_graph_run_l2_triangle
+  COMMAND pcaa_graph_run_l2 --solver local ${PROJECT_SOURCE_DIR}/examples/triangle.pbqp)
+set_tests_properties(pcaa_graph_run_l2_triangle PROPERTIES PASS_REGULAR_EXPRESSION "optimum -3")
+add_test(NAME pcaa_graph_run_l2_invalid_config
+  COMMAND pcaa_graph_run_l2 --solver local --l2-lanes 0 ${PROJECT_SOURCE_DIR}/examples/triangle.pbqp)
+set_tests_properties(pcaa_graph_run_l2_invalid_config PROPERTIES WILL_FAIL TRUE)

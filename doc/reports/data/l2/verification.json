@@ -1,0 +1,103 @@
+{
+  "spike": [
+    {
+      "command": [
+        "spike",
+        "--extlib=build/libpcaa_spike_device.so",
+        "--device=pcaa,0x10002000,0x1000",
+        "build/basic.elf"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "spike",
+        "--extlib=build/libpcaa_spike_device.so",
+        "--device=pcaa,0x10002000,0x1000",
+        "build/randomized.elf"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "spike",
+        "--extlib=build/libpcaa_spike_device.so",
+        "--device=pcaa,0x10002000,0x1000",
+        "build/pbqp_basic.elf"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "spike",
+        "--extlib=build/libpcaa_spike_device.so",
+        "--device=pcaa,0x10002000,0x1000",
+        "build/pbqp_randomized.elf"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "spike",
+        "--extlib=build/libpcaa_spike_device.so",
+        "--device=pcaa,0x10002000,0x1000",
+        "build/pbqp_rn.elf"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "debug_ctest": {
+    "command": [
+      "ctest",
+      "--test-dir",
+      "build",
+      "--output-on-failure"
+    ],
+    "tests": 38,
+    "failures": 0,
+    "build_type": "Debug"
+  },
+  "release_ctest": {
+    "command": [
+      "ctest",
+      "--test-dir",
+      "build-release",
+      "--output-on-failure"
+    ],
+    "tests": 38,
+    "failures": 0,
+    "build_type": "Release"
+  },
+  "format": {
+    "command": [
+      "cmake",
+      "--build",
+      "build",
+      "--target",
+      "format"
+    ],
+    "completed": true,
+    "note": "clang-format and IWYU ran; remaining SystemC macro deprecation and variant-specific include suggestions are diagnostic, not test failures"
+  },
+  "binary_sha256": {
+    "build-release/pcaa_graph_run_l2_model": "36e851a39f443b25926dd9b83f0439ed18ffe529bfab33347bcc8c65e00302fc",
+    "build-release/pcaa_l2_microbench": "0b04e11f41dcee174bfc8af17998aa7bae4a4c9e24b8fcca87bea4bad682a60f",
+    "build-release/pcaa_graph_run_timed_model": "cc8181a56d27578cdee7a2cc54f89f002bfe8c493aebfcf37c829e53b2dbc5de",
+    "build/l2_unit": "c9540f3211c79ddbfc369c9caab82397b8e6ca399b69328c3a1d4c3ef2e55f04",
+    "build-release/l2_unit": "872f870c6cbe41d656a75058659bb856e0db14e2fcc061ce7396d49c117a1209"
+  },
+  "complete_repeat_matches": {
+    "microbench.jsonl.gz": true,
+    "workloads.jsonl.gz": true
+  }
+}

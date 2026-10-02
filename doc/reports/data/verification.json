@@ -1,4 +1,11 @@
 {
+  "L2_MAS_1_0_0": {
+    "configurations": 33,
+    "failed_rows": 0,
+    "full_corpus_rows": 491,
+    "microbench_rows": 50688,
+    "workload_rows": 1083
+  },
   "batching": {
     "real": {
       "after": 15363.0,
@@ -97,8 +104,6 @@
   },
   "llvm_corpus": {
     "domain_histogram": {
-      "7": 2773,
-      "8": 2,
       "10": 51,
       "11": 126,
       "12": 219,
@@ -106,7 +111,9 @@
       "14": 870,
       "15": 1660,
       "16": 9568,
-      "17": 550
+      "17": 550,
+      "7": 2773,
+      "8": 2
     },
     "graphs": 491,
     "identical_reextracted_graphs": 491,

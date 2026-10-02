@@ -1,0 +1,46 @@
+{
+  "scripts_sha256": {
+    "scripts/l2_characterize.rb": "e93ad0cc42daca27f6093d73609139d278540b968974495d57c6160aae6b71ed",
+    "scripts/l2_report.rb": "16de0d8604742edcecef78218643522b4be2faaa81ccd2d97a6843ca0774f4e1"
+  },
+  "characterization_command": [
+    "ruby",
+    "scripts/l2_characterize.rb",
+    "--build",
+    "build-release",
+    "--output",
+    "build/l2-ruby-recheck"
+  ],
+  "characterization": {
+    "microbench.jsonl.gz": {
+      "matching_rows": 50688
+    },
+    "workloads.jsonl.gz": {
+      "matching_rows": 1083
+    }
+  },
+  "configurations": 33,
+  "comparison_normalization": "Synthetic input paths only: build/l2-ruby-recheck/inputs -> doc/reports/data/l2/inputs",
+  "report_regeneration": {
+    "summary_json_equal": true,
+    "tables_byte_equal": true,
+    "decompressed_csv_byte_equal": [
+      "microbench.csv.gz",
+      "workloads.csv.gz"
+    ]
+  },
+  "subprocess_checks": {
+    "timeout_keeps_partial_stdout_stderr": true,
+    "nonzero_exit_preserved": 7
+  },
+  "ctest": {
+    "Debug": {
+      "passed": 38,
+      "failed": 0
+    },
+    "Release": {
+      "passed": 38,
+      "failed": 0
+    }
+  }
+}

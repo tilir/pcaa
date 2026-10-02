@@ -13,7 +13,8 @@ select the first index. A batch executes in order and stops at the first
 failing command; completed results remain visible.
 
 The repository provides a SystemC functional model, an optional L1 service-cycle
-estimate, and an RV64 bare-metal integration through Spike. A PBQP runner
+estimate, a structural approximately timed L2 model of MAS 1.0.0, and an RV64
+bare-metal integration through Spike. A PBQP runner
 exercises the accelerator; an independent Bellman–Ford probe checks the same
 cost-algebra vocabulary on shortest paths. Neither algorithm is built into
 the ISA. The command contract is in [the architecture specification](doc/arch.md),
@@ -27,20 +28,24 @@ findings and design decisions as of 1 October 2026.
 ## Run a graph through PCAA
 
 For the host runner, install CMake, a C++17 compiler, SystemC 3.x, and
-GoogleTest. Spike and the RISC-V toolchain are not needed for this path.
+GoogleTest, and Ruby. Spike and the RISC-V toolchain are not needed for this path.
 
 ```sh
 cmake -S . -B build
-cmake --build build --target pcaa_graph_run pcaa_graph_run_timed
+cmake --build build --target pcaa_graph_run pcaa_graph_run_timed pcaa_graph_run_l2
 build/pcaa_graph_run --solver bare-metal examples/triangle.pbqp
 build/pcaa_graph_run_timed --solver bare-metal examples/triangle.pbqp
+build/pcaa_graph_run_l2 --solver bare-metal examples/triangle.pbqp
 ```
 
-Both commands print a cost and an assignment. `pcaa_graph_run` is untimed;
+All three commands print a cost and an assignment. `pcaa_graph_run` is untimed;
 `pcaa_graph_run_timed` additionally reports estimated total, descriptor,
 operand-read, compute, and result-write cycles for a fixed four-lane
 configuration. Zero device cycles mean the selected solve needed no PCAA
-primitives.
+primitives. `pcaa_graph_run_l2` reports executed MAS cycles and activity in an
+`l2` JSON line. Its `--l2-lanes`, `--l2-mem-bytes`, `--l2-tm`, `--l2-tn`, and
+`--l2-memory-latency` options configure the model without rebuilding. L1 and L2
+cycles are different model quantities; see [the L2 measurements](doc/reports/l2-microarchitecture-characterization.md).
 
 To see a completed exact solve on a larger graph, run:
 

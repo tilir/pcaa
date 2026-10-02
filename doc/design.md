@@ -10,20 +10,80 @@ service-cycle formulas belong in [l1-performance-model.md](l1-performance-model.
 | --- | --- | --- |
 | L0 | Functional SystemC/TLM | Implemented; commands complete during doorbell processing, with no meaningful time advance |
 | L1 | Loosely timed TLM | Implemented as an optional service estimate; descriptor, operand, compute, and result costs are separate |
-| L2 | Pipelined / approximately timed | Future refinement for datapath scheduling and modeled memory concurrency |
+| L2 | Structural approximately timed SystemC | Implemented MAS 1.0.0: bounded banks, tiled projections, one outstanding memory request, serial phases |
 | L3 | Mixed TLM and Verilated RTL | Future replacement of selected datapath blocks with RTL |
 
 Each refinement preserves ISA arithmetic, first-index argmin, memory layouts,
 ordered batch visibility, status/error semantics, and guest physical addressing.
 Lanes affect the L1 estimate, not command dimensions. Submit and wait stay
-separate even though L0 completes synchronously. No L2/L3 implementation is
-implied by this route.
+separate even though L0 completes synchronously. L2 adds explicit controller progression; L3 remains a future refinement.
 
 The generic accelerator annotates TLM delay without running a simulation loop.
 Spike glue owns advancement of nonzero annotated delay. Host SystemC entry
 points initialize the kernel with `sc_start(SC_ZERO_TIME)`; the current timed
 runner reports service estimates rather than simulating CPU/device overlap.
 The driver and semantic builders do not depend on a SystemC lifecycle.
+
+## L2 execution and simulation ownership
+
+`accelerator/include/l2_accelerator.h` and `accelerator/src/l2_accelerator.cpp`
+own the separate MAS engine. A suspended SystemC thread represents the
+controller: descriptor header/body fill, decode, batch preflight, operand
+fill, checked-add passes, binary tree levels, state merge, writeback and drain.
+The program counter and explicit tile/chunk/row/group coordinates persist
+across waits. No L0 executor is called. Three `T_n` banks, `T_m` pair states,
+`LANES` tokens, one 64-byte descriptor buffer and one eight-byte pending write
+bound state independently of architectural dimensions and child count.
+The shared codec and checked-add primitive are the only semantic helpers.
+
+`ModelKernel` owns hosted L2 advancement: submit, poll via `pcaa_device_wait`,
+advance at most 64 nominal cycles while busy, poll again. Poll granularity
+can leave idle simulation time after completion; L2 device statistics count
+only cycles while servicing the accepted command. `PcaaSystemCDevice` and
+production PBQP remain independent of simulation ownership. Each CLI model
+process constructs its modules before kernel startup.
+
+For a physical transfer, the controller holds a stable request and consumes
+one issue cycle, `memory_latency` response-wait cycles and one response-retire
+cycle. `MemoryInterface::read/write` runs at response, with no padding access,
+retry or posted write. Beat-boundary splitting shares a single global credit.
+Optional `acceptance_delay` stalls acceptance for unit testing; its baseline
+is zero. There is no overlap, prefetch or cross-child operand retention.
+Tree latency is `ceil(log2(LANES))`; checked adds and persistent merges each
+take one cycle. Decode takes one cycle after header and one after body;
+preflight checks one actual output element per cycle. Controller tile-state
+initialization, batch transitions and drain also consume cycles. These are
+explicit approximately timed abstractions, not synthesized frequency claims.
+
+`pcaa_graph_run_l2` prints an `l2 `-prefixed JSON object containing its active
+configuration and cumulative counters. The twelve `*_cycles` phase categories
+partition elapsed device cycles; memory waits are excluded from the issuing
+phase, so they must not be counted twice. Opcode cycle attribution begins
+after the header identifies the opcode; header/control work without a known
+opcode is unattributed. Opcode-5 cycles cover parent/record work, while batch
+count is separate from primitive counts. Lane utilization counts issued
+arithmetic slots, including both ADD3 passes and the reused MAP3 first add.
+It is not lanes busy divided by total device time. `tiles` includes a singleton
+state tile for non-projection primitives. Payload counts are bytes requested;
+physical transferred bytes also exclude beat padding. Split counts count
+logical segments crossing beats, not the number of extra requests. Contiguous
+transfers count filled unit-stride chunks; gather elements count addressed
+non-unit-stride costs. Shared reread bytes count loads after the first output
+tile. Maximum queues report accepted/pending entries, not allocated capacity.
+
+`pcaa_l2_microbench` builds commands through pcaalib, independently verifies
+outputs and emits per-shape JSONL. Layouts 0–4 mean contiguous, gathered,
+padded rows, transposed affine, and exact in-place vector add.
+`scripts/l2_characterize.rb` runs it across controlled factors, plus current
+PBQP streams and a separate L1 run for each input. Baseline covers the whole
+LLVM corpus; broad sweeps use eight evenly spaced node-count ranks, endpoints
+included. It retains full subprocess output, unsuccessful status, deterministic
+synthetic inputs and implementation/input hashes. Shape grids provide `m × T_m`
+and `n × T_n` studies without an application Cartesian product. The current
+host PBQP staging packs matrix/vector views; its observed L2 memory requests
+therefore describe those packed streams. Direct microbenchmarks isolate stride
+cost instead of confusing original logical views with staged physical layouts.
+See [the current L2 report](reports/l2-microarchitecture-characterization.md).
 
 ## Workload methodology
 

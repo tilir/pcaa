@@ -10,9 +10,8 @@ Implements: ISA 1.0.0
 This specification selects the first PCAA microarchitecture for an L2
 approximately timed model and subsequent RTL implementation. It specifies one
 command context, one primitive engine, bounded operand storage, tiled
-projections, and sequential batch control. It does not claim that L2 or RTL
-already exists. The implemented reference remains the functional model with
-optional analytical L1 timing.
+projections, and sequential batch control. It is implemented by the structural L2 SystemC model alongside the functional
+reference and optional analytical L1 timing. RTL remains a future refinement.
 
 The software-visible authority is [arch.md](arch.md), with the adopted feature
 set explained in [isa-v1-decision.md](isa-v1-decision.md). MAS implements their
@@ -229,7 +228,7 @@ must state their arbitration and intra-primitive overlap explicitly.
 
 There is no automatic retry, timeout completion, speculative access beyond
 the active primitive, or cache in the baseline. Eventual completion assumes
-the memory adapter eventually answers accepted requests. In a future L2
+the memory adapter eventually answers accepted requests. In the L2
 implementation, physical transactions must still use `MemoryInterface::read`
 and `write`; modeled request state and delay do not authorize dereferencing
 physical addresses as host pointers. MMIO continues through `b_transport`.
@@ -716,8 +715,9 @@ implementation revision, configuration, inputs, and verification scope.
 
 ## 16. Verification invariants and acceptance cases
 
-These are obligations for subsequent L2 unit tests, assertions, and RTL/formal
-properties. They are not a claim of L2 verification in this documentation change.
+These are obligations for L2 unit tests, assertions, and subsequent RTL/formal
+properties. Executed verification and its limits are recorded in
+[the L2 report](reports/l2-microarchitecture-characterization.md).
 Host ownership/stability and eventual memory responses are environment
 assumptions; internal ordering, arithmetic, and request accounting are device
 assertions. A liveness proof must state those response-progress assumptions.
@@ -789,4 +789,4 @@ overlap, or a larger tile must preserve the existing ISA and the documented
 microarchitectural obligations or be versioned as MAS changes. Architectural
 local-RF proposals remain a separate ISA exploration. This document supplies
 the control, traversal, storage and ordering decisions for the first L2 model;
-it does not implement that model or advance the ISA version.
+the model implements it without advancing the ISA or MAS version.

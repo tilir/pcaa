@@ -33,3 +33,14 @@ pcaa_add_baremetal_sources(${CMAKE_CURRENT_SOURCE_DIR}/src/cost_math.cpp)
 pcaa_add_baremetal_headers(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/accel_protocol.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/cost_math.h)
+
+add_library(pcaa_l2 STATIC src/l2_accelerator.cpp)
+target_include_directories(pcaa_l2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${SYSTEMC_INCLUDE_DIR})
+target_link_libraries(pcaa_l2 PUBLIC pcaa_cost_math pcaalib ${SYSTEMC_LIBRARY})
+pcaa_add_format_sources(${CMAKE_CURRENT_SOURCE_DIR}/include/l2_accelerator.h
+                        ${CMAKE_CURRENT_SOURCE_DIR}/src/l2_accelerator.cpp)
+add_executable(l2_unit tests/l2_unit.cpp)
+target_link_libraries(l2_unit PRIVATE pcaa_l2 pcaa_core GTest::gtest)
+add_test(NAME l2_unit COMMAND l2_unit)
+pcaa_add_format_sources(${CMAKE_CURRENT_SOURCE_DIR}/tests/l2_support.h
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tests/l2_unit.cpp)

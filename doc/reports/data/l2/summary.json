@@ -1,0 +1,503 @@
+{
+  "verification": {
+    "microbench_rows": 50688,
+    "workload_rows": 1083,
+    "configurations": 33,
+    "full_corpus_rows": 491,
+    "failed_rows": 0
+  },
+  "corpus_totals": {
+    "cycles": 43019109,
+    "descriptor_cycles": 1378750,
+    "decode_cycles": 381788,
+    "protection_cycles": 2156204,
+    "operand_cycles": 10437188,
+    "add1_cycles": 2877811,
+    "add2_cycles": 1049958,
+    "tree_cycles": 7082866,
+    "merge_cycles": 3541433,
+    "writeback_cycles": 4343134,
+    "drain_cycles": 206257,
+    "memory_wait_cycles": 8079536,
+    "control_cycles": 1484184,
+    "opcode1_count": 0,
+    "opcode1_cycles": 0,
+    "opcode2_count": 0,
+    "opcode2_cycles": 0,
+    "opcode3_count": 16182,
+    "opcode3_cycles": 872305,
+    "opcode4_count": 0,
+    "opcode4_cycles": 0,
+    "opcode5_count": 0,
+    "opcode5_cycles": 184356,
+    "opcode6_count": 67335,
+    "opcode6_cycles": 6122790,
+    "opcode7_count": 67335,
+    "opcode7_cycles": 24624499,
+    "opcode8_count": 24679,
+    "opcode8_cycles": 10436220,
+    "submissions": 15363,
+    "batches": 15363,
+    "children": 175531,
+    "tiles": 243271,
+    "chunks": 248474,
+    "lane_groups": 3927769,
+    "active_elements": 14662770,
+    "lane_slots": 15711076,
+    "tail_slots": 1048306,
+    "state_updates": 3541433,
+    "descriptor_bytes": 7975696,
+    "operand_bytes": 70192140,
+    "result_bytes": 9930544,
+    "descriptor_requests": 689375,
+    "operand_requests": 5218594,
+    "result_requests": 2171567,
+    "header_requests": 190894,
+    "body_requests": 498481,
+    "requests": 8079536,
+    "transferred_bytes": 88098380,
+    "split_transfers": 1765936,
+    "unaligned_splits": 0,
+    "contiguous_transfers": 1605469,
+    "gather_elements": 0,
+    "shared_loads": 204649,
+    "shared_reread_bytes": 3660648,
+    "protection_elements": 2156204,
+    "child_barriers": 175531,
+    "max_outstanding": 1,
+    "max_writebacks": 1
+  },
+  "corpus_l1_cycles": 5435397,
+  "sensitivity": [
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2794308,
+      "baseline_cycles": 2794308,
+      "ratio": 1.0
+    },
+    {
+      "config": {
+        "lanes": 1,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3638846,
+      "baseline_cycles": 2794308,
+      "ratio": 1.302235115098264
+    },
+    {
+      "config": {
+        "lanes": 2,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3253105,
+      "baseline_cycles": 2794308,
+      "ratio": 1.1641898459296542
+    },
+    {
+      "config": {
+        "lanes": 8,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2446245,
+      "baseline_cycles": 2794308,
+      "ratio": 0.8754385701218333
+    },
+    {
+      "config": {
+        "lanes": 16,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2361087,
+      "baseline_cycles": 2794308,
+      "ratio": 0.8449630463069926
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 1,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3666208,
+      "baseline_cycles": 2794308,
+      "ratio": 1.3120271637915362
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 2,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3180436,
+      "baseline_cycles": 2794308,
+      "ratio": 1.1381837649965574
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 4,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2926339,
+      "baseline_cycles": 2794308,
+      "ratio": 1.047249981032871
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 16,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2738646,
+      "baseline_cycles": 2794308,
+      "ratio": 0.9800802202191026
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 32,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2737306,
+      "baseline_cycles": 2794308,
+      "ratio": 0.9796006739414552
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 4,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3015567,
+      "baseline_cycles": 2794308,
+      "ratio": 1.0791820371984764
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 8,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2830812,
+      "baseline_cycles": 2794308,
+      "ratio": 1.0130636994919673
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 32,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2792463,
+      "baseline_cycles": 2794308,
+      "ratio": 0.9993397291923438
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 64,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2792463,
+      "baseline_cycles": 2794308,
+      "ratio": 0.9993397291923438
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 4,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 5477772,
+      "baseline_cycles": 2794308,
+      "ratio": 1.9603322182093026
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 8,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3634818,
+      "baseline_cycles": 2794308,
+      "ratio": 1.3007936133024707
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 32,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2371782,
+      "baseline_cycles": 2794308,
+      "ratio": 0.8487904697692595
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 2
+      },
+      "rows": 18,
+      "cycles": 3319508,
+      "baseline_cycles": 2794308,
+      "ratio": 1.1879535112092152
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 4
+      },
+      "rows": 18,
+      "cycles": 4369908,
+      "baseline_cycles": 2794308,
+      "ratio": 1.5638605336276459
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 8
+      },
+      "rows": 18,
+      "cycles": 6470708,
+      "baseline_cycles": 2794308,
+      "ratio": 2.315674578464507
+    },
+    {
+      "config": {
+        "lanes": 4,
+        "mem_bytes": 16,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 16
+      },
+      "rows": 18,
+      "cycles": 10672308,
+      "baseline_cycles": 2794308,
+      "ratio": 3.8193026681382296
+    },
+    {
+      "config": {
+        "lanes": 1,
+        "mem_bytes": 4,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 6322310,
+      "baseline_cycles": 2794308,
+      "ratio": 2.2625673333075667
+    },
+    {
+      "config": {
+        "lanes": 1,
+        "mem_bytes": 8,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 4479356,
+      "baseline_cycles": 2794308,
+      "ratio": 1.6030287284007347
+    },
+    {
+      "config": {
+        "lanes": 1,
+        "mem_bytes": 32,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3216320,
+      "baseline_cycles": 2794308,
+      "ratio": 1.1510255848675235
+    },
+    {
+      "config": {
+        "lanes": 2,
+        "mem_bytes": 4,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 5936569,
+      "baseline_cycles": 2794308,
+      "ratio": 2.1245220641389566
+    },
+    {
+      "config": {
+        "lanes": 2,
+        "mem_bytes": 8,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 4093615,
+      "baseline_cycles": 2794308,
+      "ratio": 1.4649834592321247
+    },
+    {
+      "config": {
+        "lanes": 2,
+        "mem_bytes": 32,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2830579,
+      "baseline_cycles": 2794308,
+      "ratio": 1.0129803156989137
+    },
+    {
+      "config": {
+        "lanes": 8,
+        "mem_bytes": 4,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 5129709,
+      "baseline_cycles": 2794308,
+      "ratio": 1.835770788331136
+    },
+    {
+      "config": {
+        "lanes": 8,
+        "mem_bytes": 8,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3286755,
+      "baseline_cycles": 2794308,
+      "ratio": 1.176232183424304
+    },
+    {
+      "config": {
+        "lanes": 8,
+        "mem_bytes": 32,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 2023719,
+      "baseline_cycles": 2794308,
+      "ratio": 0.7242290398910929
+    },
+    {
+      "config": {
+        "lanes": 16,
+        "mem_bytes": 4,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 5044551,
+      "baseline_cycles": 2794308,
+      "ratio": 1.8052952645162952
+    },
+    {
+      "config": {
+        "lanes": 16,
+        "mem_bytes": 8,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 3201597,
+      "baseline_cycles": 2794308,
+      "ratio": 1.1457566596094633
+    },
+    {
+      "config": {
+        "lanes": 16,
+        "mem_bytes": 32,
+        "tm": 8,
+        "tn": 16,
+        "memory_latency": 1
+      },
+      "rows": 18,
+      "cycles": 1938561,
+      "baseline_cycles": 2794308,
+      "ratio": 0.6937535160762521
+    }
+  ],
+  "implementation_fingerprint": "c82aabd535af54d8412fb15c0c20c125ed0c3e0a787139cbff875eea16129846"
+}

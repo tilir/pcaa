@@ -15,13 +15,14 @@ start with [the research synthesis as of 1 October 2026](research-summary-2026-1
 | Document | Scope |
 | --- | --- |
 | [Architecture](arch.md) | MMIO, descriptor encoding, operand dimensions/strides, arithmetic, outputs, ordering, and errors |
-| [Microarchitecture (MAS 1.0.0)](mas.md) | ISA 1.0.0 implementation specification for future L2/RTL: one engine, tiled projections, bounded storage, memory ordering, and errors |
+| [Microarchitecture (MAS 1.0.0)](mas.md) | ISA 1.0.0 implementation specification for current L2 and future RTL: one engine, tiled projections, bounded storage, memory ordering, and errors |
 | [pcaalib](pcaalib.md) | Semantic C API, codec, backends, and typed submission/completion statuses |
 | [Model and workload design](design.md) | L0–L3 refinement route, simulation ownership, trace/CSV methodology, and measurement revisions |
 | [L1 performance model](l1-performance-model.md) | Current service-cycle formulas, assumptions, and 28-cycle triangle calibration |
 | [Workload overview](workload-characterization.md) | Meanings of logical work, descriptors, submissions, staging, and cycles |
 | [Bellman–Ford probe](generality-probe.md) | Current software oracle/SystemC coverage and limits of the irregular edge-list mapping |
 | [ISA 1.0.0 decision](isa-v1-decision.md) | Adopted primitives and rationale; current encoding links back to the architecture |
+| [L2 microarchitecture characterization](reports/l2-microarchitecture-characterization.md) | Current MAS execution, full LLVM baseline, microbenchmarks, controlled sweeps and L1 comparison |
 | [Compact encoding measurements](reports/compact-encoding-measurements.md) | Example command bytes with current encoding, compared with the previous 80-byte encoding |
 
 ## Historical measurement reports
@@ -67,4 +68,4 @@ the current feature list.
 [The ISA 2.x local-vector-register proposal](isa-2x-local-vector-rf.md) is a
 deferred exploration. Local registers, load/store variants, full-matrix
 outputs, segmented reductions, and graph-aware scheduling are not current
-commands. L2 and L3 are refinement plans, not implemented models.
+commands. L2 implements MAS 1.0.0; L3 remains a refinement plan.

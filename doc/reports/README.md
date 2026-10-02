@@ -24,6 +24,7 @@ ruby scripts/verify_report_data.rb
 | [Vector cycle projection](vector-primitive-cycle-projection.md) | Hypothetical shapes, four lanes, 56-byte descriptors | All 671 repeated rows match; 50-cycle triangle rechecked |
 | [Matrix access patterns](matrix-access-pattern-study.md) | Contiguous/strided view counts | All 898 source rows match; rounded ratio corrected |
 | [Cost representation](cost-representation-study.md) | DIMACS distances, log weights, literature anchors | All 733,846 arcs recomputed; inputs retained; FPGA scope corrected, unsupported area claim removed |
+| [L2 microarchitecture](l2-microarchitecture-characterization.md) | Current MAS 1.0.0 execution and controlled sweeps | Full corpus assignments checked against L1/L0; independent microbenchmark oracle and archived cycle partitions |
 | [Compact encoding](compact-encoding-measurements.md) | Current 32/48/64-byte encoding | All four examples rerun against `86d76b1`; byte totals and aliases verified |
 
 These rechecks validate functional/logical measurements and model arithmetic.

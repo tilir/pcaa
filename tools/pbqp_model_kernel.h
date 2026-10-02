@@ -11,6 +11,8 @@
 #include <limits>
 #include <memory>
 
+struct L2Config;
+struct L2Statistics;
 struct AccelTimingConfig;
 struct AccelTimingStatistics;
 
@@ -34,11 +36,13 @@ struct VectorCycleProjection {
 class ModelKernel {
  public:
   ModelKernel(bool verbose, AccelTimingConfig timing,
-              size_t staging_limit = std::numeric_limits<size_t>::max());
+              size_t staging_limit = std::numeric_limits<size_t>::max(),
+              const L2Config *l2 = nullptr);
   ~ModelKernel();
   void make_kernel(pbqp_cost_kernel_t *kernel);
   const AccelTimingStatistics &timing_statistics() const;
   const VectorCycleProjection &vector_cycle_projection() const;
+  const L2Statistics &l2_statistics() const;
 
  private:
   class Impl;

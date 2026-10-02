@@ -1,5 +1,18 @@
 {
   "CUDD_revision": "d47718fedea39fa2ef7d4907432b92b032a8ff72",
+  "L2_MAS_1_0_0": {
+    "implementation_fingerprint": "c82aabd535af54d8412fb15c0c20c125ed0c3e0a787139cbff875eea16129846",
+    "metadata": "l2/metadata.json",
+    "report": "../l2-microarchitecture-characterization.md",
+    "source_snapshot": "l2/implementation.tar.gz",
+    "verification": {
+      "configurations": 33,
+      "failed_rows": 0,
+      "full_corpus_rows": 491,
+      "microbench_rows": 50688,
+      "workload_rows": 1083
+    }
+  },
   "LLVM_extraction": {
     "IR_bytes": {
       "InstCombineAddSub": 2323158,
@@ -97,10 +110,10 @@
   "script_sha256": {
     "scripts/cost_representation_analyze.rb": "3d12dc27e98072ddb4a9a0181c2205a2059d97f846419bfc171c71ace2561c92",
     "scripts/hw_sw_characterize.rb": "a0ffa5742d7cbdfd7315d46b2aa8edf751bd47f54b1d7153d84a012059ecd75e",
+    "scripts/recheck_search_report.rb": "19d057e032ebf273d819d1de06aec60c39db89e66169c2f56b96e05cbbbf4e03",
     "scripts/rn_characterize.rb": "afe910a59393ffdf5181dcbc6a1cef943fab0362cb4dabc13f40776db54e347e",
     "scripts/scaling_characterize.rb": "df40db64d7277f7c92cd9dccfe7f1c53b4a414de3fa6380c44642317b43f6e1e",
     "scripts/vector_cycle_project.rb": "31cdacdf6ed16c29b9997908dbc6d913f54ee40975f111e0faf0520300fea2cc",
-    "scripts/recheck_search_report.rb": "19d057e032ebf273d819d1de06aec60c39db89e66169c2f56b96e05cbbbf4e03",
     "scripts/verify_report_data.rb": "9183ef2b90c5cf46526119db720a7f95d01bfd3c27efc5af9e4580b4db87efab"
   }
 }

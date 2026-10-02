@@ -8,6 +8,7 @@
 #include "pcaa.h"
 #include "pcaa_host_error.h"
 #include "timing_model.h"
+#include "l2_accelerator.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -121,6 +122,14 @@ void print_usage(std::ostream &output) {
             "  --trace FILE                Write stable JSONL solver events to FILE.\n"
             "  --help                      Show this help text.\n"
             "  --version                   Show the runner version.\n";
+#if defined(PCAA_GRAPH_RUN_L2)
+  output << "L2 options (positive values through 65535):\n"
+            "  --l2-lanes N                 Arithmetic lanes (default: 4).\n"
+            "  --l2-mem-bytes N             Transfer width (default: 16).\n"
+            "  --l2-tm N                    Output states per tile (default: 8).\n"
+            "  --l2-tn N                    Operand costs per bank (default: 16).\n"
+            "  --l2-memory-latency N        Response wait cycles (default: 1).\n";
+#endif
 }
 
 const char *strategy_name(pbqp_solver_strategy_t strategy) {
@@ -319,6 +328,9 @@ AccelTimingConfig runner_timing_config() {
 
 int sc_main(int argc, char **argv) {
   bool verbose = false;
+#if defined(PCAA_GRAPH_RUN_L2)
+  L2Config l2;
+#endif
   SolverMode solver_mode = SolverMode::kLocal;
   bool saw_solver_mode = false;
   bool saw_strategy = false;
@@ -335,6 +347,31 @@ int sc_main(int argc, char **argv) {
       return 0;
     } else if (argument == "--verbose" && !verbose) {
       verbose = true;
+#if defined(PCAA_GRAPH_RUN_L2)
+    } else if (argument.rfind("--l2-", 0) == 0 && index + 1 < argc) {
+      try {
+        const std::string value = argv[++index];
+        size_t used = 0;
+        const unsigned long number = std::stoul(value, &used);
+        if (used != value.size() || number == 0 || number > UINT16_MAX)
+          throw std::invalid_argument("L2 parameter");
+        if (argument == "--l2-lanes")
+          l2.lanes = number;
+        else if (argument == "--l2-mem-bytes")
+          l2.mem_bytes = number;
+        else if (argument == "--l2-tm")
+          l2.tm = number;
+        else if (argument == "--l2-tn")
+          l2.tn = number;
+        else if (argument == "--l2-memory-latency")
+          l2.memory_latency = static_cast<int>(number);
+        else
+          throw std::invalid_argument("L2 option");
+      } catch (const std::exception &) {
+        std::cerr << "invalid L2 option: " << argument << '\n';
+        return 2;
+      }
+#endif
     } else if (argument == "--solver" && !saw_solver_mode && index + 1 < argc) {
       const std::string mode = argv[++index];
       if (mode == "bare-metal") {
@@ -431,7 +468,11 @@ int sc_main(int argc, char **argv) {
     std::cerr << "invalid PBQP input: " << path << '\n';
     return 2;
   }
+#if defined(PCAA_GRAPH_RUN_L2)
+  ModelKernel model(verbose, runner_timing_config(), std::numeric_limits<size_t>::max(), &l2);
+#else
   ModelKernel model(verbose, runner_timing_config());
+#endif
   sc_core::sc_start(sc_core::SC_ZERO_TIME);
   pbqp_cost_kernel_t kernel;
   model.make_kernel(&kernel);
@@ -613,6 +654,14 @@ int sc_main(int argc, char **argv) {
               << " limit-hits=" << statistics->search_limit_hits
               << " pruned=" << statistics->search_nodes_pruned << '\n';
   }
+#if defined(PCAA_GRAPH_RUN_L2)
+  std::cout << "l2 ";
+  l2_write_json(std::cout, l2, model.l2_statistics());
+  std::cout << '\n';
+  if (model.l2_statistics().children == 0)
+    std::cout << "l2 note=no accelerator primitives were issued; zero device cycles reflect "
+                 "software-core solving\n";
+#endif
 #if defined(PCAA_GRAPH_RUN_TIMED)
   const AccelTimingStatistics &timing = model.timing_statistics();
   const VectorCycleProjection &projection = model.vector_cycle_projection();

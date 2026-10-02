@@ -7,6 +7,7 @@ require "csv"
 require "digest"
 require "json"
 require "optparse"
+require "rbconfig"
 require "set"
 require "zlib"
 
@@ -367,6 +368,9 @@ def verify
     File.file?(path) && File.basename(path) != "SHA256SUMS"
   end.map { |path| path.delete_prefix("#{DATA}/") }.to_set
   check(recorded_files == actual_files, "Checksum manifest must cover every evidence file")
+  l2_verify = File.join(ROOT, "scripts/l2_report.rb")
+  check(system(RbConfig.ruby, l2_verify, "--verify"), "L2 evidence invariants")
+  RESULT["L2_MAS_1_0_0"] = JSON.parse(File.read(File.join(DATA, "l2/summary.json"))).fetch("verification")
   RESULT
 end
 

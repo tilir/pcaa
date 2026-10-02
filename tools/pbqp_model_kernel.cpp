@@ -6,6 +6,7 @@
 #include "accelerator.h"
 #include "accel_protocol.h"
 #include "memory_interface.h"
+#include "l2_accelerator.h"
 #include "pbqp/pbqp.h"
 #include "pcaa.h"
 #include "pcaa_device.h"
@@ -41,6 +42,7 @@
 namespace {
 constexpr size_t kInitialGuestMemoryBytes = 1024 * 1024;
 constexpr unsigned kTimedRunnerLanes = 4;
+constexpr int kL2PollCycles = 64;
 constexpr unsigned kTimedRunnerBytesPerCycle = 16;
 constexpr pcaa_guest_address_t kFirstAllocationAddress = 0x100;
 constexpr size_t kAllocationAlignment = 8;
@@ -109,11 +111,16 @@ class Initiator final : public sc_core::sc_module {
 
 class ModelKernel::Impl {
  public:
-  Impl(bool verbose, AccelTimingConfig timing, size_t staging_limit)
-      : memory_(staging_limit),
-        accelerator_(sc_core::sc_gen_unique_name("accelerator"), memory_, timing, verbose),
-        initiator_(sc_core::sc_gen_unique_name("initiator")) {
-    initiator_.socket.bind(accelerator_.target_socket);
+  Impl(bool verbose, AccelTimingConfig timing, size_t staging_limit, const L2Config *l2)
+      : memory_(staging_limit), initiator_(sc_core::sc_gen_unique_name("initiator")) {
+    if (l2) {
+      l2_ = std::make_unique<L2Accelerator>(sc_core::sc_gen_unique_name("l2"), memory_, *l2);
+      initiator_.socket.bind(l2_->target_socket);
+    } else {
+      accelerator_ = std::make_unique<Accelerator>(sc_core::sc_gen_unique_name("accelerator"),
+                                                   memory_, timing, verbose);
+      initiator_.socket.bind(accelerator_->target_socket);
+    }
     device_ = std::make_unique<PcaaSystemCDevice>(memory_, &memory_, allocate_device_storage,
                                                   *initiator_.socket.operator->());
   }
@@ -135,7 +142,11 @@ class ModelKernel::Impl {
   }
 
   const AccelTimingStatistics &timing_statistics() const {
-    return accelerator_.timing_statistics();
+    return accelerator_ ? accelerator_->timing_statistics() : untimed_;
+  }
+
+  const L2Statistics &l2_statistics() const {
+    return l2_->statistics();
   }
 
   const VectorCycleProjection &vector_cycle_projection() const {
@@ -640,9 +651,20 @@ class ModelKernel::Impl {
     }
     record_batch_submission(commands, child_bytes);
     pcaa_completion_t completion{};
-    const pcaa_status_t completed = pcaa_device_wait(device_->device(), &completion);
+    pcaa_status_t completed = pcaa_device_wait(device_->device(), &completion);
+    while (l2_ && completed == PCAA_STATUS_BUSY) {
+      // The hosted model owns simulation advancement; pcaalib remains transport-only.
+      sc_core::sc_start(l2_->config().cycle_period * kL2PollCycles);
+      completed = pcaa_device_wait(device_->device(), &completion);
+    }
     if (completed != PCAA_STATUS_OK) {
       pcaa_perror("pcaa wait", completed);
+      if (l2_) {
+        const auto &d = l2_->diagnostic();
+        std::cerr << "L2 cause=" << pcaa_status_string(d.cause)
+                  << " phase=" << static_cast<int>(d.phase) << " address=" << d.address
+                  << " child=" << d.child << " row=" << d.row << " column=" << d.column << '\n';
+      }
       if (completion.has_batch_result && completion.failed_index != UINT32_MAX)
         std::cerr << "pcaa: failed child=" << completion.failed_index << '\n';
       return completed;
@@ -683,14 +705,17 @@ class ModelKernel::Impl {
   GuestMemory memory_;
   std::map<ViewKey, pcaa_guest_address_t, ViewKeyLess> view_cache_;
   VectorCycleProjection vector_cycle_projection_;
-  Accelerator accelerator_;
+  std::unique_ptr<Accelerator> accelerator_;
+  std::unique_ptr<L2Accelerator> l2_;
+  AccelTimingStatistics untimed_;
   Initiator initiator_;
   std::unique_ptr<PcaaSystemCDevice> device_;
   pbqp_statistics_t *statistics_ = nullptr;
 };
 
-ModelKernel::ModelKernel(bool verbose, AccelTimingConfig timing, size_t staging_limit)
-    : impl_(std::make_unique<Impl>(verbose, timing, staging_limit)) {}
+ModelKernel::ModelKernel(bool verbose, AccelTimingConfig timing, size_t staging_limit,
+                         const L2Config *l2)
+    : impl_(std::make_unique<Impl>(verbose, timing, staging_limit, l2)) {}
 ModelKernel::~ModelKernel() = default;
 void ModelKernel::make_kernel(pbqp_cost_kernel_t *kernel) {
   impl_->make_kernel(kernel);
@@ -700,4 +725,8 @@ const AccelTimingStatistics &ModelKernel::timing_statistics() const {
 }
 const VectorCycleProjection &ModelKernel::vector_cycle_projection() const {
   return impl_->vector_cycle_projection();
+}
+
+const L2Statistics &ModelKernel::l2_statistics() const {
+  return impl_->l2_statistics();
 }

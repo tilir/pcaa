@@ -45,6 +45,16 @@ For fixed-size storage owned by C++ code, prefer `std::array` over a raw C array
 
 Every source module and public header begins with an SPDX GPL-3.0-only identifier, copyright notice, and a brief statement of its purpose. Avoid empty infinite loops in C/C++: use an explicit architecture-appropriate wait or halt instruction and mark terminal helpers `noreturn` where applicable.
 
+## Repository scripting
+
+Use Ruby for new or rewritten repository automation, characterization,
+report generation, and evidence verification scripts. Prefer Ruby's standard
+library and reuse existing Ruby helpers and conventions. Do not introduce a
+Python dependency for work Ruby can handle. Keep Python only when an external
+tool or required library makes it necessary, and document that concrete reason.
+Preserve archived scripts and recorded commands as measurement provenance;
+ports must not relabel historical evidence as a new measurement revision.
+
 ## Documentation and public interfaces
 
 Keep `README.md` concise and human-facing. It should explain what the project does, the supported commands and their observable semantics, plus build and test commands; it must not expose internal implementation or simulation-lifecycle details. Put development constraints in this guide, block architecture in `doc/arch.md`, and the pcaalib function reference in `doc/pcaalib.md`.
@@ -254,3 +264,22 @@ spike --extlib=build/libpcaa_spike_device.so --device=pcaa,0x10002000,0x1000 bui
 ```
 
 If changing an opcode, cover normal data, `n=1`, non-power-of-two lengths, negative values, `INF`, ties/argmin where applicable, and memory failure/error handling in the SystemC test. Keep bare-metal random lengths including 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 63, and 64.
+
+## L2 ownership and verification
+
+`L2Accelerator` implements MAS 1.0.0 independently of the L0 executor and L1
+estimator. Keep its bounded banks, suspended controller phases, single shared
+memory credit, acknowledged writeback and child barriers explicit. Do not
+substitute functional execution plus calculated delay. `doc/mas.md` owns its
+microarchitecture; `doc/arch.md` remains the software-visible authority.
+`ModelKernel` owns hosted L2 simulation advancement; pcaalib and PBQP must not
+acquire hidden `sc_start()` calls. Keep `pcaa_graph_run_l2` separate from both
+existing runners, and L2 statistics separate from analytical L1 counters.
+
+Run `l2_unit`, `l2_microbench_smoke`, `l2_characterization_smoke` and the normal
+Debug/Release suite after L2 changes. Differential error checks must not demand
+L0's unspecified partial outputs or access order. Use independent arithmetic
+in the direct microbenchmark oracle. Baseline characterization must cover the
+full LLVM corpus; retain source/input hashes, raw subprocess output and failed
+statuses. Never resume evidence with changed execution code. Run
+`ruby scripts/l2_report.rb --verify` to check the L2 archive and table inputs.
