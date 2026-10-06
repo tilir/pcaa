@@ -10,6 +10,9 @@
 
 namespace pcaa::pbqp_storage {
 
+pbqp_status_t Clone(pbqp_problem_t &destination, const pbqp_problem_t &source,
+                    pbqp_allocator_t allocator, bool fast);
+
 unsigned *Reconstruction(pbqp_problem_t &problem, unsigned node);
 const unsigned *Reconstruction(const pbqp_problem_t &problem, unsigned node);
 void CopyStatistics(pbqp_statistics_t *destination, const pbqp_statistics_t &source,
@@ -59,6 +62,14 @@ class Array {
     return data_;
   }
 
+  T &operator[](size_t index) {
+    return data_[index];
+  }
+
+  const T &operator[](size_t index) const {
+    return data_[index];
+  }
+
  private:
   void Reset() {
     if (data_ != nullptr && allocator_.deallocate != nullptr)
@@ -75,8 +86,9 @@ class Array {
 
 class Problem {
  public:
-  Problem(const pbqp_problem_t &source, pbqp_allocator_t allocator) : state_{}, status_{} {
-    status_ = pbqp_problem_clone(&state_, &source, allocator);
+  Problem(const pbqp_problem_t &source, pbqp_allocator_t allocator, bool fast = false)
+      : state_{}, status_{} {
+    status_ = Clone(state_, source, allocator, fast);
   }
 
   ~Problem() {

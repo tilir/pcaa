@@ -1,0 +1,2 @@
+/home/tilir/pcaa/software/tests/runtime.c:7:7:memset	0	static
+/home/tilir/pcaa/software/tests/runtime.c:15:7:memcpy	0	static

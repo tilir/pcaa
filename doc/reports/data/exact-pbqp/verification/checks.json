@@ -1,0 +1,9 @@
+{
+  "debug_ctest": 48,
+  "release_ctest": 48,
+  "spike_elfs": 5,
+  "exact_oracle_combinations": 480,
+  "cli_checks": 31,
+  "stack_bound_bytes": 568480,
+  "reserve_bytes": 1048576
+}

@@ -1,0 +1,8 @@
+{
+  "scope": "Post-measurement analysis only; execution source and binaries retain metadata hashes",
+  "revision_reason": "Exclude zero-service cases from strict current-host hardware win fractions; generate human report",
+  "sha256": {
+    "exact_pbqp_report.rb": "b00dd87b376dc4d4b847fb3306e47d630f81d33a5bbe6c3a23effd3a1a165366",
+    "exact_pbqp_publish.rb": "bd76cc8ad930e91fcebbad4fa8a008f7f89e6c478ae166ebed489af96123d64b"
+  }
+}

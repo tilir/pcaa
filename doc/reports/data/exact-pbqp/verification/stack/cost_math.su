@@ -1,0 +1,2 @@
+/home/tilir/pcaa/accelerator/src/cost_math.cpp:8:5:int accel_cost_add_checked(int32_t, int32_t, int32_t*)	0	static
+/home/tilir/pcaa/accelerator/src/cost_math.cpp:12:9:int32_t accel_cost_add(int32_t, int32_t)	0	static

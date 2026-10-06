@@ -16,6 +16,102 @@
 namespace cpu_baseline {
 thread_local Profile *profile = nullptr;
 thread_local Kernels *active_kernels = nullptr;
+pcaa::pbqp::Execution MakeExecution(Profile &p, bool observe) {
+  pcaa::pbqp::Execution execution;
+  execution.cache_degrees = p.degrees;
+  execution.fast_clone = p.fast_clone;
+  execution.vector_conditioning = p.vector_conditioning;
+  execution.seed_assignment = p.seed_assignment;
+  execution.seed_length = p.seed_length;
+  execution.seed_objective = p.seed_objective;
+  execution.observer = observe ? &p : nullptr;
+  execution.kernel_observer = &p;
+  return execution;
+}
+void Profile::Enter(pcaa::pbqp::Phase phase) {
+  auto &p = *this;
+  const int c = static_cast<int>(phase);
+  if (!p.enabled && (c == Topology || c == Selection))
+    return;
+  const bool active = p.enabled && (p.mask & (uint64_t{1} << c)) && p.current != c;
+  p.frames.push_back({p.phase, p.current, active});
+  if (active) {
+    p.Charge();
+    p.current = c;
+  }
+  if (c != Topology && c != Selection && c != Allocation)
+    p.phase = c;
+}
+void Profile::Leave(pcaa::pbqp::Phase phase) {
+  auto &p = *this;
+  const int c = static_cast<int>(phase);
+  if (!p.enabled && (c == Topology || c == Selection))
+    return;
+  const auto frame = p.frames.back();
+  p.frames.pop_back();
+  if (frame.active) {
+    p.Charge();
+    p.current = frame.current;
+  }
+  p.phase = frame.phase;
+}
+void Profile::Record(pcaa::pbqp::Work work, uint64_t count, uint64_t detail) {
+  using pcaa::pbqp::Work;
+  auto &p = *this;
+  if (!p.counters)
+    return;
+  auto &x = p.exact;
+  switch (work) {
+    case Work::Visit:
+      x.visited += count;
+      x.depth = std::max(x.depth, static_cast<unsigned>(detail));
+      break;
+    case Work::Branch:
+      x.branches += count;
+      break;
+    case Work::Prune:
+      x.pruned += count;
+      break;
+    case Work::CloneBytes:
+      x.clone_bytes += count;
+      break;
+    case Work::LowerUnary:
+      x.lower_unary += count;
+      break;
+    case Work::LowerMatrix:
+      x.lower_matrix += count;
+      break;
+    case Work::Condition:
+      x.conditioning += count;
+      break;
+    case Work::R0:
+      x.r0 += count;
+      break;
+    case Work::R1:
+      x.r1 += count;
+      break;
+    case Work::R2:
+      x.r2 += count;
+      break;
+    case Work::BranchPoint:
+      ++x.domains[static_cast<unsigned>(count)];
+      ++x.cores[static_cast<unsigned>(detail)];
+      break;
+  }
+}
+void Profile::Observe(int32_t objective) {
+  cpu_baseline::ObserveSolution(objective);
+}
+void Profile::MatrixChanged(const int32_t *base) {
+  cpu_baseline::MatrixChanged(base);
+}
+void Profile::ForgetMatrices() {
+  cpu_baseline::ForgetMatrices();
+}
+void Profile::R1Projection(pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
+                           accel_min_argmin_result_t *results) {
+  cpu_baseline::R1Projection(matrix, unary, results);
+}
 uint64_t Now() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::steady_clock::now().time_since_epoch())
@@ -29,6 +125,22 @@ void Profile::Charge() {
 void MatrixChanged(const int32_t *base) {
   if (active_kernels)
     active_kernels->Invalidate(base);
+}
+void ForgetMatrices() {
+  if (active_kernels)
+    active_kernels->ForgetMatrices();
+}
+void ObserveSolution(int32_t objective) {
+  if (!profile || !profile->counters)
+    return;
+  const uint64_t elapsed = Now() - profile->solve_start;
+  const bool first = profile->first_solution_ns == 0;
+  if (first)
+    profile->first_solution_ns = elapsed;
+  if (first || objective < profile->observed_best) {
+    profile->observed_best = objective;
+    profile->optimum_found_ns = elapsed;
+  }
 }
 void R1Projection(pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
                   accel_min_argmin_result_t *results) {

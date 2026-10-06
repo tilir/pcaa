@@ -43,6 +43,12 @@ in class definitions and templates/explicitly inline helpers in headers where
 appropriate. Preserve the stable C ABI and freestanding toolchain constraints;
 hosted standard-library facilities belong in hosted code.
 
+Prefer typed standard algorithms such as `std::copy_n` for C++ arrays; reserve
+`memcpy` for byte storage and representation transfers. Where the freestanding
+toolchain lacks the standard library, select a small typed equivalent through
+build-local include paths. Use typed C++ observer interfaces for optional solver
+instrumentation; keep opaque contexts confined to C ABI callbacks.
+
 Keep CMake ownership local: a subsystem's `CMakeLists.txt` defines its targets and appends
 its format and bare-metal inputs through the project collection helpers. Top-level and
 shared CMake modules consume those collections; do not restore centralized long source lists.
@@ -102,15 +108,29 @@ Keep measurement reports in `doc/reports/`, with their raw inputs/results in
 Native CPU performance experiments use Release builds, warm-up and raw repeated
 samples, with parsing, graph cloning and serialization outside solve timing.
 Keep diagnostic instrumented profiles separate from uninstrumented solve
-samples and disclose timer overhead. Host-only CPU optimizations and clocks
-belong in the isolated `tools/cpu_baseline` target; preserve solver policy,
-tie order, the production solver and freestanding storage. Share the graph
+samples and disclose timer overhead. Hosted clocks, SIMD kernels and profiling
+containers belong in `tools/cpu_baseline`. Use the optional C++ execution policy
+in `software/pbqp/pbqp_execution.h` to observe the shared solver or opt into
+degree caching, snapshot copying and existing vector conditioning. The stable
+C entry point uses the default policy. Do not scatter experiment/preprocessor
+branches through algorithms; use ordinary interfaces and separate native and
+SystemC entry files. Preserve search/reduction order and freestanding defaults.
+Share the graph
 reader with the runners, keep C++ helpers in `tools/pbqp_input`, and test reader,
 kernel, solver-policy, CLI and measurement boundaries. Compare corresponding
 CPU callbacks with L2 service cycles, never simulation wall time or total
 solver time when topology remains on the CPU. Pin source/input hashes and
 configuration before measurement; regenerate tables from retained samples and
 reject revision mixing or failed rows.
+Exact-search reports retain every requested input and classify exact completion,
+search-node limits, timeouts and errors separately. Report matched completed
+subsets and completion fractions; a subprocess exit code of zero does not prove
+exact completion. Treat heuristic incumbent initialization as an algorithmic
+change, including its time and changed tree, rather than a hardware speedup.
+Keep source/limits/workspace policy fixed across CPU and L2. Validate snapshots,
+incumbents, conditioning failures and small exact optima against an exhaustive
+oracle before collecting timings. Never reinterpret host simulation time as
+device service time or intrusive phase timings as unbiased solve measurements.
 Keep historical measurement reports explicit about their solver/encoding
 revision. Do not relabel old descriptor counts or cycle tables as current,
 or resume an old characterization CSV with a different implementation revision.

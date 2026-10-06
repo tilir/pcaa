@@ -117,6 +117,11 @@ SystemC. The [CPU/L2 comparison](doc/reports/cpu-baseline-l2-comparison.md)
 uses the retained LLVM corpus and separates CPU kernel time, graph control,
 host preparation, and modeled accelerator service cycles.
 
+The [exact PBQP breakdown](doc/reports/exact-pbqp-cpu-l2-breakdown.md) studies
+bounded branch-and-reduce, state copies, lower bounds and incumbent quality.
+Its native and L2 benchmark commands are documented in the host tools guide;
+search-limit results are reported separately from proven exact solutions.
+
 ## Beyond PBQP: Bellman–Ford
 
 The host-only [Bellman–Ford probe](doc/generality-probe.md) runs

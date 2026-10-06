@@ -1,0 +1,284 @@
+[
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/software -x c++ -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pbqp_unit.dir/software/pbqp/pbqp_unit.c.o -c /home/tilir/pcaa/software/pbqp/pbqp_unit.c",
+  "file": "/home/tilir/pcaa/software/pbqp/pbqp_unit.c",
+  "output": "CMakeFiles/pbqp_unit.dir/software/pbqp/pbqp_unit.c.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/systemc_unit.dir/accelerator/tests/systemc_unit.cpp.o -c /home/tilir/pcaa/accelerator/tests/systemc_unit.cpp",
+  "file": "/home/tilir/pcaa/accelerator/tests/systemc_unit.cpp",
+  "output": "CMakeFiles/systemc_unit.dir/accelerator/tests/systemc_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release",
+  "command": "/usr/bin/c++ -Dpcaa_spike_device_EXPORTS -I/home/tilir/riscv-isa-sim -I/home/tilir/riscv-isa-sim/riscv -I/home/tilir/riscv-isa-sim/fesvr -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/pcaa_spike_device.dir/accelerator/src/spike_device.cpp.o -c /home/tilir/pcaa/accelerator/src/spike_device.cpp",
+  "file": "/home/tilir/pcaa/accelerator/src/spike_device.cpp",
+  "output": "CMakeFiles/pcaa_spike_device.dir/accelerator/src/spike_device.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release",
+  "command": "/usr/bin/c++ -Dpcaa_spike_device_EXPORTS -I/home/tilir/riscv-isa-sim -I/home/tilir/riscv-isa-sim/riscv -I/home/tilir/riscv-isa-sim/fesvr -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/pcaa_spike_device.dir/accelerator/src/systemc_plugin_entry.cpp.o -c /home/tilir/pcaa/accelerator/src/systemc_plugin_entry.cpp",
+  "file": "/home/tilir/pcaa/accelerator/src/systemc_plugin_entry.cpp",
+  "output": "CMakeFiles/pcaa_spike_device.dir/accelerator/src/systemc_plugin_entry.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/cc  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c11 -fPIC -o CMakeFiles/pcaalib.dir/src/pcaa.c.o -c /home/tilir/pcaa/pcaalib/src/pcaa.c",
+  "file": "/home/tilir/pcaa/pcaalib/src/pcaa.c",
+  "output": "pcaalib/CMakeFiles/pcaalib.dir/src/pcaa.c.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/cc  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c11 -fPIC -o CMakeFiles/pcaalib.dir/src/codec.c.o -c /home/tilir/pcaa/pcaalib/src/codec.c",
+  "file": "/home/tilir/pcaa/pcaalib/src/codec.c",
+  "output": "pcaalib/CMakeFiles/pcaalib.dir/src/codec.c.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/cc  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c11 -fPIC -o CMakeFiles/pcaalib.dir/src/submission.c.o -c /home/tilir/pcaa/pcaalib/src/submission.c",
+  "file": "/home/tilir/pcaa/pcaalib/src/submission.c",
+  "output": "pcaalib/CMakeFiles/pcaalib.dir/src/submission.c.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/cc  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c11 -fPIC -o CMakeFiles/pcaalib.dir/src/device.c.o -c /home/tilir/pcaa/pcaalib/src/device.c",
+  "file": "/home/tilir/pcaa/pcaalib/src/device.c",
+  "output": "pcaalib/CMakeFiles/pcaalib.dir/src/device.c.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/cc  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c11 -o CMakeFiles/pcaalib_host.dir/src/error_host.c.o -c /home/tilir/pcaa/pcaalib/src/error_host.c",
+  "file": "/home/tilir/pcaa/pcaalib/src/error_host.c",
+  "output": "pcaalib/CMakeFiles/pcaalib_host.dir/src/error_host.c.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaalib_systemc.dir/src/systemc_device.cpp.o -c /home/tilir/pcaa/pcaalib/src/systemc_device.cpp",
+  "file": "/home/tilir/pcaa/pcaalib/src/systemc_device.cpp",
+  "output": "pcaalib/CMakeFiles/pcaalib_systemc.dir/src/systemc_device.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pcaa_unit.dir/tests/pcaa_unit.cpp.o -c /home/tilir/pcaa/pcaalib/tests/pcaa_unit.cpp",
+  "file": "/home/tilir/pcaa/pcaalib/tests/pcaa_unit.cpp",
+  "output": "pcaalib/CMakeFiles/pcaa_unit.dir/tests/pcaa_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/pcaalib",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pcaa_systemc_device_unit.dir/tests/systemc_device_unit.cpp.o -c /home/tilir/pcaa/pcaalib/tests/systemc_device_unit.cpp",
+  "file": "/home/tilir/pcaa/pcaalib/tests/systemc_device_unit.cpp",
+  "output": "pcaalib/CMakeFiles/pcaa_systemc_device_unit.dir/tests/systemc_device_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/accelerator",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/pcaa_cost_math.dir/src/cost_math.cpp.o -c /home/tilir/pcaa/accelerator/src/cost_math.cpp",
+  "file": "/home/tilir/pcaa/accelerator/src/cost_math.cpp",
+  "output": "accelerator/CMakeFiles/pcaa_cost_math.dir/src/cost_math.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/accelerator",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/pcaa_timing.dir/src/timing_model.cpp.o -c /home/tilir/pcaa/accelerator/src/timing_model.cpp",
+  "file": "/home/tilir/pcaa/accelerator/src/timing_model.cpp",
+  "output": "accelerator/CMakeFiles/pcaa_timing.dir/src/timing_model.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/accelerator",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -fPIC -o CMakeFiles/pcaa_core.dir/src/accelerator.cpp.o -c /home/tilir/pcaa/accelerator/src/accelerator.cpp",
+  "file": "/home/tilir/pcaa/accelerator/src/accelerator.cpp",
+  "output": "accelerator/CMakeFiles/pcaa_core.dir/src/accelerator.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/accelerator",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_l2.dir/src/l2_accelerator.cpp.o -c /home/tilir/pcaa/accelerator/src/l2_accelerator.cpp",
+  "file": "/home/tilir/pcaa/accelerator/src/l2_accelerator.cpp",
+  "output": "accelerator/CMakeFiles/pcaa_l2.dir/src/l2_accelerator.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/accelerator",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/l2_unit.dir/tests/l2_unit.cpp.o -c /home/tilir/pcaa/accelerator/tests/l2_unit.cpp",
+  "file": "/home/tilir/pcaa/accelerator/tests/l2_unit.cpp",
+  "output": "accelerator/CMakeFiles/l2_unit.dir/tests/l2_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/software",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/software -I/home/tilir/pcaa/software/pbqp/hosted -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_pbqp.dir/pbqp/pbqp.cpp.o -c /home/tilir/pcaa/software/pbqp/pbqp.cpp",
+  "file": "/home/tilir/pcaa/software/pbqp/pbqp.cpp",
+  "output": "software/CMakeFiles/pcaa_pbqp.dir/pbqp/pbqp.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/software",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/software -I/home/tilir/pcaa/software/pbqp/hosted -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_pbqp.dir/pbqp/pbqp_storage.cpp.o -c /home/tilir/pcaa/software/pbqp/pbqp_storage.cpp",
+  "file": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp",
+  "output": "software/CMakeFiles/pcaa_pbqp.dir/pbqp/pbqp_storage.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/workload",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/workload/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_generator.dir/src/graph_generator.cpp.o -c /home/tilir/pcaa/workload/src/graph_generator.cpp",
+  "file": "/home/tilir/pcaa/workload/src/graph_generator.cpp",
+  "output": "workload/CMakeFiles/pcaa_graph_generator.dir/src/graph_generator.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/probes",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/probes/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_probes.dir/src/bellman_ford.cpp.o -c /home/tilir/pcaa/probes/src/bellman_ford.cpp",
+  "file": "/home/tilir/pcaa/probes/src/bellman_ford.cpp",
+  "output": "probes/CMakeFiles/pcaa_probes.dir/src/bellman_ford.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/probes",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/probes/include -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/probes_unit.dir/tests/bellman_ford_unit.cpp.o -c /home/tilir/pcaa/probes/tests/bellman_ford_unit.cpp",
+  "file": "/home/tilir/pcaa/probes/tests/bellman_ford_unit.cpp",
+  "output": "probes/CMakeFiles/probes_unit.dir/tests/bellman_ford_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/probes",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/probes/include -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/probes_device_unit.dir/tests/bellman_ford_device_unit.cpp.o -c /home/tilir/pcaa/probes/tests/bellman_ford_device_unit.cpp",
+  "file": "/home/tilir/pcaa/probes/tests/bellman_ford_device_unit.cpp",
+  "output": "probes/CMakeFiles/probes_device_unit.dir/tests/bellman_ford_device_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_input.dir/pbqp_input.cpp.o -c /home/tilir/pcaa/tools/pbqp_input.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_input.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_input.dir/pbqp_input.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pbqp_input_unit.dir/tests/pbqp_input_unit.cpp.o -c /home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp",
+  "file": "/home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp",
+  "output": "tools/CMakeFiles/pbqp_input_unit.dir/tests/pbqp_input_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/software -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_runner_kernel.dir/pbqp_model_kernel.cpp.o -c /home/tilir/pcaa/tools/pbqp_model_kernel.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_model_kernel.cpp",
+  "output": "tools/CMakeFiles/pcaa_runner_kernel.dir/pbqp_model_kernel.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/software -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pbqp_model_kernel_unit.dir/tests/pbqp_model_kernel_unit.cpp.o -c /home/tilir/pcaa/tools/tests/pbqp_model_kernel_unit.cpp",
+  "file": "/home/tilir/pcaa/tools/tests/pbqp_model_kernel_unit.cpp",
+  "output": "tools/CMakeFiles/pbqp_model_kernel_unit.dir/tests/pbqp_model_kernel_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/workload/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pbqp_graph_generate.dir/pbqp_graph_generate.cpp.o -c /home/tilir/pcaa/tools/pbqp_graph_generate.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_graph_generate.cpp",
+  "output": "tools/CMakeFiles/pbqp_graph_generate.dir/pbqp_graph_generate.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++ -DPCAA_VERSION=\\\"0.1.0\\\" -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/software -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_run_model.dir/pbqp_run.cpp.o -c /home/tilir/pcaa/tools/pbqp_run.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_run.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_run_model.dir/pbqp_run.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++   -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_run.dir/pbqp_run_launcher.cpp.o -c /home/tilir/pcaa/tools/pbqp_run_launcher.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_run_launcher.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_run.dir/pbqp_run_launcher.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++ -DPCAA_GRAPH_RUN_TIMED -DPCAA_VERSION=\\\"0.1.0\\\" -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/software -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_run_timed_model.dir/pbqp_run.cpp.o -c /home/tilir/pcaa/tools/pbqp_run.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_run.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_run_timed_model.dir/pbqp_run.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++ -DPCAA_GRAPH_RUN_MODEL_NAME=\\\"pcaa_graph_run_timed_model\\\"  -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_run_timed.dir/pbqp_run_launcher.cpp.o -c /home/tilir/pcaa/tools/pbqp_run_launcher.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_run_launcher.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_run_timed.dir/pbqp_run_launcher.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++ -DPCAA_GRAPH_RUN_L2 -DPCAA_VERSION=\\\"0.1.0\\\" -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/software -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_run_l2_model.dir/pbqp_run.cpp.o -c /home/tilir/pcaa/tools/pbqp_run.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_run.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_run_l2_model.dir/pbqp_run.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++ -DPCAA_GRAPH_RUN_MODEL_NAME=\\\"pcaa_graph_run_l2_model\\\"  -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_graph_run_l2.dir/pbqp_run_launcher.cpp.o -c /home/tilir/pcaa/tools/pbqp_run_launcher.cpp",
+  "file": "/home/tilir/pcaa/tools/pbqp_run_launcher.cpp",
+  "output": "tools/CMakeFiles/pcaa_graph_run_l2.dir/pbqp_run_launcher.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/tests -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_l2_microbench.dir/l2_microbench.cpp.o -c /home/tilir/pcaa/tools/l2_microbench.cpp",
+  "file": "/home/tilir/pcaa/tools/l2_microbench.cpp",
+  "output": "tools/CMakeFiles/pcaa_l2_microbench.dir/l2_microbench.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -I/home/tilir/pcaa/software -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pbqp_model_profile_unit.dir/tests/pbqp_model_profile_unit.cpp.o -c /home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp",
+  "file": "/home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp",
+  "output": "tools/CMakeFiles/pbqp_model_profile_unit.dir/tests/pbqp_model_profile_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -mavx2 -o CMakeFiles/pcaa_cpu_kernels.dir/kernels.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/kernels.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_cpu_kernels.dir/kernels.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/tools -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_cpu_bench.dir/bench.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/bench.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/bench.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_cpu_bench.dir/bench.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/software -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/tools -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_cpu_current.dir/bench.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/bench.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/bench.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_cpu_current.dir/bench.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pcaa_cpu_kernel_unit.dir/kernel_unit.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_cpu_kernel_unit.dir/kernel_unit.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/tools -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_cpu_microbench.dir/microbench.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/microbench.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/microbench.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_cpu_microbench.dir/microbench.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_cpu_kernels_portable.dir/kernels.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/kernels.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_cpu_kernels_portable.dir/kernels.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_exact_driver.dir/exact.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/exact.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/exact.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_exact_driver.dir/exact.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_exact_cpu.dir/exact_main.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_exact_cpu.dir/exact_main.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_exact_cpu_portable.dir/exact_main.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_exact_cpu_portable.dir/exact_main.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/tools -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/pcaalib/include -O3 -DNDEBUG -std=c++17 -o CMakeFiles/pcaa_exact_l2.dir/exact_l2.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_exact_l2.dir/exact_l2.cpp.o"
+},
+{
+  "directory": "/home/tilir/pcaa/build-cpu-release/tools/cpu_baseline",
+  "command": "/usr/bin/c++  -I/home/tilir/pcaa/tools/cpu_baseline -I/home/tilir/pcaa/software -I/home/tilir/pcaa/accelerator/include -I/home/tilir/pcaa/tools -O3 -DNDEBUG -std=c++17 -DGTEST_HAS_PTHREAD=1 -o CMakeFiles/pcaa_exact_unit.dir/exact_unit.cpp.o -c /home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp",
+  "file": "/home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp",
+  "output": "tools/cpu_baseline/CMakeFiles/pcaa_exact_unit.dir/exact_unit.cpp.o"
+}
+]

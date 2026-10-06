@@ -1,0 +1,16 @@
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:129:7:void* pcaa::pbqp_storage::{anonymous}::ArenaAllocate(void*, size_t)	48	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:152:6:void pcaa::pbqp_storage::{anonymous}::ArenaDeallocate(void*, void*, size_t)	32	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:74:6:void pcaa::pbqp_storage::{anonymous}::BindProblemStorage(pbqp_problem_t*)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:45:8:size_t pcaa::pbqp_storage::{anonymous}::ProblemStorageSize(unsigned int, unsigned int, unsigned int)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:176:11:unsigned int* pcaa::pbqp_storage::Reconstruction(pbqp_problem_t&, unsigned int)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:181:17:const unsigned int* pcaa::pbqp_storage::Reconstruction(const pbqp_problem_t&, unsigned int)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:186:6:void pcaa::pbqp_storage::CopyStatistics(pbqp_statistics_t*, const pbqp_statistics_t&, unsigned int, unsigned int)	32	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:222:18:pbqp_allocator_t pbqp_heap_allocator()	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:230:6:void pbqp_arena_init(pbqp_arena_t*, void*, size_t)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:238:18:pbqp_allocator_t pbqp_arena_allocator(pbqp_arena_t*)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:244:8:size_t pbqp_problem_storage_size(unsigned int, unsigned int, unsigned int)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:249:15:pbqp_status_t pbqp_init(pbqp_problem_t*, pbqp_allocator_t, unsigned int, unsigned int, unsigned int)	64	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:275:6:void pbqp_destroy(pbqp_problem_t*)	48	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:286:15:pbqp_status_t pbqp_problem_clone(pbqp_problem_t*, const pbqp_problem_t*, pbqp_allocator_t)	96	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:293:6:void pbqp_solution_init(pbqp_solution_t*, unsigned int*, size_t)	0	static
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:305:15:pbqp_status_t pcaa::pbqp_storage::Clone(pbqp_problem_t&, const pbqp_problem_t&, pbqp_allocator_t, bool)	64	static

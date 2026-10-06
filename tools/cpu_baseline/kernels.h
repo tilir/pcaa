@@ -63,6 +63,10 @@ class Kernels {
   void Make(pbqp_cost_kernel_t &kernel);
   void Invalidate(const int32_t *base);
   void Reset();
+  void ForgetMatrices() {
+    cache_.clear();
+    changed_.clear();
+  }
   void SetR1(pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
              accel_min_argmin_result_t *results) {
     r1_matrix_ = matrix;

@@ -3,21 +3,14 @@
 // Implements the C PBQP API using exact R0/R1/R2 reductions and a small-core oracle.
 
 #include "pbqp.h"
+#include "pbqp_algorithm.h"
 #include "cost_math.h"
 #include "pbqp_storage.h"
-
-#if defined(PCAA_CPU_EXPERIMENT)
-#include "profile.h"
-#include <vector>
-#define CPU_SCOPE(category) cpu_baseline::Scope cpu_scope(cpu_baseline::category)
-#else
-#define CPU_SCOPE(category)
-#endif
+#include "pbqp_execution.h"
 
 #if defined(__riscv)
 /* The freestanding RV64 toolchain has no <assert.h>; preserve assertion semantics. */
 #define assert(expression) ((expression) ? static_cast<void>(0) : __builtin_trap())
-extern "C" void *memcpy(void *destination, const void *source, size_t size);
 extern "C" void *memset(void *destination, int value, size_t size);
 #else
 #include <assert.h>
@@ -28,6 +21,10 @@ namespace {
 
 enum ReductionKind { kReductionR0, kReductionR1, kReductionR2, kReductionRN, kReductionBranch };
 
+using pcaa::pbqp::Execution;
+using pcaa::pbqp::ExecutionScope;
+using pcaa::pbqp::Phase;
+using pcaa::pbqp::Work;
 using pcaa::pbqp_storage::Array;
 using pcaa::pbqp_storage::CopyStatistics;
 using pcaa::pbqp_storage::Problem;
@@ -46,11 +43,12 @@ bool IsValidCost(const pbqp_problem_t &problem, int32_t cost) {
 
 class Graph {
  public:
-  explicit Graph(pbqp_problem_t &state) : state_(state) {
-#if defined(PCAA_CPU_EXPERIMENT)
-    if (cpu_baseline::profile && cpu_baseline::profile->degrees) {
-      CPU_SCOPE(Topology);
-      degrees_.resize(state.node_count);
+  Graph(pbqp_problem_t &state, const Execution &execution)
+      : state_(state),
+        execution_(execution),
+        degrees_(state.allocator, execution.cache_degrees ? state.node_count : 0) {
+    if (degrees_.Get()) {
+      ExecutionScope scope(execution_, Phase::Topology);
       for (unsigned index = 0; index < state.edge_capacity; ++index) {
         const auto &edge = state.edges[index];
         if (edge.active) {
@@ -59,20 +57,15 @@ class Graph {
         }
       }
     }
-#endif
   }
-
   void RetireEdge(pbqp_edge_t &edge) {
-#if defined(PCAA_CPU_EXPERIMENT)
-    CPU_SCOPE(Topology);
-    if (!degrees_.empty()) {
+    ExecutionScope scope(execution_, Phase::Topology);
+    if (degrees_.Get()) {
       --degrees_[edge.first];
       --degrees_[edge.second];
     }
-#endif
     edge.active = 0;
   }
-
   pbqp_problem_t &State() {
     return state_;
   }
@@ -81,7 +74,7 @@ class Graph {
   }
 
   int FindEdge(unsigned first, unsigned second) const {
-    CPU_SCOPE(Topology);
+    ExecutionScope scope(execution_, Phase::Topology);
     for (unsigned index = 0; index < state_.edge_capacity; ++index) {
       const pbqp_edge_t &edge = state_.edges[index];
       if (edge.active && ((edge.first == first && edge.second == second) ||
@@ -93,11 +86,9 @@ class Graph {
   }
 
   unsigned NeighborCount(unsigned node, int *edge_indices) const {
-    CPU_SCOPE(Topology);
-#if defined(PCAA_CPU_EXPERIMENT)
-    if (!degrees_.empty() && (edge_indices == nullptr || degrees_[node] > 2))
+    ExecutionScope scope(execution_, Phase::Topology);
+    if (degrees_.Get() != nullptr && (edge_indices == nullptr || degrees_[node] > 2))
       return degrees_[node];
-#endif
     unsigned count = 0;
     for (unsigned index = 0; index < state_.edge_capacity; ++index) {
       const pbqp_edge_t &edge = state_.edges[index];
@@ -113,7 +104,7 @@ class Graph {
   }
 
   int FindReducibleNode(int *edge_indices) const {
-    CPU_SCOPE(Selection);
+    ExecutionScope scope(execution_, Phase::Selection);
     for (unsigned node = 0; node < state_.node_count; ++node) {
       if (state_.nodes[node].active && NeighborCount(node, edge_indices) <= 2) {
         return static_cast<int>(node);
@@ -173,7 +164,7 @@ class Graph {
   }
 
   int SelectRnNode(pbqp_rn_policy_t policy) const {
-    CPU_SCOPE(Selection);
+    ExecutionScope scope(execution_, Phase::Selection);
     int selected = -1;
     unsigned selected_degree = 0;
     uint64_t selected_work = 0;
@@ -217,7 +208,7 @@ class Graph {
   }
 
   int AddFillEdge(unsigned first, unsigned second) {
-    CPU_SCOPE(Topology);
+    ExecutionScope scope(execution_, Phase::Topology);
     assert(first < state_.node_count);
     assert(second < state_.node_count);
     assert(first != second);
@@ -236,13 +227,11 @@ class Graph {
       edge.first = first;
       edge.second = second;
       ++state_.edge_count;
-#if defined(PCAA_CPU_EXPERIMENT)
-      if (!degrees_.empty()) {
+      if (degrees_.Get() != nullptr) {
         ++degrees_[first];
         ++degrees_[second];
       }
-      cpu_baseline::MatrixChanged(edge.cost);
-#endif
+      execution_.MatrixChanged(edge.cost);
       return static_cast<int>(index);
     }
     return -1;
@@ -250,9 +239,8 @@ class Graph {
 
  private:
   pbqp_problem_t &state_;
-#if defined(PCAA_CPU_EXPERIMENT)
-  std::vector<unsigned> degrees_;
-#endif
+  const Execution &execution_;
+  Array<unsigned> degrees_;
 };
 
 class CostKernel {
@@ -266,6 +254,11 @@ class CostKernel {
   int Min2(pbqp_vector_view_t first, pbqp_vector_view_t second,
            accel_min_argmin_result_t *result) const {
     return Record(api_.min2_argmin(api_.context, first, second, result));
+  }
+  int AddVector(pbqp_vector_view_t first, pbqp_vector_view_t second, int32_t *result) const {
+    if (api_.cost_add_vector == nullptr)
+      return Record(-1);
+    return Record(api_.cost_add_vector(api_.context, first, second, result));
   }
 
   int Min3(pbqp_vector_view_t first, pbqp_vector_view_t second, pbqp_vector_view_t third,
@@ -350,8 +343,12 @@ class CostKernel {
 
 class Solver {
  public:
-  Solver(const pbqp_cost_kernel_t &kernel, const pbqp_solver_config_t &config, int *kernel_status)
-      : kernel_(kernel, kernel_status), config_(config), kernel_status_(kernel_status) {}
+  Solver(const pbqp_cost_kernel_t &kernel, const pbqp_solver_config_t &config, int *kernel_status,
+         const Execution &execution)
+      : kernel_(kernel, kernel_status),
+        config_(config),
+        kernel_status_(kernel_status),
+        execution_(execution) {}
 
   pbqp_status_t Solve(pbqp_problem_t *problem, pbqp_solution_t *solution) const {
     if (problem == nullptr || solution == nullptr || solution->assignment == nullptr ||
@@ -370,7 +367,7 @@ class Solver {
       pbqp_solution_t rn_solution;
       pbqp_solution_init(&rn_solution, rn_assignment.Get(), problem->node_count);
       const pbqp_status_t rn_status =
-          Solver(kernel_.Api(), rn_config, kernel_status_).Solve(problem, &rn_solution);
+          Solver(kernel_.Api(), rn_config, kernel_status_, execution_).Solve(problem, &rn_solution);
       if (rn_status != PBQP_OK) {
         return rn_status;
       }
@@ -387,7 +384,7 @@ class Solver {
       return local_status;
     }
 
-    Graph graph(*problem);
+    Graph graph(*problem, execution_);
     pbqp_problem_t &state = graph.State();
     kernel_.SetStatistics(&state.statistics);
     state.statistics.nodes = state.node_count;
@@ -617,7 +614,7 @@ class Solver {
 
   pbqp_status_t RunLocalDescent(pbqp_problem_t &problem, unsigned *assignment,
                                 pbqp_solution_t *solution) const {
-    Graph graph(problem);
+    Graph graph(problem, execution_);
     const pbqp_allocator_t allocator = WorkspaceAllocator(problem, config_);
     Array<int32_t> scores_storage(allocator, problem.domain_capacity);
     Array<int32_t> zeroes_storage(allocator, problem.domain_capacity);
@@ -718,15 +715,13 @@ class Solver {
         }
         if (candidate.optimum < best.optimum) {
           best.optimum = candidate.optimum;
-          memcpy(best.assignment, candidate.assignment,
-                 static_cast<size_t>(problem.node_count) * sizeof(unsigned));
+          pcaa::pbqp::copy_n(candidate.assignment, problem.node_count, best.assignment);
         }
         initial.Get()[node] = 0;
       }
     }
     solution->optimum = best.optimum;
-    memcpy(solution->assignment, best.assignment,
-           static_cast<size_t>(problem.node_count) * sizeof(unsigned));
+    pcaa::pbqp::copy_n(best.assignment, problem.node_count, solution->assignment);
     return PBQP_OK;
   }
 
@@ -749,7 +744,7 @@ class Solver {
 
   pbqp_status_t ConditionNode(Graph &graph, unsigned node_index, unsigned choice,
                               ReductionKind kind) const {
-    CPU_SCOPE(Reduction);
+    ExecutionScope scope(execution_, Phase::Conditioning);
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
     if (!node.active || choice >= node.domain) {
@@ -766,10 +761,15 @@ class Solver {
       pbqp_node_t &neighbor = problem.nodes[neighbor_index];
       const pbqp_vector_view_t slice =
           ConditionedEdgeView(edge, node_index, choice, neighbor.domain);
-      for (unsigned value = 0; value < neighbor.domain; ++value) {
-        neighbor.unary[value] =
-            accel_cost_add(neighbor.unary[value], slice.base[value * slice.stride]);
-      }
+      execution_.Record(Work::Condition, neighbor.domain);
+      if (execution_.vector_conditioning) {
+        if (kernel_.AddVector({neighbor.unary, neighbor.domain, 1}, slice, neighbor.unary) != 0)
+          return PBQP_KERNEL_ERROR;
+      } else
+        for (unsigned value = 0; value < neighbor.domain; ++value) {
+          neighbor.unary[value] =
+              accel_cost_add(neighbor.unary[value], slice.base[value * slice.stride]);
+        }
       problem.statistics.condition_elements += neighbor.domain;
       problem.statistics.condition_matrix_read_bytes += neighbor.domain * sizeof(int32_t);
       problem.statistics.condition_unary_read_bytes += neighbor.domain * sizeof(int32_t);
@@ -797,7 +797,7 @@ class Solver {
   }
 
   pbqp_status_t ReduceRN(Graph &graph, unsigned node_index) const {
-    CPU_SCOPE(Reduction);
+    ExecutionScope scope(execution_, Phase::Reduction);
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
     const unsigned degree = graph.NeighborCount(node_index, nullptr);
@@ -966,7 +966,8 @@ class Solver {
   }
 
   pbqp_status_t ReduceR0(Graph &graph, unsigned node_index) const {
-    CPU_SCOPE(Reduction);
+    ExecutionScope scope(execution_, Phase::R0);
+    execution_.Record(Work::R0);
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
     int32_t best = ACCEL_INF;
@@ -989,7 +990,8 @@ class Solver {
   }
 
   pbqp_status_t ReduceR1(Graph &graph, unsigned node_index, int edge_index) const {
-    CPU_SCOPE(Reduction);
+    ExecutionScope scope(execution_, Phase::R1);
+    execution_.Record(Work::R1);
     pbqp_problem_t &problem = graph.State();
     pbqp_edge_t &edge = problem.edges[edge_index];
     const unsigned neighbor_index = graph.OtherNode(edge, node_index);
@@ -1013,17 +1015,12 @@ class Solver {
       ++problem.statistics.scalar_project_descriptors;
       jobs[neighbor_value] = {unary, edge_cost, &results[neighbor_value]};
     }
-#if defined(PCAA_CPU_EXPERIMENT)
-    cpu_baseline::R1Projection(EdgeMatrix(edge, node_index, neighbor.domain, node.domain),
-                               {node.unary, node.domain, 1}, results);
+    execution_.R1Projection(EdgeMatrix(edge, node_index, neighbor.domain, node.domain),
+                            {node.unary, node.domain, 1}, results);
     const int executed = kernel_.Min2Batch(jobs, neighbor.domain);
-    cpu_baseline::R1Projection({}, {}, nullptr);
+    execution_.R1Projection({}, {}, nullptr);
     if (executed != 0)
       return PBQP_KERNEL_ERROR;
-#else
-    if (kernel_.Min2Batch(jobs, neighbor.domain) != 0)
-      return PBQP_KERNEL_ERROR;
-#endif
     for (unsigned neighbor_value = 0; neighbor_value < neighbor.domain; ++neighbor_value) {
       const accel_min_argmin_result_t result = results[neighbor_value];
       if (result.index >= node.domain) {
@@ -1050,7 +1047,8 @@ class Solver {
 
   pbqp_status_t ReduceR2(Graph &graph, unsigned node_index, int first_edge_index,
                          int second_edge_index) const {
-    CPU_SCOPE(Reduction);
+    ExecutionScope scope(execution_, Phase::R2);
+    execution_.Record(Work::R2);
     pbqp_problem_t &problem = graph.State();
     pbqp_edge_t &first_edge = problem.edges[first_edge_index];
     pbqp_edge_t &second_edge = problem.edges[second_edge_index];
@@ -1153,9 +1151,7 @@ class Solver {
       }
     }
 
-#if defined(PCAA_CPU_EXPERIMENT)
-    cpu_baseline::MatrixChanged(fill_edge.cost);
-#endif
+    execution_.MatrixChanged(fill_edge.cost);
     graph.RetireEdge(first_edge);
     graph.RetireEdge(second_edge);
     problem.edge_count -= 2;
@@ -1335,12 +1331,14 @@ class Solver {
   // node/edge contributes at least its own minimum, so this never
   // overestimates the true remaining cost -- unlike a bound that assumed
   // non-negative costs, which PBQP does not guarantee (see pbqp_max_finite_cost).
-  static int32_t RemainingCoreLowerBound(const pbqp_problem_t &state) {
+  int32_t RemainingCoreLowerBound(const pbqp_problem_t &state) const {
+    ExecutionScope scope(execution_, Phase::LowerBound);
     int32_t bound = 0;
     for (unsigned index = 0; index < state.node_capacity; ++index) {
       const pbqp_node_t &node = state.nodes[index];
       if (!node.active)
         continue;
+      execution_.Record(Work::LowerUnary, node.domain);
       int32_t minimum = node.unary[0];
       for (unsigned choice = 1; choice < node.domain; ++choice) {
         if (node.unary[choice] < minimum)
@@ -1358,6 +1356,7 @@ class Solver {
       // edge's actual cost entries; the rest is unrelated padding.
       const unsigned rows = state.nodes[edge.first].domain;
       const unsigned cols = state.nodes[edge.second].domain;
+      execution_.Record(Work::LowerMatrix, static_cast<size_t>(rows) * cols);
       int32_t minimum = edge.cost[0];
       for (unsigned row = 0; row < rows; ++row) {
         for (unsigned col = 0; col < cols; ++col) {
@@ -1374,6 +1373,7 @@ class Solver {
   pbqp_status_t SolveBranchAndReduce(pbqp_problem_t *state, pbqp_solution_t *solution,
                                      unsigned depth, SearchControl *search = nullptr,
                                      int32_t best_known = ACCEL_INF) const {
+    ExecutionScope scope(execution_, Phase::Search);
     kernel_.SetStatistics(&state->statistics);
     SearchControl root_search;
     if (search == nullptr) {
@@ -1386,9 +1386,10 @@ class Solver {
       return PBQP_SEARCH_LIMIT;
     }
     ++search->nodes_visited;
+    execution_.Record(Work::Visit, 1, depth);
     if (depth > search->maximum_depth)
       search->maximum_depth = depth;
-    Graph graph(*state);
+    Graph graph(*state, execution_);
     while (true) {
       int edges[2];
       const int node = graph.FindReducibleNode(edges);
@@ -1410,14 +1411,30 @@ class Solver {
     // optimistic total cannot beat the caller's incumbent, there is nothing
     // left worth exploring on this path, including the graph.ActiveNodeCount()
     // == 0 case just below (its bound is exactly objective_offset).
-    if (best_known != ACCEL_INF &&
-        accel_cost_add(state->objective_offset, RemainingCoreLowerBound(*state)) >= best_known) {
+    const bool root_witness = depth == 0 && execution_.seed_assignment;
+    const int32_t incumbent = root_witness ? execution_.seed_objective : best_known;
+    const bool prune = [&] {
+      ExecutionScope scope(execution_, Phase::Incumbent);
+      return (root_witness || incumbent != ACCEL_INF) &&
+             accel_cost_add(state->objective_offset, RemainingCoreLowerBound(*state)) >= incumbent;
+    }();
+    if (prune) {
       ++search->nodes_pruned;
+      execution_.Record(Work::Prune);
       RecordSearchStatistics(&state->statistics, *search);
+      if (root_witness) {
+        // A validated complete witness survives root pruning. Without one,
+        // PBQP_PRUNED is meaningful only to a parent that owns its incumbent.
+        ExecutionScope scope(execution_, Phase::Incumbent);
+        solution->optimum = execution_.seed_objective;
+        pcaa::pbqp::copy_n(execution_.seed_assignment, state->node_count, solution->assignment);
+        return PBQP_OK;
+      }
       return PBQP_PRUNED;
     }
     if (graph.ActiveNodeCount() == 0) {
       solution->optimum = state->objective_offset;
+      execution_.Observe(solution->optimum);
       ReconstructSolution(*state, solution);
       RecordSearchStatistics(&state->statistics, *search);
       return PBQP_OK;
@@ -1426,6 +1443,7 @@ class Solver {
     if (branch_node < 0)
       return PBQP_IRREDUCIBLE;
     const unsigned domain = state->nodes[branch_node].domain;
+    execution_.Record(Work::BranchPoint, domain, graph.ActiveNodeCount());
     Emit(graph, PBQP_TRACE_BRANCH_SELECT, PBQP_TRACE_EXACT_SEARCH, branch_node, -1, 0, 0, 0, 0, 0,
          0, 0, 0, 0, domain);
     const pbqp_allocator_t allocator = WorkspaceAllocator(*state, config_);
@@ -1438,10 +1456,21 @@ class Solver {
     pbqp_solution_t best;
     pbqp_solution_init(&best, best_assignment.Get(), state->node_count);
     bool has_best = false;
+    if (depth == 0 && execution_.seed_assignment) {
+      pcaa::pbqp::copy_n(execution_.seed_assignment, state->node_count, best.assignment);
+      best.optimum = execution_.seed_objective;
+      has_best = true;
+      execution_.Observe(best.optimum);
+    }
     const pbqp_statistics_t base_statistics = state->statistics;
     pbqp_statistics_t aggregate_statistics = base_statistics;
     for (unsigned value = 0; value < domain; ++value) {
-      Problem child_storage(*state, allocator);
+      execution_.Record(Work::CloneBytes, state->storage_size);
+      execution_.ForgetMatrices();
+      Problem child_storage = [&] {
+        ExecutionScope clone_scope(execution_, Phase::Clone);
+        return Problem(*state, allocator, execution_.fast_clone);
+      }();
       if (child_storage.Status() != PBQP_OK) {
         ++search->limit_hits;
         RecordSearchStatistics(&state->statistics, *search);
@@ -1450,7 +1479,10 @@ class Solver {
       pbqp_problem_t &child = child_storage.State();
       CopyStatistics(&child.statistics, base_statistics, child.node_capacity,
                      child.domain_capacity);
-      Graph child_graph(child);
+      // Conditioning can submit vector additions before recursive entry. A
+      // previous child's statistics no longer exist after its snapshot retires.
+      kernel_.SetStatistics(&child.statistics);
+      Graph child_graph(child, execution_);
       unsigned condition_elements = 0;
       for (unsigned edge = 0; edge < child.edge_capacity; ++edge) {
         const pbqp_edge_t &candidate = child.edges[edge];
@@ -1477,13 +1509,16 @@ class Solver {
       pbqp_solution_t candidate;
       pbqp_solution_init(&candidate, candidate_assignment.Get(), state->node_count);
       ++search->branches_created;
+      execution_.Record(Work::Branch);
       // Use whichever incumbent is tighter: one found among this node's own
       // earlier children, or one this whole call was already given by its
       // caller (found in an unrelated part of the tree). Both are valid
       // global upper bounds, so the smaller one prunes at least as much.
-      int32_t child_best_known = has_best ? best.optimum : ACCEL_INF;
-      if (best_known < child_best_known)
-        child_best_known = best_known;
+      const int32_t child_best_known = [&] {
+        ExecutionScope scope(execution_, Phase::Incumbent);
+        const int32_t local = has_best ? best.optimum : ACCEL_INF;
+        return best_known < local ? best_known : local;
+      }();
       const pbqp_status_t status =
           SolveBranchAndReduce(&child, &candidate, depth + 1, search, child_best_known);
       if (status != PBQP_OK && status != PBQP_PRUNED) {
@@ -1493,9 +1528,9 @@ class Solver {
       AddBranchStatistics(&aggregate_statistics, base_statistics, child.statistics,
                           child.domain_capacity);
       if (status == PBQP_OK && (!has_best || candidate.optimum < best.optimum)) {
+        ExecutionScope scope(execution_, Phase::Incumbent);
         best.optimum = candidate.optimum;
-        memcpy(best.assignment, candidate.assignment,
-               static_cast<size_t>(state->node_count) * sizeof(unsigned));
+        pcaa::pbqp::copy_n(candidate.assignment, state->node_count, best.assignment);
         has_best = true;
       }
     }
@@ -1509,13 +1544,12 @@ class Solver {
     }
     RecordSearchStatistics(&state->statistics, *search);
     solution->optimum = best.optimum;
-    memcpy(solution->assignment, best.assignment,
-           static_cast<size_t>(state->node_count) * sizeof(unsigned));
+    pcaa::pbqp::copy_n(best.assignment, state->node_count, solution->assignment);
     return PBQP_OK;
   }
 
-  static void ReconstructSolution(const pbqp_problem_t &problem, pbqp_solution_t *solution) {
-    CPU_SCOPE(Reconstruction);
+  void ReconstructSolution(const pbqp_problem_t &problem, pbqp_solution_t *solution) const {
+    ExecutionScope scope(execution_, Phase::Reconstruction);
     for (unsigned position = problem.elimination_count; position > 0; --position) {
       const unsigned node_index = problem.elimination_order[position - 1];
       const pbqp_node_t &node = problem.nodes[node_index];
@@ -1545,6 +1579,7 @@ class Solver {
   const CostKernel kernel_;
   const pbqp_solver_config_t config_;
   int *kernel_status_;
+  const Execution &execution_;
 };
 
 void Enumerate(const pbqp_problem_t &problem, unsigned node, unsigned *assignment,
@@ -1885,8 +1920,27 @@ pbqp_status_t pbqp_solver_solve(pbqp_solver_t *solver, pbqp_problem_t *problem,
     return PBQP_ARGUMENT_ERROR;
   }
   solver->last_kernel_status = 0;
-  return Solver(solver->kernel, solver->config, &solver->last_kernel_status)
+  const Execution execution;
+  return Solver(solver->kernel, solver->config, &solver->last_kernel_status, execution)
       .Solve(problem, solution);
 }
 
 }  // extern "C"
+
+namespace pcaa::pbqp {
+pbqp_status_t SolveWithExecution(pbqp_solver_t &solver, pbqp_problem_t &problem,
+                                 pbqp_solution_t &solution, const Execution &execution) {
+  if (execution.seed_assignment) {
+    if (execution.seed_length < problem.node_count)
+      return PBQP_ARGUMENT_ERROR;
+    for (unsigned i = 0; i < problem.node_count; ++i)
+      if (execution.seed_assignment[i] >= problem.nodes[i].domain)
+        return PBQP_ARGUMENT_ERROR;
+    if (pbqp_evaluate(&problem, execution.seed_assignment) != execution.seed_objective)
+      return PBQP_ARGUMENT_ERROR;
+  }
+  solver.last_kernel_status = 0;
+  return Solver(solver.kernel, solver.config, &solver.last_kernel_status, execution)
+      .Solve(&problem, &solution);
+}
+}  // namespace pcaa::pbqp

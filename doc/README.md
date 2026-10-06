@@ -24,6 +24,7 @@ start with [the research synthesis as of 1 October 2026](research-summary-2026-1
 | [ISA 1.0.0 decision](isa-v1-decision.md) | Adopted primitives and rationale; current encoding links back to the architecture |
 | [L2 microarchitecture characterization](reports/l2-microarchitecture-characterization.md) | Current MAS execution, full LLVM baseline, microbenchmarks, controlled sweeps and L1 comparison |
 | [Native CPU versus L2](reports/cpu-baseline-l2-comparison.md) | Strong same-policy CPU baseline, dynamic matrix structure, current service cycles and conditional offload economics on all 491 LLVM graphs |
+| [Exact PBQP CPU/L2 breakdown](reports/exact-pbqp-cpu-l2-breakdown.md) | Bounded exact search, phase work, snapshot costs, incumbent quality and conditional end-to-end acceleration |
 | [Compact encoding measurements](reports/compact-encoding-measurements.md) | Example command bytes with current encoding, compared with the previous 80-byte encoding |
 
 ## Historical measurement reports

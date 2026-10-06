@@ -1,0 +1,13 @@
+/home/tilir/pcaa/pcaalib/src/pcaa.c:11:13:pcaa_version	0	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:15:13:pcaa_isa_version	0	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:19:25:pcaa_cost_vector	0	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:24:25:pcaa_cost_matrix	0	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:30:20:pcaa_cost_output	0	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:35:20:pcaa_argmin_output	0	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:50:15:pcaa_make_reduce2	320	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:61:15:pcaa_make_reduce3	336	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:73:15:pcaa_make_cost_add_vector	320	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:84:15:pcaa_make_minplus_project	320	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:95:15:pcaa_make_minplus_map3_project	304	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:108:15:pcaa_make_ordered_batch	320	static
+/home/tilir/pcaa/pcaalib/src/pcaa.c:120:5:pcaa_output_overlaps	0	static

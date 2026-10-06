@@ -1,0 +1,4 @@
+/home/tilir/pcaa/pcaalib/src/baremetal_device.c:67:22:wait_for_completion	32	static
+/home/tilir/pcaa/pcaalib/src/baremetal_device.c:28:22:submit_batch	272	static
+/home/tilir/pcaa/pcaalib/src/baremetal_device.c:11:22:submit_command	112	static
+/home/tilir/pcaa/pcaalib/src/baremetal_device.c:88:16:pcaa_baremetal_device_init	32	static

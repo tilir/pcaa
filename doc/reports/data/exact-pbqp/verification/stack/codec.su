@@ -1,0 +1,9 @@
+/home/tilir/pcaa/pcaalib/src/codec.c:57:12:span.constprop	0	static
+/home/tilir/pcaa/pcaalib/src/codec.c:71:15:pcaa_wire_format_size	0	static
+/home/tilir/pcaa/pcaalib/src/codec.c:126:22:valid_command.constprop	176	static
+/home/tilir/pcaa/pcaalib/src/codec.c:274:15:pcaa_encode_one.part.0	128	static
+/home/tilir/pcaa/pcaalib/src/codec.c:263:15:pcaa_encoded_size	32	static
+/home/tilir/pcaa/pcaalib/src/codec.c:274:15:pcaa_encode_one	0	static
+/home/tilir/pcaa/pcaalib/src/codec.c:365:15:pcaa_decode_one	240	static
+/home/tilir/pcaa/pcaalib/src/codec.c:459:15:pcaa_encoded_stream_size	80	static
+/home/tilir/pcaa/pcaalib/src/codec.c:481:15:pcaa_encode_stream	96	static

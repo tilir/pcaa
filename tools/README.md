@@ -14,6 +14,9 @@ text format with `INF` costs; see the [main README](../README.md).
 | `pcaa_cpu_current` | Measure the existing native solver without SystemC | JSONL samples, callback timings, answer |
 | `pcaa_cpu_bench` | Compare degree caching and scalar/dense/structured CPU kernels | JSONL samples, exclusive profiles, structure evidence, answer |
 | `pcaa_cpu_microbench` | Measure warmed native projection/ADD3 kernels | Raw JSONL timings for each shape/layout/implementation |
+| `pcaa_exact_cpu` | Measure bounded exact branch-and-reduce with native kernels | JSONL solve samples, work counters, diagnostic phases and callback batches |
+| `pcaa_exact_cpu_portable` | Run the same exact experiment without AVX2 | The same schema and algorithm |
+| `pcaa_exact_l2` | Run matched exact search through current MAS 1.0.0 | JSONL answers and attributed service cycles; warmup counters are retained separately |
 
 ## Solve or generate graphs
 
@@ -66,6 +69,36 @@ These native tools have an ordinary `main` and do not link SystemC. All
 use the launcher names above as the supported entry points. The CPU experiment
 owns its targets and formatting inputs in [cpu_baseline/CMakeLists.txt](cpu_baseline/CMakeLists.txt).
 
+## Exact PBQP experiment
+
+```sh
+build-cpu-release/pcaa_exact_cpu dense examples/chvatal.pbqp none 128 7 vector
+build-cpu-release/pcaa_exact_cpu_portable dense examples/chvatal.pbqp none 128 7 vector
+build-cpu-release/pcaa_exact_l2 dense examples/chvatal.pbqp heuristic 128 3 vector
+ruby scripts/exact_pbqp_measure.rb --build build-cpu-release --output /tmp/exact-study
+ruby scripts/exact_pbqp_report.rb --data /tmp/exact-study
+ruby scripts/exact_pbqp_report.rb --data /tmp/exact-study --verify
+```
+
+Arguments are kernel/policy variant, input, `none|heuristic` incumbent,
+positive search-node limit, sample count (at least three), `vector|scalar`
+conditioning, and optional `branch|enumeration|heuristic` strategy. `current`
+retains scans and original snapshots; `degree` adds cached degrees; `dense`
+also uses warmed workspace recycling and avoids zeroing immediately overwritten
+snapshots; `structured` additionally uses verified row representations. The
+seed's heuristic execution and cloning are included in total solve time.
+Native executables do not link SystemC. Execution options use the shared
+solver's C++ policy; the stable C API retains its default behavior.
+
+A JSON `status` of zero means completion; `-5` means a search/workspace limit,
+with no completed assignment. Process success alone is insufficient. Only
+branch or enumeration strategies prove an optimum. Warmup L2 statistics occur
+in the `baseline` row; subtract them from the completed model totals or use
+the per-callback deltas. Diagnostic phase profiles are separate from native
+solve samples and can perturb short solves substantially. See the
+[exact report](../doc/reports/exact-pbqp-cpu-l2-breakdown.md) for limits,
+completion fractions, overhead assumptions and the reproducible archive.
+
 ## Read the measurements
 
 L1 cycles are analytical estimates. L2 cycles are structural model service
@@ -101,3 +134,6 @@ The tests cover malformed graph syntax, rectangular matrices, capacity/cost
 errors and ownership; callback staging, failure recovery and measurement cycle
 partitions; independent kernel differential cases and RN policy preservation;
 and CLI validation plus unchanged solutions/cycles when recording is enabled.
+`exact_policy_unit` adds randomized exhaustive-oracle checks, snapshot binding,
+incumbent validation and conditioning error propagation; `exact_cli_regression`
+checks seeded CPU/L2 correspondence, cycle attribution, enumeration and limits.

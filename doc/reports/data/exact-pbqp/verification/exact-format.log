@@ -1,0 +1,1296 @@
+[ 33%] Built target pcaalib
+[ 44%] Built target pcaa_timing
+[ 66%] Built target pcaa_cost_math
+[ 77%] Built target pcaa_core
+[100%] Built target systemc_unit
+[100%] Formatting PCAA sources and checking include hygiene
+
+(/home/tilir/pcaa/software/pbqp/pbqp_unit.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/tests/systemc_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/src/spike_device.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/src/systemc_plugin_entry.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/include/pcaa.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/pcaalib/src/pcaa.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/codec.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/submission.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/device.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/error_host.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/systemc_device.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/tests/pcaa_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/tests/systemc_device_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/include/cost_math.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/cost_math.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/include/timing_model.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/timing_model.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/include/accelerator.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/accelerator.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/accelerator/src/l2_accelerator.cpp:4:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+(/home/tilir/pcaa/accelerator/include/l2_accelerator.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/l2_accelerator.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/accelerator/tests/l2_unit.cpp:4:
+In file included from /home/tilir/pcaa/accelerator/tests/l2_support.h:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+(/home/tilir/pcaa/accelerator/tests/l2_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/software/pbqp/pbqp.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/software/pbqp/pbqp.cpp should add these lines:
+#include <algorithm>         // for copy_n
+
+/home/tilir/pcaa/software/pbqp/pbqp.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/software/pbqp/pbqp.cpp:
+#include "pbqp.h"
+#include <assert.h>          // for assert
+#include <string.h>          // for memset
+#include <algorithm>         // for copy_n
+#include "cost_math.h"       // for accel_cost_add, accel_cost_add_checked
+#include "pbqp_algorithm.h"  // for copy_n
+#include "pbqp_execution.h"  // for ExecutionScope, Execution, Phase, Work
+#include "pbqp_storage.h"    // for Array, Problem, Reconstruction, CopyStat...
+---
+
+
+(/home/tilir/pcaa/software/pbqp/pbqp_storage.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp should add these lines:
+#include <algorithm>         // for copy_n
+
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:
+#include "pbqp_storage.h"
+#include <stdint.h>          // for SIZE_MAX, int32_t, uintptr_t, uint64_t
+#include <stdlib.h>          // for free, malloc
+#include <string.h>          // for memcpy, memset
+#include <algorithm>         // for copy_n
+#include "accel_protocol.h"  // for ACCEL_INF
+#include "pbqp.h"            // for pbqp_problem_t, pbqp_allocator_t, pbqp_a...
+#include "pbqp_algorithm.h"  // for copy_n
+---
+
+
+(/home/tilir/pcaa/workload/include/pbqp_graph_generator/graph_generator.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/workload/src/graph_generator.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/probes/include/bellman_ford.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/probes/src/bellman_ford.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/probes/tests/bellman_ford_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/probes/tests/bellman_ford_device_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/pbqp_input.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/tools/pbqp_input.cpp has correct #includes/fwd-decls)
+
+
+/home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp should add these lines:
+#include <initializer_list>  // for initializer_list
+
+/home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp:
+#include <gtest/gtest.h>     // for Message, Test, TestPartResult, CmpHelperEQ
+#include <array>             // for array
+#include <chrono>            // for duration, steady_clock
+#include <cstdint>           // for int32_t
+#include <filesystem>        // for path, operator/, create_directory, remov...
+#include <fstream>           // for basic_ofstream, basic_ostream, basic_ios
+#include <initializer_list>  // for initializer_list
+#include <stdexcept>         // for runtime_error
+#include <string>            // for allocator, char_traits, basic_string
+#include <string_view>       // for basic_string_view, operator<<, string_view
+#include <system_error>      // for error_code
+#include <utility>           // for move
+#include <vector>            // for vector
+#include "accel_protocol.h"  // for ACCEL_INF
+#include "pbqp/pbqp.h"       // for PBQP_OK, PBQP_MAX_DOMAIN, PBQP_ARGUMENT_...
+#include "pbqp_input.h"      // for InputNode, ProblemOwner, InputEdge, Inpu...
+---
+
+In file included from /home/tilir/pcaa/tools/pbqp_model_kernel.cpp:9:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+(/home/tilir/pcaa/tools/pbqp_model_kernel.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/tools/pbqp_model_kernel.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/tests/pbqp_model_kernel_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/pbqp_graph_generate.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/pbqp_run.cpp:12:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should add these lines:
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should remove these lines:
+- #include <algorithm>  // lines 14-14
+- #include <sstream>  // lines 22-22
+- #include <utility>  // lines 25-25
+- #include "l2_accelerator.h"  // lines 12-12
+
+The full include-list for /home/tilir/pcaa/tools/pbqp_run.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <cstdint>                      // for int32_t, uint64_t
+#include <cstdlib>                      // for size_t, setenv
+#include <exception>                    // for exception
+#include <filesystem>                   // for path
+#include <fstream>                      // for basic_ostream, operator<<
+#include <iostream>                     // for cerr, cout
+#include <limits>                       // for numeric_limits
+#include <stdexcept>                    // for out_of_range
+#include <string>                       // for char_traits, basic_string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_OPCODE_MAP_A...
+#include "pbqp/pbqp.h"                  // for PBQP_OK, PBQP_STRATEGY_EXACT_...
+#include "pbqp_input.h"                 // for ProblemOwner, InputProblem
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status, pcaa_status_t
+#include "pcaa_host_error.h"            // for pcaa_perror
+#include "timing_model.h"               // for AccelTimingConfig
+---
+
+
+(/home/tilir/pcaa/tools/pbqp_run_launcher.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/pbqp_run.cpp:12:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should add these lines:
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should remove these lines:
+- #include <algorithm>  // lines 14-14
+- #include <sstream>  // lines 22-22
+- #include <utility>  // lines 25-25
+- #include "l2_accelerator.h"  // lines 12-12
+
+The full include-list for /home/tilir/pcaa/tools/pbqp_run.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for sc_time, SC_ZERO_TIME, sc_tim...
+#include <cstdint>                      // for int32_t, uint64_t
+#include <cstdlib>                      // for size_t, setenv
+#include <exception>                    // for exception
+#include <filesystem>                   // for path
+#include <fstream>                      // for basic_ostream, operator<<
+#include <iostream>                     // for cerr, cout
+#include <limits>                       // for numeric_limits
+#include <stdexcept>                    // for out_of_range
+#include <string>                       // for char_traits, basic_string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_OPCODE_MAP_A...
+#include "pbqp/pbqp.h"                  // for PBQP_OK, PBQP_STRATEGY_EXACT_...
+#include "pbqp_input.h"                 // for ProblemOwner, InputProblem
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status, pcaa_status_t
+#include "pcaa_host_error.h"            // for pcaa_perror
+#include "timing_model.h"               // for AccelTimingConfig, AccelTimin...
+---
+
+
+(/home/tilir/pcaa/tools/pbqp_run_launcher.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/pbqp_run.cpp:12:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should add these lines:
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should remove these lines:
+- #include <algorithm>  // lines 14-14
+- #include <sstream>  // lines 22-22
+- #include <utility>  // lines 25-25
+
+The full include-list for /home/tilir/pcaa/tools/pbqp_run.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <cstdint>                      // for int32_t, UINT16_MAX, uint64_t
+#include <cstdlib>                      // for size_t, setenv
+#include <exception>                    // for exception
+#include <filesystem>                   // for path
+#include <fstream>                      // for basic_ostream, operator<<
+#include <iostream>                     // for cerr, cout
+#include <limits>                       // for numeric_limits
+#include <stdexcept>                    // for invalid_argument, out_of_range
+#include <string>                       // for char_traits, basic_string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_OPCODE_MAP_A...
+#include "l2_accelerator.h"             // for L2Config, l2_write_json, L2St...
+#include "pbqp/pbqp.h"                  // for PBQP_OK, PBQP_STRATEGY_EXACT_...
+#include "pbqp_input.h"                 // for ProblemOwner, InputProblem
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status, pcaa_status_t
+#include "pcaa_host_error.h"            // for pcaa_perror
+#include "timing_model.h"               // for AccelTimingConfig
+---
+
+
+(/home/tilir/pcaa/tools/pbqp_run_launcher.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/l2_microbench.cpp:4:
+In file included from /home/tilir/pcaa/accelerator/tests/l2_support.h:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/l2_microbench.cpp should add these lines:
+#include <iterator>                     // for pair
+
+/home/tilir/pcaa/tools/l2_microbench.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/l2_microbench.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <cstddef>                      // for size_t
+#include <cstdint>                      // for int32_t, uint64_t, INT32_MIN
+#include <exception>                    // for exception
+#include <initializer_list>             // for initializer_list
+#include <iostream>                     // for basic_ostream, operator<<
+#include <iterator>                     // for pair
+#include <stdexcept>                    // for runtime_error, invalid_argument
+#include <string>                       // for char_traits, basic_string
+#include <utility>                      // for pair
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_STATUS_DONE
+#include "l2_accelerator.h"             // for L2Config, L2Accelerator, l2_w...
+#include "l2_support.h"                 // for Rig, Ram, kBatchResult, kChil...
+#include "pcaa.h"                       // for pcaa_command_kind, pcaa_outpu...
+#include "pcaa_codec.h"                 // for pcaa_encode_stream
+#include "timing_model.h"               // for AccelTimingConfig, accel_esti...
+---
+
+In file included from /home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp should add these lines:
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+
+/home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp should remove these lines:
+- #include "timing_model.h"  // lines 9-9
+
+The full include-list for /home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp:
+#include <gtest/gtest.h>                // for Message, Test, TestPartResult
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <cstdint>                      // for int32_t
+#include <limits>                       // for numeric_limits
+#include <string>                       // for basic_string, string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, accel_min_argmin_r...
+#include "l2_accelerator.h"             // for L2Statistics, L2Config
+#include "pbqp/pbqp.h"                  // for pbqp_cost_kernel_t, pbqp_proj...
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/kernels.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should add these lines:
+#include <iterator>               // for pair
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/kernels.cpp:
+#include "kernels.h"
+#include <immintrin.h>            // for _mm256_cmpgt_epi32, _mm256_or_si256
+#include <algorithm>              // for min, copy_n, max
+#include <array>                  // for array
+#include <chrono>                 // for duration_cast, duration, nanoseconds
+#include <iterator>               // for pair
+#include <limits>                 // for numeric_limits
+#include <utility>                // for pair, move, operator<, swap
+#include "cost_math_impl.h"       // for CostAddChecked
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+#include "profile.h"              // for Profile, ExactCounters, Component
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should add these lines:
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/bench.cpp:
+#include <algorithm>              // for sort
+#include <array>                  // for array
+#include <chrono>                 // for steady_clock
+#include <cstdint>                // for uint64_t, int32_t
+#include <cstdlib>                // for size_t
+#include <exception>              // for exception
+#include <filesystem>             // for path
+#include <iostream>               // for basic_ostream, operator<<, cout
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for char_traits, basic_string, operator!=
+#include <vector>                 // for vector, operator!=
+#include "kernels.h"              // for ClassStatistics, Kernels, Projection
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_evaluate, pbqp_heap_a...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, build_p...
+#include "profile.h"              // for Profile, Component, MakeExecution
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should add these lines:
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/bench.cpp:
+#include <algorithm>              // for sort
+#include <array>                  // for array
+#include <chrono>                 // for steady_clock
+#include <cstdint>                // for uint64_t, int32_t
+#include <cstdlib>                // for size_t
+#include <exception>              // for exception
+#include <filesystem>             // for path
+#include <iostream>               // for basic_ostream, operator<<, cout
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for char_traits, basic_string, operator!=
+#include <vector>                 // for vector, operator!=
+#include "kernels.h"              // for ClassStatistics, Kernels, Projection
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_evaluate, pbqp_heap_a...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, build_p...
+#include "profile.h"              // for Profile, Component, MakeExecution
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp should add these lines:
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp:
+#include <gtest/gtest.h>          // for Message, TestPartResult, CmpHelperEQ
+#include <array>                  // for array
+#include <cstddef>                // for size_t
+#include <cstdint>                // for int32_t, INT32_MIN, INT32_MAX
+#include <initializer_list>       // for initializer_list
+#include <random>                 // for mt19937
+#include <string>                 // for basic_string
+#include <vector>                 // for vector
+#include "accel_protocol.h"       // for accel_min_argmin_result, ACCEL_INF
+#include "kernels.h"              // for Kernels, Level, SparseRow, Represen...
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_cost_kernel_t, pbqp_m...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "profile.h"              // for Profile, MakeExecution, profile
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/microbench.cpp should add these lines:
+#include <iterator>          // for pair
+
+/home/tilir/pcaa/tools/cpu_baseline/microbench.cpp should remove these lines:
+- #include <cstddef>  // lines 10-10
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/microbench.cpp:
+#include <array>             // for array
+#include <cstdint>           // for int32_t
+#include <cstdlib>           // for size_t, abort
+#include <initializer_list>  // for initializer_list
+#include <iostream>          // for basic_ostream, char_traits, operator<<
+#include <iterator>          // for pair
+#include <utility>           // for pair
+#include <vector>            // for vector
+#include "accel_protocol.h"  // for accel_min_argmin_result_t, ACCEL_INF
+#include "kernels.h"         // for Level, Kernels, Now
+#include "pbqp/pbqp.h"       // for pbqp_matrix_view_t
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/kernels.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should add these lines:
+#include <iterator>               // for pair
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/kernels.cpp:
+#include "kernels.h"
+#include <algorithm>              // for min, copy_n, max
+#include <array>                  // for array
+#include <chrono>                 // for duration_cast, duration, nanoseconds
+#include <iterator>               // for pair
+#include <limits>                 // for numeric_limits
+#include <utility>                // for pair, move, operator<, swap
+#include "cost_math_impl.h"       // for CostAddChecked
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+#include "profile.h"              // for Profile, ExactCounters, Component
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/exact.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/tools/cpu_baseline/exact.cpp should add these lines:
+#include <chrono>                 // for steady_clock
+#include <exception>              // for exception
+#include "accel_protocol.h"       // for accel_min_argmin_result_t, ACCEL_INF
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/exact.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/exact.cpp:
+#include "exact.h"
+#include <algorithm>              // for max, sort
+#include <array>                  // for array
+#include <chrono>                 // for steady_clock
+#include <cstdlib>                // for size_t, free, malloc
+#include <exception>              // for exception
+#include <filesystem>             // for path
+#include <iostream>               // for cout, cerr
+#include <limits>                 // for numeric_limits
+#include <map>                    // for map, _Rb_tree_const_iterator, _Rb_t...
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for basic_string, operator!=, operator==
+#include <vector>                 // for vector, allocator, operator!=
+#include "accel_protocol.h"       // for accel_min_argmin_result_t, ACCEL_INF
+#include "kernels.h"              // for Now, Kernels, active_kernels, Level
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, InputNode
+#include "profile.h"              // for Profile, ExactCounters, Component
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp should add these lines:
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <iosfwd>                       // for ostream
+#include <vector>                       // for vector
+#include "pbqp/pbqp.h"                  // for pbqp_cost_kernel_t
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp should remove these lines:
+- #include <systemc>  // lines 9-9
+- #include "timing_model.h"  // lines 7-7
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp:
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <iosfwd>                       // for ostream
+#include <limits>                       // for numeric_limits
+#include <vector>                       // for vector
+#include "exact.h"                      // for DeviceEvent, RunExact, Device...
+#include "l2_accelerator.h"             // for L2Statistics, l2_write_json
+#include "pbqp/pbqp.h"                  // for pbqp_cost_kernel_t
+#include "pbqp_model_kernel.h"          // for ModelKernel, HostKernelMeasur...
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp should add these lines:
+#include <stdint.h>               // for int32_t
+#include <filesystem>             // for path
+#include <initializer_list>       // for initializer_list
+#include <string>                 // for basic_string
+#include "accel_protocol.h"       // for ACCEL_INF
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_heap_allocator, pbqp_...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution, Execution
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp:
+#include <gtest/gtest.h>          // for Message, TestPartResult, Test, CmpH...
+#include <stdint.h>               // for int32_t
+#include <array>                  // for array
+#include <filesystem>             // for path
+#include <initializer_list>       // for initializer_list
+#include <random>                 // for mt19937
+#include <string>                 // for basic_string
+#include <vector>                 // for vector
+#include "accel_protocol.h"       // for ACCEL_INF
+#include "kernels.h"              // for Level, Kernels, active_kernels, Now
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_heap_allocator, pbqp_...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution, Execution
+#include "pbqp/pbqp_storage.h"    // for Clone
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, build_p...
+#include "profile.h"              // for Profile, MakeExecution, profile
+---
+
+[100%] Built target format
+
+(/home/tilir/pcaa/software/pbqp/pbqp_unit.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/tests/systemc_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/src/spike_device.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/src/systemc_plugin_entry.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/include/pcaa.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/pcaalib/src/pcaa.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/codec.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/submission.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/device.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/error_host.c has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/src/systemc_device.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/tests/pcaa_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/pcaalib/tests/systemc_device_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/include/cost_math.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/cost_math.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/include/timing_model.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/timing_model.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/accelerator/include/accelerator.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/accelerator.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/accelerator/src/l2_accelerator.cpp:4:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+(/home/tilir/pcaa/accelerator/include/l2_accelerator.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/accelerator/src/l2_accelerator.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/accelerator/tests/l2_unit.cpp:4:
+In file included from /home/tilir/pcaa/accelerator/tests/l2_support.h:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+(/home/tilir/pcaa/accelerator/tests/l2_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/software/pbqp/pbqp.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/software/pbqp/pbqp.cpp should add these lines:
+#include <algorithm>         // for copy_n
+
+/home/tilir/pcaa/software/pbqp/pbqp.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/software/pbqp/pbqp.cpp:
+#include "pbqp.h"
+#include <assert.h>          // for assert
+#include <string.h>          // for memset
+#include <algorithm>         // for copy_n
+#include "cost_math.h"       // for accel_cost_add, accel_cost_add_checked
+#include "pbqp_algorithm.h"  // for copy_n
+#include "pbqp_execution.h"  // for ExecutionScope, Execution, Phase, Work
+#include "pbqp_storage.h"    // for Array, Problem, Reconstruction, CopyStat...
+---
+
+
+(/home/tilir/pcaa/software/pbqp/pbqp_storage.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp should add these lines:
+#include <algorithm>         // for copy_n
+
+/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:
+#include "pbqp_storage.h"
+#include <stdint.h>          // for SIZE_MAX, int32_t, uintptr_t, uint64_t
+#include <stdlib.h>          // for free, malloc
+#include <string.h>          // for memcpy, memset
+#include <algorithm>         // for copy_n
+#include "accel_protocol.h"  // for ACCEL_INF
+#include "pbqp.h"            // for pbqp_problem_t, pbqp_allocator_t, pbqp_a...
+#include "pbqp_algorithm.h"  // for copy_n
+---
+
+
+(/home/tilir/pcaa/workload/include/pbqp_graph_generator/graph_generator.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/workload/src/graph_generator.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/probes/include/bellman_ford.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/probes/src/bellman_ford.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/probes/tests/bellman_ford_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/probes/tests/bellman_ford_device_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/pbqp_input.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/tools/pbqp_input.cpp has correct #includes/fwd-decls)
+
+
+/home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp should add these lines:
+#include <initializer_list>  // for initializer_list
+
+/home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/tests/pbqp_input_unit.cpp:
+#include <gtest/gtest.h>     // for Message, Test, TestPartResult, CmpHelperEQ
+#include <array>             // for array
+#include <chrono>            // for duration, steady_clock
+#include <cstdint>           // for int32_t
+#include <filesystem>        // for path, operator/, create_directory, remov...
+#include <fstream>           // for basic_ofstream, basic_ostream, basic_ios
+#include <initializer_list>  // for initializer_list
+#include <stdexcept>         // for runtime_error
+#include <string>            // for allocator, char_traits, basic_string
+#include <string_view>       // for basic_string_view, operator<<, string_view
+#include <system_error>      // for error_code
+#include <utility>           // for move
+#include <vector>            // for vector
+#include "accel_protocol.h"  // for ACCEL_INF
+#include "pbqp/pbqp.h"       // for PBQP_OK, PBQP_MAX_DOMAIN, PBQP_ARGUMENT_...
+#include "pbqp_input.h"      // for InputNode, ProblemOwner, InputEdge, Inpu...
+---
+
+In file included from /home/tilir/pcaa/tools/pbqp_model_kernel.cpp:9:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+(/home/tilir/pcaa/tools/pbqp_model_kernel.h has correct #includes/fwd-decls)
+
+(/home/tilir/pcaa/tools/pbqp_model_kernel.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/tests/pbqp_model_kernel_unit.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/pbqp_graph_generate.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/pbqp_run.cpp:12:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should add these lines:
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should remove these lines:
+- #include <algorithm>  // lines 14-14
+- #include <sstream>  // lines 22-22
+- #include <utility>  // lines 25-25
+- #include "l2_accelerator.h"  // lines 12-12
+
+The full include-list for /home/tilir/pcaa/tools/pbqp_run.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <cstdint>                      // for int32_t, uint64_t
+#include <cstdlib>                      // for size_t, setenv
+#include <exception>                    // for exception
+#include <filesystem>                   // for path
+#include <fstream>                      // for basic_ostream, operator<<
+#include <iostream>                     // for cerr, cout
+#include <limits>                       // for numeric_limits
+#include <stdexcept>                    // for out_of_range
+#include <string>                       // for char_traits, basic_string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_OPCODE_MAP_A...
+#include "pbqp/pbqp.h"                  // for PBQP_OK, PBQP_STRATEGY_EXACT_...
+#include "pbqp_input.h"                 // for ProblemOwner, InputProblem
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status, pcaa_status_t
+#include "pcaa_host_error.h"            // for pcaa_perror
+#include "timing_model.h"               // for AccelTimingConfig
+---
+
+
+(/home/tilir/pcaa/tools/pbqp_run_launcher.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/pbqp_run.cpp:12:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should add these lines:
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should remove these lines:
+- #include <algorithm>  // lines 14-14
+- #include <sstream>  // lines 22-22
+- #include <utility>  // lines 25-25
+- #include "l2_accelerator.h"  // lines 12-12
+
+The full include-list for /home/tilir/pcaa/tools/pbqp_run.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for sc_time, SC_ZERO_TIME, sc_tim...
+#include <cstdint>                      // for int32_t, uint64_t
+#include <cstdlib>                      // for size_t, setenv
+#include <exception>                    // for exception
+#include <filesystem>                   // for path
+#include <fstream>                      // for basic_ostream, operator<<
+#include <iostream>                     // for cerr, cout
+#include <limits>                       // for numeric_limits
+#include <stdexcept>                    // for out_of_range
+#include <string>                       // for char_traits, basic_string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_OPCODE_MAP_A...
+#include "pbqp/pbqp.h"                  // for PBQP_OK, PBQP_STRATEGY_EXACT_...
+#include "pbqp_input.h"                 // for ProblemOwner, InputProblem
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status, pcaa_status_t
+#include "pcaa_host_error.h"            // for pcaa_perror
+#include "timing_model.h"               // for AccelTimingConfig, AccelTimin...
+---
+
+
+(/home/tilir/pcaa/tools/pbqp_run_launcher.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/pbqp_run.cpp:12:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should add these lines:
+
+/home/tilir/pcaa/tools/pbqp_run.cpp should remove these lines:
+- #include <algorithm>  // lines 14-14
+- #include <sstream>  // lines 22-22
+- #include <utility>  // lines 25-25
+
+The full include-list for /home/tilir/pcaa/tools/pbqp_run.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <cstdint>                      // for int32_t, UINT16_MAX, uint64_t
+#include <cstdlib>                      // for size_t, setenv
+#include <exception>                    // for exception
+#include <filesystem>                   // for path
+#include <fstream>                      // for basic_ostream, operator<<
+#include <iostream>                     // for cerr, cout
+#include <limits>                       // for numeric_limits
+#include <stdexcept>                    // for invalid_argument, out_of_range
+#include <string>                       // for char_traits, basic_string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_OPCODE_MAP_A...
+#include "l2_accelerator.h"             // for L2Config, l2_write_json, L2St...
+#include "pbqp/pbqp.h"                  // for PBQP_OK, PBQP_STRATEGY_EXACT_...
+#include "pbqp_input.h"                 // for ProblemOwner, InputProblem
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status, pcaa_status_t
+#include "pcaa_host_error.h"            // for pcaa_perror
+#include "timing_model.h"               // for AccelTimingConfig
+---
+
+
+(/home/tilir/pcaa/tools/pbqp_run_launcher.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/l2_microbench.cpp:4:
+In file included from /home/tilir/pcaa/accelerator/tests/l2_support.h:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/l2_microbench.cpp should add these lines:
+#include <iterator>                     // for pair
+
+/home/tilir/pcaa/tools/l2_microbench.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/l2_microbench.cpp:
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <cstddef>                      // for size_t
+#include <cstdint>                      // for int32_t, uint64_t, INT32_MIN
+#include <exception>                    // for exception
+#include <initializer_list>             // for initializer_list
+#include <iostream>                     // for basic_ostream, operator<<
+#include <iterator>                     // for pair
+#include <stdexcept>                    // for runtime_error, invalid_argument
+#include <string>                       // for char_traits, basic_string
+#include <utility>                      // for pair
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, ACCEL_STATUS_DONE
+#include "l2_accelerator.h"             // for L2Config, L2Accelerator, l2_w...
+#include "l2_support.h"                 // for Rig, Ram, kBatchResult, kChil...
+#include "pcaa.h"                       // for pcaa_command_kind, pcaa_outpu...
+#include "pcaa_codec.h"                 // for pcaa_encode_stream
+#include "timing_model.h"               // for AccelTimingConfig, accel_esti...
+---
+
+In file included from /home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp should add these lines:
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+
+/home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp should remove these lines:
+- #include "timing_model.h"  // lines 9-9
+
+The full include-list for /home/tilir/pcaa/tools/tests/pbqp_model_profile_unit.cpp:
+#include <gtest/gtest.h>                // for Message, Test, TestPartResult
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <cstdint>                      // for int32_t
+#include <limits>                       // for numeric_limits
+#include <string>                       // for basic_string, string
+#include <vector>                       // for vector
+#include "accel_protocol.h"             // for ACCEL_INF, accel_min_argmin_r...
+#include "l2_accelerator.h"             // for L2Statistics, L2Config
+#include "pbqp/pbqp.h"                  // for pbqp_cost_kernel_t, pbqp_proj...
+#include "pbqp_model_kernel.h"          // for HostKernelMeasurement, ModelK...
+#include "pcaa.h"                       // for pcaa_status
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/kernels.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should add these lines:
+#include <iterator>               // for pair
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/kernels.cpp:
+#include "kernels.h"
+#include <immintrin.h>            // for _mm256_cmpgt_epi32, _mm256_or_si256
+#include <algorithm>              // for min, copy_n, max
+#include <array>                  // for array
+#include <chrono>                 // for duration_cast, duration, nanoseconds
+#include <iterator>               // for pair
+#include <limits>                 // for numeric_limits
+#include <utility>                // for pair, move, operator<, swap
+#include "cost_math_impl.h"       // for CostAddChecked
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+#include "profile.h"              // for Profile, ExactCounters, Component
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should add these lines:
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/bench.cpp:
+#include <algorithm>              // for sort
+#include <array>                  // for array
+#include <chrono>                 // for steady_clock
+#include <cstdint>                // for uint64_t, int32_t
+#include <cstdlib>                // for size_t
+#include <exception>              // for exception
+#include <filesystem>             // for path
+#include <iostream>               // for basic_ostream, operator<<, cout
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for char_traits, basic_string, operator!=
+#include <vector>                 // for vector, operator!=
+#include "kernels.h"              // for ClassStatistics, Kernels, Projection
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_evaluate, pbqp_heap_a...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, build_p...
+#include "profile.h"              // for Profile, Component, MakeExecution
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should add these lines:
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/bench.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/bench.cpp:
+#include <algorithm>              // for sort
+#include <array>                  // for array
+#include <chrono>                 // for steady_clock
+#include <cstdint>                // for uint64_t, int32_t
+#include <cstdlib>                // for size_t
+#include <exception>              // for exception
+#include <filesystem>             // for path
+#include <iostream>               // for basic_ostream, operator<<, cout
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for char_traits, basic_string, operator!=
+#include <vector>                 // for vector, operator!=
+#include "kernels.h"              // for ClassStatistics, Kernels, Projection
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_evaluate, pbqp_heap_a...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, build_p...
+#include "profile.h"              // for Profile, Component, MakeExecution
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp should add these lines:
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/kernel_unit.cpp:
+#include <gtest/gtest.h>          // for Message, TestPartResult, CmpHelperEQ
+#include <array>                  // for array
+#include <cstddef>                // for size_t
+#include <cstdint>                // for int32_t, INT32_MIN, INT32_MAX
+#include <initializer_list>       // for initializer_list
+#include <random>                 // for mt19937
+#include <string>                 // for basic_string
+#include <vector>                 // for vector
+#include "accel_protocol.h"       // for accel_min_argmin_result, ACCEL_INF
+#include "kernels.h"              // for Kernels, Level, SparseRow, Represen...
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_cost_kernel_t, pbqp_m...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "profile.h"              // for Profile, MakeExecution, profile
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/microbench.cpp should add these lines:
+#include <iterator>          // for pair
+
+/home/tilir/pcaa/tools/cpu_baseline/microbench.cpp should remove these lines:
+- #include <cstddef>  // lines 10-10
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/microbench.cpp:
+#include <array>             // for array
+#include <cstdint>           // for int32_t
+#include <cstdlib>           // for size_t, abort
+#include <initializer_list>  // for initializer_list
+#include <iostream>          // for basic_ostream, char_traits, operator<<
+#include <iterator>          // for pair
+#include <utility>           // for pair
+#include <vector>            // for vector
+#include "accel_protocol.h"  // for accel_min_argmin_result_t, ACCEL_INF
+#include "kernels.h"         // for Level, Kernels, Now
+#include "pbqp/pbqp.h"       // for pbqp_matrix_view_t
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/kernels.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should add these lines:
+#include <iterator>               // for pair
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+
+/home/tilir/pcaa/tools/cpu_baseline/kernels.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/kernels.cpp:
+#include "kernels.h"
+#include <algorithm>              // for min, copy_n, max
+#include <array>                  // for array
+#include <chrono>                 // for duration_cast, duration, nanoseconds
+#include <iterator>               // for pair
+#include <limits>                 // for numeric_limits
+#include <utility>                // for pair, move, operator<, swap
+#include "cost_math_impl.h"       // for CostAddChecked
+#include "pbqp/pbqp_execution.h"  // for Execution, Work
+#include "profile.h"              // for Profile, ExactCounters, Component
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/exact.h has correct #includes/fwd-decls)
+
+/home/tilir/pcaa/tools/cpu_baseline/exact.cpp should add these lines:
+#include <chrono>                 // for steady_clock
+#include <exception>              // for exception
+#include "accel_protocol.h"       // for accel_min_argmin_result_t, ACCEL_INF
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+
+/home/tilir/pcaa/tools/cpu_baseline/exact.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/exact.cpp:
+#include "exact.h"
+#include <algorithm>              // for max, sort
+#include <array>                  // for array
+#include <chrono>                 // for steady_clock
+#include <cstdlib>                // for size_t, free, malloc
+#include <exception>              // for exception
+#include <filesystem>             // for path
+#include <iostream>               // for cout, cerr
+#include <limits>                 // for numeric_limits
+#include <map>                    // for map, _Rb_tree_const_iterator, _Rb_t...
+#include <stdexcept>              // for runtime_error
+#include <string>                 // for basic_string, operator!=, operator==
+#include <vector>                 // for vector, allocator, operator!=
+#include "accel_protocol.h"       // for accel_min_argmin_result_t, ACCEL_INF
+#include "kernels.h"              // for Now, Kernels, active_kernels, Level
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, InputNode
+#include "profile.h"              // for Profile, ExactCounters, Component
+---
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp has correct #includes/fwd-decls)
+
+
+(/home/tilir/pcaa/tools/cpu_baseline/exact_main.cpp has correct #includes/fwd-decls)
+
+In file included from /home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp:6:
+/home/tilir/pcaa/accelerator/include/l2_accelerator.h:93:3: warning: 'sc_has_process_used' is deprecated: SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress. [-Wdeprecated-declarations]
+   93 |   SC_HAS_PROCESS(L2Accelerator);
+      |   ^
+/usr/include/sysc/kernel/sc_module.h:418:28: note: expanded from macro 'SC_HAS_PROCESS'
+  418 |     static_assert(sc_core::sc_has_process_used, "no-op to avoid stray ';'")
+      |                            ^
+/usr/include/sysc/kernel/sc_module.h:413:7: note: 'sc_has_process_used' has been explicitly marked deprecated here
+  413 |     [[deprecated("SC_HAS_PROCESS(user_module_name) is obsolete in IEEE 1666-2023, define SC_ALLOW_DEPRECATED_IEEE_API to suppress.")]]
+      |       ^
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp should add these lines:
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <iosfwd>                       // for ostream
+#include <vector>                       // for vector
+#include "pbqp/pbqp.h"                  // for pbqp_cost_kernel_t
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp should remove these lines:
+- #include <systemc>  // lines 9-9
+- #include "timing_model.h"  // lines 7-7
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/exact_l2.cpp:
+#include <stddef.h>                     // for size_t
+#include <sysc/kernel/sc_externs.h>     // for sc_main
+#include <sysc/kernel/sc_simcontext.h>  // for sc_start
+#include <sysc/kernel/sc_time.h>        // for SC_ZERO_TIME
+#include <array>                        // for array
+#include <iosfwd>                       // for ostream
+#include <limits>                       // for numeric_limits
+#include <vector>                       // for vector
+#include "exact.h"                      // for DeviceEvent, RunExact, Device...
+#include "l2_accelerator.h"             // for L2Statistics, l2_write_json
+#include "pbqp/pbqp.h"                  // for pbqp_cost_kernel_t
+#include "pbqp_model_kernel.h"          // for ModelKernel, HostKernelMeasur...
+---
+
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp should add these lines:
+#include <stdint.h>               // for int32_t
+#include <filesystem>             // for path
+#include <initializer_list>       // for initializer_list
+#include <string>                 // for basic_string
+#include "accel_protocol.h"       // for ACCEL_INF
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_heap_allocator, pbqp_...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution, Execution
+
+/home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp should remove these lines:
+
+The full include-list for /home/tilir/pcaa/tools/cpu_baseline/exact_unit.cpp:
+#include <gtest/gtest.h>          // for Message, TestPartResult, Test, CmpH...
+#include <stdint.h>               // for int32_t
+#include <array>                  // for array
+#include <filesystem>             // for path
+#include <initializer_list>       // for initializer_list
+#include <random>                 // for mt19937
+#include <string>                 // for basic_string
+#include <vector>                 // for vector
+#include "accel_protocol.h"       // for ACCEL_INF
+#include "kernels.h"              // for Level, Kernels, active_kernels, Now
+#include "pbqp/pbqp.h"            // for PBQP_OK, pbqp_heap_allocator, pbqp_...
+#include "pbqp/pbqp_execution.h"  // for SolveWithExecution, Execution
+#include "pbqp/pbqp_storage.h"    // for Clone
+#include "pbqp_input.h"           // for ProblemOwner, InputProblem, build_p...
+#include "profile.h"              // for Profile, MakeExecution, profile
+---
+
+Built target format

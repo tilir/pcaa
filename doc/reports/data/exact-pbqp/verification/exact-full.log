@@ -1,0 +1,109 @@
+CPU 1/533 001-instcombine-foldaddtoashr-n87-d16.pbqp
+CPU 11/533 011-instcombine-checkfornegativeoperand-n193-d16-r1.pbqp
+CPU 21/533 021-instcombine-faddcombine-simplify-n54-d16.pbqp
+CPU 31/533 031-instcombine-selectinst-create-n8-d15-r1.pbqp
+CPU 41/533 041-instcombine-densemapbase-lookuporinsertintobucke-n24-d16.pbqp
+CPU 51/533 051-instcombine-patternmatch-match-n11-d16.pbqp
+CPU 61/533 061-instcombine-patternmatch-match-n9-d16.pbqp
+CPU 71/533 071-instcombine-patternmatch-match-n10-d16.pbqp
+CPU 81/533 081-instcombine-patternmatch-match-n14-d16.pbqp
+CPU 91/533 091-instcombine-patternmatch-match-n14-d16.pbqp
+CPU 101/533 101-instcombine-patternmatch-match-n9-d16.pbqp
+CPU 111/533 111-instcombine-patternmatch-match-n9-d16.pbqp
+CPU 121/533 121-instcombine-irbuilderbase-createurem-n12-d16.pbqp
+CPU 131/533 131-instcombine-irbuilderbase-createfsubfmf-n16-d16.pbqp
+CPU 141/533 141-instcombine-irbuilderbase-createnot-n13-d16.pbqp
+CPU 151/533 151-instcombine-instcombinerimpl-folddivceil-n79-d16.pbqp
+CPU 161/533 161-instcombine-instcombinerimpl-optimizepointerdiff-n95-d16.pbqp
+CPU 171/533 171-instcombine-instcombinerimpl-visitfneg-n118-d17.pbqp
+CPU 181/533 181-instcombine-apint-gethighbitsset-n5-d15.pbqp
+CPU 191/533 191-instcombine-llvm-operator-n5-d16.pbqp
+CPU 201/533 201-instcombine-oneuse-match-match-n16-d16.pbqp
+CPU 211/533 211-instcombine-binaryop-match-match-n19-d16.pbqp
+CPU 221/533 221-instcombine-binaryop-match-match-n27-d16.pbqp
+CPU 231/533 231-instcombine-binaryop-match-match-n33-d16.pbqp
+CPU 241/533 241-instcombine-binaryop-match-match-n17-d16.pbqp
+CPU 251/533 251-instcombine-castinst-match-match-n19-d16.pbqp
+CPU 261/533 261-instcombine-cstval-pred-ty-matchvector-n15-d16.pbqp
+CPU 271/533 271-instcombine-anybinaryop-match-match-n32-d16.pbqp
+CPU 281/533 281-instcombine-overflowingbinaryop-match-match-n20-d16.pbqp
+CPU 291/533 291-instcombine-match-combine-or-match-n16-d16.pbqp
+CPU 301/533 301-instcombine-apint-isnegatedpowerof2-n11-d16.pbqp
+CPU 311/533 311-instcombine-3-operator-n27-d16-r1.pbqp
+CPU 321/533 321-mbb-slotindexes-insertmbbinmaps-n25-d17.pbqp
+CPU 331/533 331-mbb-densemapbase-lookupbucketfor-n15-d16.pbqp
+CPU 341/533 341-mbb-ilist-traits-transfernodesfromlist-n5-d16.pbqp
+CPU 351/533 351-mbb-machinebasicblock-remove-instr-n9-d16.pbqp
+CPU 361/533 361-mbb-machinebasicblock-removesuccessor-n11-d16.pbqp
+CPU 371/533 371-mbb-machinebasicblock-rfindprevdebugloc-n6-d16.pbqp
+CPU 381/533 381-mbb-machinebasicblock-replaceusesofblock-n15-d16.pbqp
+CPU 391/533 391-mbb-machinebasicblock-insert-n10-d16.pbqp
+CPU 401/533 401-mbb-ilist-callback-traits-addnodetolist-n15-d16.pbqp
+CPU 411/533 411-mbb-opt-opt-n7-d16.pbqp
+CPU 421/533 421-mbb-machinebasicblock-getfullname-abi-cx-n35-d16.pbqp
+CPU 431/533 431-mbb-machinebasicblock-hasehpadsuccessor-n7-d16.pbqp
+CPU 441/533 441-mbb-machinebasicblock-getprobabilityiter-n2-d16.pbqp
+CPU 451/533 451-mbb-machinebasicblock-islivein-n8-d16.pbqp
+CPU 461/533 461-mbb-rb-tree-m-erase-n4-d15.pbqp
+CPU 471/533 471-cudd-addabs-cudd-addorabstract-n10-d16.pbqp
+CPU 481/533 481-cudd-bddabs-cudd-bddexistabstractlimit-n13-d16.pbqp
+CPU 491/533 491-cudd-bddabs-cuddbddxorexistabstractrecur-n53-d16-r1.pbqp
+CPU 501/533 degree-4-n12-d2-s1002.pbqp
+CPU 511/533 mixed-degree-n12-d4-s1002.pbqp
+CPU 521/533 stress-k4-d4-random-s7404.pbqp
+CPU 531/533 stress-k8-d3-random-s7803.pbqp
+L2 1/533
+L2 11/533
+L2 21/533
+L2 31/533
+L2 41/533
+L2 51/533
+L2 61/533
+L2 71/533
+L2 81/533
+L2 91/533
+L2 101/533
+L2 111/533
+L2 121/533
+L2 131/533
+L2 141/533
+L2 151/533
+L2 161/533
+L2 171/533
+L2 181/533
+L2 191/533
+L2 201/533
+L2 211/533
+L2 221/533
+L2 231/533
+L2 241/533
+L2 251/533
+L2 261/533
+L2 271/533
+L2 281/533
+L2 291/533
+L2 301/533
+L2 311/533
+L2 321/533
+L2 331/533
+L2 341/533
+L2 351/533
+L2 361/533
+L2 371/533
+L2 381/533
+L2 391/533
+L2 401/533
+L2 411/533
+L2 421/533
+L2 431/533
+L2 441/533
+L2 451/533
+L2 461/533
+L2 471/533
+L2 481/533
+L2 491/533
+L2 501/533
+L2 511/533
+L2 521/533
+L2 531/533
+complete; run scripts/exact_pbqp_report.rb

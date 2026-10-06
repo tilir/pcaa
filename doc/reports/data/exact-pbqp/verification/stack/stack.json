@@ -1,0 +1,1224 @@
+{
+  "commands": [
+    {
+      "source": "software/pbqp/pbqp.cpp",
+      "command": [
+        "riscv64-unknown-elf-g++",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c++17",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-threadsafe-statics",
+        "-c",
+        "/home/tilir/pcaa/software/pbqp/pbqp.cpp",
+        "-o",
+        "/tmp/exact-stack-final/pbqp.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/pbqp/pbqp_storage.cpp",
+      "command": [
+        "riscv64-unknown-elf-g++",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c++17",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-threadsafe-statics",
+        "-c",
+        "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp",
+        "-o",
+        "/tmp/exact-stack-final/pbqp_storage.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "accelerator/src/cost_math.cpp",
+      "command": [
+        "riscv64-unknown-elf-g++",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c++17",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-threadsafe-statics",
+        "-c",
+        "/home/tilir/pcaa/accelerator/src/cost_math.cpp",
+        "-o",
+        "/tmp/exact-stack-final/cost_math.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/accel_driver.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/accel_driver.c",
+        "-o",
+        "/tmp/exact-stack-final/accel_driver.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/pbqp/pbqp_accelerator.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c",
+        "-o",
+        "/tmp/exact-stack-final/pbqp_accelerator.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/tests/runtime.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/tests/runtime.c",
+        "-o",
+        "/tmp/exact-stack-final/runtime.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/tests/basic.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/tests/basic.c",
+        "-o",
+        "/tmp/exact-stack-final/basic.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/tests/randomized.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/tests/randomized.c",
+        "-o",
+        "/tmp/exact-stack-final/randomized.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/tests/pbqp_basic.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/tests/pbqp_basic.c",
+        "-o",
+        "/tmp/exact-stack-final/pbqp_basic.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/tests/pbqp_randomized.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/tests/pbqp_randomized.c",
+        "-o",
+        "/tmp/exact-stack-final/pbqp_randomized.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "software/tests/pbqp_rn.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/software/tests/pbqp_rn.c",
+        "-o",
+        "/tmp/exact-stack-final/pbqp_rn.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "pcaalib/src/pcaa.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/pcaalib/src/pcaa.c",
+        "-o",
+        "/tmp/exact-stack-final/pcaa.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "pcaalib/src/codec.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/pcaalib/src/codec.c",
+        "-o",
+        "/tmp/exact-stack-final/codec.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "pcaalib/src/submission.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/pcaalib/src/submission.c",
+        "-o",
+        "/tmp/exact-stack-final/submission.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "pcaalib/src/device.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/pcaalib/src/device.c",
+        "-o",
+        "/tmp/exact-stack-final/device.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "source": "pcaalib/src/baremetal_device.c",
+      "command": [
+        "riscv64-unknown-elf-gcc",
+        "-march=rv64imac",
+        "-mabi=lp64",
+        "-mcmodel=medany",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-nostdlib",
+        "-nostartfiles",
+        "-O2",
+        "-fstack-usage",
+        "-I/home/tilir/pcaa/accelerator/include",
+        "-I/home/tilir/pcaa/software",
+        "-I/home/tilir/pcaa/software/pbqp/freestanding",
+        "-I/home/tilir/pcaa/pcaalib/include",
+        "-std=c11",
+        "-c",
+        "/home/tilir/pcaa/pcaalib/src/baremetal_device.c",
+        "-o",
+        "/tmp/exact-stack-final/baremetal_device.o"
+      ],
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "entries": [
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:21:6:accel_init",
+      "size": 0,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:42:5:accel_submit_encoded",
+      "size": 0,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:46:5:accel_submit_command",
+      "size": 96,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:54:5:accel_wait",
+      "size": 0,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:64:5:accel_submit_command_batch",
+      "size": 112,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:88:5:accel_min_add_checked",
+      "size": 272,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:82:9:accel_min_add",
+      "size": 32,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:98:9:accel_min_add3",
+      "size": 336,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:120:5:accel_min_add_argmin_checked",
+      "size": 272,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:107:27:accel_min_add_argmin",
+      "size": 32,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:131:5:accel_min_add3_argmin_checked",
+      "size": 352,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/accel_driver.c:113:27:accel_min_add3_argmin",
+      "size": 32,
+      "kind": "static",
+      "file": "accel_driver.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/baremetal_device.c:67:22:wait_for_completion",
+      "size": 32,
+      "kind": "static",
+      "file": "baremetal_device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/baremetal_device.c:28:22:submit_batch",
+      "size": 272,
+      "kind": "static",
+      "file": "baremetal_device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/baremetal_device.c:11:22:submit_command",
+      "size": 112,
+      "kind": "static",
+      "file": "baremetal_device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/baremetal_device.c:88:16:pcaa_baremetal_device_init",
+      "size": 32,
+      "kind": "static",
+      "file": "baremetal_device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/common.h:26:23:ref_min2.constprop",
+      "size": 0,
+      "kind": "static",
+      "file": "basic.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/basic.c:19:5:main",
+      "size": 368,
+      "kind": "static",
+      "file": "basic.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:57:12:span.constprop",
+      "size": 0,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:71:15:pcaa_wire_format_size",
+      "size": 0,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:126:22:valid_command.constprop",
+      "size": 176,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:274:15:pcaa_encode_one.part.0",
+      "size": 128,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:263:15:pcaa_encoded_size",
+      "size": 32,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:274:15:pcaa_encode_one",
+      "size": 0,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:365:15:pcaa_decode_one",
+      "size": 240,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:459:15:pcaa_encoded_stream_size",
+      "size": 80,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/codec.c:481:15:pcaa_encode_stream",
+      "size": 96,
+      "kind": "static",
+      "file": "codec.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/accelerator/src/cost_math.cpp:8:5:int accel_cost_add_checked(int32_t, int32_t, int32_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "cost_math.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/accelerator/src/cost_math.cpp:12:9:int32_t accel_cost_add(int32_t, int32_t)",
+      "size": 0,
+      "kind": "static",
+      "file": "cost_math.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/device.c:11:15:pcaa_device_submit",
+      "size": 0,
+      "kind": "static",
+      "file": "device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/device.c:17:15:pcaa_device_submit_batch",
+      "size": 0,
+      "kind": "static",
+      "file": "device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/device.c:24:15:pcaa_device_wait",
+      "size": 0,
+      "kind": "static",
+      "file": "device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/device.c:35:13:pcaa_status_string",
+      "size": 0,
+      "kind": "static",
+      "file": "device.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1189:8:void {anonymous}::Solver::EnumerateActiveCore(pbqp_problem_t&, unsigned int, unsigned int*, pbqp_solution_t*, bool*, bool*) const",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1716:5:int {anonymous}::SoftwareMap3Project(void*, pbqp_vector_view_t, pbqp_vector_view_t, pbqp_matrix_view_t, accel_min_argmin_result_t*)",
+      "size": 144,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1751:5:int {anonymous}::SoftwareMap3ProjectBatch(void*, const pbqp_map3_project_job_t*, size_t)",
+      "size": 160,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1696:5:int {anonymous}::SoftwareMinplusProject(void*, pbqp_matrix_view_t, pbqp_vector_view_t, int32_t*)",
+      "size": 144,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1678:5:int {anonymous}::SoftwareCostAddVector(void*, pbqp_vector_view_t, pbqp_vector_view_t, int32_t*)",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1740:5:int {anonymous}::SoftwareProjectAddBatch(void*, const pbqp_project_add_job_t*, size_t)",
+      "size": 208,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1648:5:int {anonymous}::SoftwareMin2Value(void*, pbqp_vector_view_t, pbqp_vector_view_t, int32_t*)",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1662:5:int {anonymous}::SoftwareMin2ValueBatch(void*, const pbqp_min2_value_job_t*, size_t)",
+      "size": 112,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1621:5:int {anonymous}::SoftwareMin3(void*, pbqp_vector_view_t, pbqp_vector_view_t, pbqp_vector_view_t, accel_min_argmin_result_t*)",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1670:5:int {anonymous}::SoftwareMin3Batch(void*, const pbqp_min3_job_t*, size_t)",
+      "size": 144,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1604:5:int {anonymous}::SoftwareMin2(void*, pbqp_vector_view_t, pbqp_vector_view_t, accel_min_argmin_result_t*)",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1640:5:int {anonymous}::SoftwareMin2Batch(void*, const pbqp_min2_job_t*, size_t)",
+      "size": 112,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1551:8:void {anonymous}::Solver::ReconstructSolution(const pbqp_problem_t&, pbqp_solution_t*) const",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:166:7:int {anonymous}::Graph::SelectRnNode(pbqp_rn_policy_t) const",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:492:8:0({anonymous}::Graph&, pbqp_trace_event_type_t, pbqp_trace_phase_t, int, int, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, unsigned int, unsigned int, uint64_t, uint64_t, unsigned int) const",
+      "size": 224,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:968:17:pbqp_status_t {anonymous}::Solver::ReduceR0({anonymous}::Graph&, unsigned int) const",
+      "size": 144,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:745:17:pbqp_status_t {anonymous}::Solver::ConditionNode({anonymous}::Graph&, unsigned int, unsigned int, {anonymous}::ReductionKind) const",
+      "size": 304,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:992:17:pbqp_status_t {anonymous}::Solver::ReduceR1({anonymous}::Graph&, unsigned int, int) const",
+      "size": 464,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1048:17:pbqp_status_t {anonymous}::Solver::ReduceR2({anonymous}::Graph&, unsigned int, int, int) const",
+      "size": 496,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1373:17:pbqp_status_t {anonymous}::Solver::SolveBranchAndReduce(pbqp_problem_t*, pbqp_solution_t*, unsigned int, SearchControl*, int32_t) const",
+      "size": 3072,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1764:15:pbqp_status_t pbqp_add_node(pbqp_problem_t*, unsigned int, const int32_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1787:15:pbqp_status_t pbqp_add_edge(pbqp_problem_t*, unsigned int, unsigned int, const int32_t*)",
+      "size": 16,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1831:9:int32_t pbqp_evaluate(const pbqp_problem_t*, const unsigned int*)",
+      "size": 48,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1585:6:void {anonymous}::Enumerate(const pbqp_problem_t&, unsigned int, unsigned int*, pbqp_solution_t*, bool*)",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:615:17:pbqp_status_t {anonymous}::Solver::RunLocalDescent(pbqp_problem_t&, unsigned int*, pbqp_solution_t*) const",
+      "size": 512,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:353:17:pbqp_status_t {anonymous}::Solver::Solve(pbqp_problem_t*, pbqp_solution_t*) const",
+      "size": 1616,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1846:9:int32_t pbqp_max_finite_cost(const pbqp_problem_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1855:15:pbqp_status_t pbqp_bruteforce(const pbqp_problem_t*, pbqp_solution_t*)",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1869:6:void pbqp_make_software_kernel(pbqp_cost_kernel_t*, pbqp_statistics_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1885:22:pbqp_solver_config_t pbqp_solver_default_config()",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1894:15:pbqp_status_t pbqp_solver_create(pbqp_solver_t*, pbqp_mode_t, const pbqp_cost_kernel_t*)",
+      "size": 48,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1900:15:pbqp_status_t pbqp_solver_create_with_config(pbqp_solver_t*, pbqp_mode_t, const pbqp_cost_kernel_t*, const pbqp_solver_config_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1917:15:pbqp_status_t pbqp_solver_solve(pbqp_solver_t*, pbqp_problem_t*, pbqp_solution_t*)",
+      "size": 144,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1931:15:pbqp_status_t pcaa::pbqp::SolveWithExecution(pbqp_solver_t&, pbqp_problem_t&, pbqp_solution_t&, const Execution&)",
+      "size": 128,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:73:23:batch_contiguous",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:307:13:accel_set_statistics",
+      "size": 32,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:233:22:map3_project_command",
+      "size": 320,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:19:12:submit_batch",
+      "size": 64,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:217:22:project_command",
+      "size": 256,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:226:22:add_vector_command",
+      "size": 224,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:154:12:accel_min2_batch",
+      "size": 224,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:27:12:submit_reduce2",
+      "size": 288,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:174:12:accel_min3_batch",
+      "size": 288,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:292:12:accel_map3_project_batch",
+      "size": 176,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:262:12:accel_map3_project",
+      "size": 144,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:272:12:accel_project_add_batch",
+      "size": 224,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:196:12:accel_min2_value_batch",
+      "size": 224,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:244:12:accel_cost_add_vector",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:253:12:accel_minplus_project",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:127:12:accel_min2",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:144:12:accel_min2_value",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:135:12:accel_min3",
+      "size": 352,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_accelerator.c:316:6:pbqp_make_accelerator_kernel",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_accelerator.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_reference.h:10:23:pbqp_reference_evaluate.constprop",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_basic.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_reference.h:26:20:pbqp_reference_enumerate.constprop",
+      "size": 432,
+      "kind": "static",
+      "file": "pbqp_basic.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_basic.c:68:5:main",
+      "size": 94032,
+      "kind": "static",
+      "file": "pbqp_basic.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_reference.h:26:20:pbqp_reference_enumerate.constprop",
+      "size": 432,
+      "kind": "static",
+      "file": "pbqp_randomized.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_randomized.c:95:5:main",
+      "size": 93952,
+      "kind": "static",
+      "file": "pbqp_randomized.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_reference.h:10:23:pbqp_reference_evaluate.constprop",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_rn.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_rn.c:128:5:main",
+      "size": 93872,
+      "kind": "static",
+      "file": "pbqp_rn.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:129:7:void* pcaa::pbqp_storage::{anonymous}::ArenaAllocate(void*, size_t)",
+      "size": 48,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:152:6:void pcaa::pbqp_storage::{anonymous}::ArenaDeallocate(void*, void*, size_t)",
+      "size": 32,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:74:6:void pcaa::pbqp_storage::{anonymous}::BindProblemStorage(pbqp_problem_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:45:8:size_t pcaa::pbqp_storage::{anonymous}::ProblemStorageSize(unsigned int, unsigned int, unsigned int)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:176:11:unsigned int* pcaa::pbqp_storage::Reconstruction(pbqp_problem_t&, unsigned int)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:181:17:const unsigned int* pcaa::pbqp_storage::Reconstruction(const pbqp_problem_t&, unsigned int)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:186:6:void pcaa::pbqp_storage::CopyStatistics(pbqp_statistics_t*, const pbqp_statistics_t&, unsigned int, unsigned int)",
+      "size": 32,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:222:18:pbqp_allocator_t pbqp_heap_allocator()",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:230:6:void pbqp_arena_init(pbqp_arena_t*, void*, size_t)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:238:18:pbqp_allocator_t pbqp_arena_allocator(pbqp_arena_t*)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:244:8:size_t pbqp_problem_storage_size(unsigned int, unsigned int, unsigned int)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:249:15:pbqp_status_t pbqp_init(pbqp_problem_t*, pbqp_allocator_t, unsigned int, unsigned int, unsigned int)",
+      "size": 64,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:275:6:void pbqp_destroy(pbqp_problem_t*)",
+      "size": 48,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:286:15:pbqp_status_t pbqp_problem_clone(pbqp_problem_t*, const pbqp_problem_t*, pbqp_allocator_t)",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:293:6:void pbqp_solution_init(pbqp_solution_t*, unsigned int*, size_t)",
+      "size": 0,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp_storage.cpp:305:15:pbqp_status_t pcaa::pbqp_storage::Clone(pbqp_problem_t&, const pbqp_problem_t&, pbqp_allocator_t, bool)",
+      "size": 64,
+      "kind": "static",
+      "file": "pbqp_storage.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:11:13:pcaa_version",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:15:13:pcaa_isa_version",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:19:25:pcaa_cost_vector",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:24:25:pcaa_cost_matrix",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:30:20:pcaa_cost_output",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:35:20:pcaa_argmin_output",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:50:15:pcaa_make_reduce2",
+      "size": 320,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:61:15:pcaa_make_reduce3",
+      "size": 336,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:73:15:pcaa_make_cost_add_vector",
+      "size": 320,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:84:15:pcaa_make_minplus_project",
+      "size": 320,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:95:15:pcaa_make_minplus_map3_project",
+      "size": 304,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:108:15:pcaa_make_ordered_batch",
+      "size": 320,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/pcaa.c:120:5:pcaa_output_overlaps",
+      "size": 0,
+      "kind": "static",
+      "file": "pcaa.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/randomized.c:35:5:main",
+      "size": 896,
+      "kind": "static",
+      "file": "randomized.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/runtime.c:7:7:memset",
+      "size": 0,
+      "kind": "static",
+      "file": "runtime.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/runtime.c:15:7:memcpy",
+      "size": 0,
+      "kind": "static",
+      "file": "runtime.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/pcaalib/src/submission.c:11:15:pcaa_encode_batch",
+      "size": 160,
+      "kind": "static",
+      "file": "submission.su"
+    }
+  ],
+  "recursive_frames": [
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1189:8:void {anonymous}::Solver::EnumerateActiveCore(pbqp_problem_t&, unsigned int, unsigned int*, pbqp_solution_t*, bool*, bool*) const",
+      "size": 96,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1373:17:pbqp_status_t {anonymous}::Solver::SolveBranchAndReduce(pbqp_problem_t*, pbqp_solution_t*, unsigned int, SearchControl*, int32_t) const",
+      "size": 3072,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/pbqp/pbqp.cpp:1585:6:void {anonymous}::Enumerate(const pbqp_problem_t&, unsigned int, unsigned int*, pbqp_solution_t*, bool*)",
+      "size": 80,
+      "kind": "static",
+      "file": "pbqp.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_reference.h:26:20:pbqp_reference_enumerate.constprop",
+      "size": 432,
+      "kind": "static",
+      "file": "pbqp_basic.su"
+    },
+    {
+      "name": "/home/tilir/pcaa/software/tests/pbqp_reference.h:26:20:pbqp_reference_enumerate.constprop",
+      "size": 432,
+      "kind": "static",
+      "file": "pbqp_randomized.su"
+    }
+  ],
+  "frame_sum_bytes": 301200,
+  "recursive_allowance_bytes": 267280,
+  "conservative_bound_bytes": 568480,
+  "startup_reserve_bytes": 1048576,
+  "scope": "All PBQP/driver/pcaalib/runtime and five verification programs; 64-node recursion. No asynchronous interrupts or user callbacks. ABI startup uses the documented reserve."
+}

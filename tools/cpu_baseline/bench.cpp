@@ -79,7 +79,8 @@ void Benchmark(const std::filesystem::path &path, Level level, bool degrees, int
     profiler.enabled = detail;
     profiler.stamp = std::chrono::steady_clock::now();
     const uint64_t start = Now();
-    const auto status = pbqp_solver_solve(&solver, &problem.value, &solution);
+    const auto execution = MakeExecution(profiler, instrument || detail || structure);
+    const auto status = pcaa::pbqp::SolveWithExecution(solver, problem.value, solution, execution);
     const uint64_t elapsed = Now() - start;
     if (detail)
       profiler.Charge();

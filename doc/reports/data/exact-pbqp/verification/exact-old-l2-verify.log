@@ -1,0 +1,1 @@
+Verified L2 source/input hashes, raw completion, cycle/request/byte partitions, MAS payloads and shape coverage: {"microbench_rows"=>50688, "workload_rows"=>1083, "configurations"=>33, "full_corpus_rows"=>491, "failed_rows"=>0}

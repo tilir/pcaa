@@ -171,3 +171,15 @@ input identities, and the verification scope. Preserve timeout traces separately
 from completed measurements; never fill missing completion counters with zero.
 The [evidence inventory](reports/data/README.md) records the recovered and
 repeated datasets; `ruby scripts/verify_report_data.rb` checks them offline.
+
+The C++ execution policy in `software/pbqp/pbqp_execution.h` provides optional
+phase observation, cached degrees, snapshot-copy selection, an incumbent witness
+and conditioning through existing vector addition. Its typed observer interfaces have no hosted
+dependencies; clocks and profiling containers live in tools. The stable C API
+uses the default policy and retains its freestanding storage behavior. Both
+native and model exact experiments use the same search implementation and
+allocator interfaces, with explicit finite search/workspace limits. Incumbent
+initialization changes the tree and is reported separately from service-cycle
+effects. The [exact CPU/L2 study](reports/exact-pbqp-cpu-l2-breakdown.md) owns
+its phase schemas, input statuses and measurement methodology; ISA/MAS contracts
+remain in the architecture documents.

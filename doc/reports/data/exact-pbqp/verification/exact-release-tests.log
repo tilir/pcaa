@@ -1,0 +1,101 @@
+Test project /home/tilir/pcaa/build-cpu-release
+      Start  1: pcaa_graph_run_triangle
+ 1/48 Test  #1: pcaa_graph_run_triangle .................   Passed    0.00 sec
+      Start  2: pcaa_graph_run_path
+ 2/48 Test  #2: pcaa_graph_run_path .....................   Passed    0.00 sec
+      Start  3: pcaa_graph_run_tie
+ 3/48 Test  #3: pcaa_graph_run_tie ......................   Passed    0.00 sec
+      Start  4: pcaa_graph_run_unreachable
+ 4/48 Test  #4: pcaa_graph_run_unreachable ..............   Passed    0.00 sec
+      Start  5: pcaa_graph_run_petersen
+ 5/48 Test  #5: pcaa_graph_run_petersen .................   Passed    0.00 sec
+      Start  6: pcaa_graph_run_chvatal
+ 6/48 Test  #6: pcaa_graph_run_chvatal ..................   Passed    0.00 sec
+      Start  7: pcaa_graph_run_random_20
+ 7/48 Test  #7: pcaa_graph_run_random_20 ................   Passed    0.02 sec
+      Start  8: pcaa_graph_run_rn
+ 8/48 Test  #8: pcaa_graph_run_rn .......................   Passed    0.00 sec
+      Start  9: pcaa_graph_run_local_rn
+ 9/48 Test  #9: pcaa_graph_run_local_rn .................   Passed    0.00 sec
+      Start 10: pcaa_graph_run_reduce_only
+10/48 Test #10: pcaa_graph_run_reduce_only ..............   Passed    0.00 sec
+      Start 11: pcaa_graph_run_local
+11/48 Test #11: pcaa_graph_run_local ....................   Passed    0.00 sec
+      Start 12: pcaa_graph_run_bare_capacity
+12/48 Test #12: pcaa_graph_run_bare_capacity ............   Passed    0.01 sec
+      Start 13: pcaa_graph_run_local_wide_domain
+13/48 Test #13: pcaa_graph_run_local_wide_domain ........   Passed    0.00 sec
+      Start 14: pcaa_graph_run_local_r2_staging
+14/48 Test #14: pcaa_graph_run_local_r2_staging .........   Passed    0.00 sec
+      Start 15: pcaa_graph_run_bare_cost_range
+15/48 Test #15: pcaa_graph_run_bare_cost_range ..........   Passed    0.00 sec
+      Start 16: pcaa_graph_run_local_cost_range
+16/48 Test #16: pcaa_graph_run_local_cost_range .........   Passed    0.00 sec
+      Start 17: pcaa_graph_run_invalid_numeric
+17/48 Test #17: pcaa_graph_run_invalid_numeric ..........   Passed    0.00 sec
+      Start 18: pcaa_graph_run_invalid_fraction
+18/48 Test #18: pcaa_graph_run_invalid_fraction .........   Passed    0.00 sec
+      Start 19: pcaa_graph_run_invalid_search_limit
+19/48 Test #19: pcaa_graph_run_invalid_search_limit .....   Passed    0.00 sec
+      Start 20: pcaa_graph_run_differential
+20/48 Test #20: pcaa_graph_run_differential .............   Passed    0.05 sec
+      Start 21: pcaa_graph_run_timed
+21/48 Test #21: pcaa_graph_run_timed ....................   Passed    0.00 sec
+      Start 22: pcaa_graph_run_timed_exact_branch
+22/48 Test #22: pcaa_graph_run_timed_exact_branch .......   Passed    0.02 sec
+      Start 23: pcaa_graph_run_verbose
+23/48 Test #23: pcaa_graph_run_verbose ..................   Passed    0.00 sec
+      Start 24: pcaa_graph_run_cascade_statistics
+24/48 Test #24: pcaa_graph_run_cascade_statistics .......   Passed    0.00 sec
+      Start 25: pcaa_graph_run_rn_batching_regression
+25/48 Test #25: pcaa_graph_run_rn_batching_regression ...   Passed    0.36 sec
+      Start 26: pbqp_unit
+26/48 Test #26: pbqp_unit ...............................   Passed    0.01 sec
+      Start 27: systemc_unit
+27/48 Test #27: systemc_unit ............................   Passed    0.00 sec
+      Start 28: pcaa_unit
+28/48 Test #28: pcaa_unit ...............................   Passed    0.00 sec
+      Start 29: pcaa_systemc_device_unit
+29/48 Test #29: pcaa_systemc_device_unit ................   Passed    0.00 sec
+      Start 30: l2_unit
+30/48 Test #30: l2_unit .................................   Passed    5.39 sec
+      Start 31: probes_unit
+31/48 Test #31: probes_unit .............................   Passed    0.00 sec
+      Start 32: probes_device_unit
+32/48 Test #32: probes_device_unit ......................   Passed    0.00 sec
+      Start 33: pbqp_input_unit
+33/48 Test #33: pbqp_input_unit .........................   Passed    0.00 sec
+      Start 34: pbqp_model_kernel_unit
+34/48 Test #34: pbqp_model_kernel_unit ..................   Passed    0.00 sec
+      Start 35: solver_characterization_smoke
+35/48 Test #35: solver_characterization_smoke ...........   Passed    0.40 sec
+      Start 36: l2_microbench_smoke
+36/48 Test #36: l2_microbench_smoke .....................   Passed    0.03 sec
+      Start 37: l2_characterization_smoke
+37/48 Test #37: l2_characterization_smoke ...............   Passed    0.18 sec
+      Start 38: pcaa_graph_run_l2_triangle
+38/48 Test #38: pcaa_graph_run_l2_triangle ..............   Passed    0.00 sec
+      Start 39: pcaa_graph_run_l2_invalid_config
+39/48 Test #39: pcaa_graph_run_l2_invalid_config ........   Passed    0.00 sec
+      Start 40: pbqp_model_profile_unit
+40/48 Test #40: pbqp_model_profile_unit .................   Passed    0.00 sec
+      Start 41: tools_cli_regression
+41/48 Test #41: tools_cli_regression ....................   Passed    0.15 sec
+      Start 42: cpu_kernel_unit
+42/48 Test #42: cpu_kernel_unit .........................   Passed    0.03 sec
+      Start 43: cpu_solver_current
+43/48 Test #43: cpu_solver_current ......................   Passed    0.00 sec
+      Start 44: cpu_solver_scalar
+44/48 Test #44: cpu_solver_scalar .......................   Passed    0.00 sec
+      Start 45: cpu_solver_dense
+45/48 Test #45: cpu_solver_dense ........................   Passed    0.00 sec
+      Start 46: cpu_solver_structured
+46/48 Test #46: cpu_solver_structured ...................   Passed    0.00 sec
+      Start 47: exact_policy_unit
+47/48 Test #47: exact_policy_unit .......................   Passed    0.01 sec
+      Start 48: exact_cli_regression
+48/48 Test #48: exact_cli_regression ....................   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 48
+
+Total Test time (real) =   6.82 sec

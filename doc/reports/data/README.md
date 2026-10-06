@@ -1,5 +1,10 @@
 # Report evidence
 
+The [exact PBQP archive](exact-pbqp/README.md) is a separate bounded-search
+measurement revision with its own inputs, source hashes, failure statuses and
+checksums. Use `ruby scripts/exact_pbqp_report.rb --verify` for that archive;
+historical verification commands do not validate it.
+
 The [native CPU/L2 archive](cpu-baseline/README.md) is a separate measurement
 revision collected on 6 October 2026. It retains raw native samples and current
 L1/L2 command streams, with its own metadata, source overlay and checksums.

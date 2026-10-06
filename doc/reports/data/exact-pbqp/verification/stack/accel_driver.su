@@ -1,0 +1,12 @@
+/home/tilir/pcaa/software/accel_driver.c:21:6:accel_init	0	static
+/home/tilir/pcaa/software/accel_driver.c:42:5:accel_submit_encoded	0	static
+/home/tilir/pcaa/software/accel_driver.c:46:5:accel_submit_command	96	static
+/home/tilir/pcaa/software/accel_driver.c:54:5:accel_wait	0	static
+/home/tilir/pcaa/software/accel_driver.c:64:5:accel_submit_command_batch	112	static
+/home/tilir/pcaa/software/accel_driver.c:88:5:accel_min_add_checked	272	static
+/home/tilir/pcaa/software/accel_driver.c:82:9:accel_min_add	32	static
+/home/tilir/pcaa/software/accel_driver.c:98:9:accel_min_add3	336	static
+/home/tilir/pcaa/software/accel_driver.c:120:5:accel_min_add_argmin_checked	272	static
+/home/tilir/pcaa/software/accel_driver.c:107:27:accel_min_add_argmin	32	static
+/home/tilir/pcaa/software/accel_driver.c:131:5:accel_min_add3_argmin_checked	352	static
+/home/tilir/pcaa/software/accel_driver.c:113:27:accel_min_add3_argmin	32	static

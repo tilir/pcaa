@@ -203,7 +203,8 @@ TEST(CpuKernels, IrreducibleSolvePreservesRnDecisionsAcrossBackends) {
       std::array<unsigned, kNodes> assignment{};
       pbqp_solution_t solution{};
       pbqp_solution_init(&solution, assignment.data(), assignment.size());
-      const auto status = pbqp_solver_solve(&solver, &graph.problem, &solution);
+      const auto status =
+          pcaa::pbqp::SolveWithExecution(solver, graph.problem, solution, MakeExecution(timing));
       profile = nullptr;
       active_kernels = nullptr;
       ASSERT_EQ(status, PBQP_OK);

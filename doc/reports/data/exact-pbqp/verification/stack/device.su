@@ -1,0 +1,4 @@
+/home/tilir/pcaa/pcaalib/src/device.c:11:15:pcaa_device_submit	0	static
+/home/tilir/pcaa/pcaalib/src/device.c:17:15:pcaa_device_submit_batch	0	static
+/home/tilir/pcaa/pcaalib/src/device.c:24:15:pcaa_device_wait	0	static
+/home/tilir/pcaa/pcaalib/src/device.c:35:13:pcaa_status_string	0	static

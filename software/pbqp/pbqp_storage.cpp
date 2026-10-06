@@ -3,6 +3,7 @@
 // Implements PBQP heap/arena allocation and graph-state lifetime operations.
 
 #include "pbqp_storage.h"
+#include "pbqp_algorithm.h"
 #include "accel_protocol.h"
 #include "pbqp.h"
 
@@ -201,20 +202,17 @@ void CopyStatistics(pbqp_statistics_t *destination, const pbqp_statistics_t &sou
   destination->rn_cascade_r2 = rn_cascade_r2;
   destination->rn_cascade_length_histogram = rn_cascade_length_histogram;
   destination->vector_length_histogram = vector_length_histogram;
-  memcpy(rn_degree_histogram, source.rn_degree_histogram,
-         (static_cast<size_t>(node_capacity) + 1) * sizeof(unsigned));
-  memcpy(rn_nodes, source.rn_nodes, static_cast<size_t>(node_capacity) * sizeof(unsigned));
-  memcpy(rn_choices, source.rn_choices, static_cast<size_t>(node_capacity) * sizeof(unsigned));
-  memcpy(rn_cascade_r0, source.rn_cascade_r0,
-         static_cast<size_t>(node_capacity) * sizeof(unsigned));
-  memcpy(rn_cascade_r1, source.rn_cascade_r1,
-         static_cast<size_t>(node_capacity) * sizeof(unsigned));
-  memcpy(rn_cascade_r2, source.rn_cascade_r2,
-         static_cast<size_t>(node_capacity) * sizeof(unsigned));
-  memcpy(rn_cascade_length_histogram, source.rn_cascade_length_histogram,
-         (static_cast<size_t>(node_capacity) + 1) * sizeof(unsigned));
-  memcpy(vector_length_histogram, source.vector_length_histogram,
-         (static_cast<size_t>(domain_capacity) + 1) * sizeof(unsigned));
+  pcaa::pbqp::copy_n(source.rn_degree_histogram, static_cast<size_t>(node_capacity) + 1,
+                     rn_degree_histogram);
+  pcaa::pbqp::copy_n(source.rn_nodes, node_capacity, rn_nodes);
+  pcaa::pbqp::copy_n(source.rn_choices, node_capacity, rn_choices);
+  pcaa::pbqp::copy_n(source.rn_cascade_r0, node_capacity, rn_cascade_r0);
+  pcaa::pbqp::copy_n(source.rn_cascade_r1, node_capacity, rn_cascade_r1);
+  pcaa::pbqp::copy_n(source.rn_cascade_r2, node_capacity, rn_cascade_r2);
+  pcaa::pbqp::copy_n(source.rn_cascade_length_histogram, static_cast<size_t>(node_capacity) + 1,
+                     rn_cascade_length_histogram);
+  pcaa::pbqp::copy_n(source.vector_length_histogram, static_cast<size_t>(domain_capacity) + 1,
+                     vector_length_histogram);
 }
 
 }  // namespace pcaa::pbqp_storage
@@ -287,21 +285,9 @@ void pbqp_destroy(pbqp_problem_t *problem) {
 
 pbqp_status_t pbqp_problem_clone(pbqp_problem_t *destination, const pbqp_problem_t *source,
                                  pbqp_allocator_t allocator) {
-  if (destination == nullptr || source == nullptr || source->storage == nullptr)
+  if (!destination || !source || !source->storage)
     return PBQP_ARGUMENT_ERROR;
-  const pbqp_status_t status = pbqp_init(destination, allocator, source->node_capacity,
-                                         source->edge_capacity, source->domain_capacity);
-  if (status != PBQP_OK)
-    return status;
-  memcpy(destination->storage, source->storage, source->storage_size);
-  pcaa::pbqp_storage::BindProblemStorage(destination);
-  destination->node_count = source->node_count;
-  destination->edge_count = source->edge_count;
-  destination->objective_offset = source->objective_offset;
-  destination->elimination_count = source->elimination_count;
-  pcaa::pbqp_storage::CopyStatistics(&destination->statistics, source->statistics,
-                                     source->node_capacity, source->domain_capacity);
-  return PBQP_OK;
+  return pcaa::pbqp_storage::Clone(*destination, *source, allocator, false);
 }
 
 void pbqp_solution_init(pbqp_solution_t *solution, unsigned *assignment,
@@ -314,3 +300,34 @@ void pbqp_solution_init(pbqp_solution_t *solution, unsigned *assignment,
 }
 
 }  // extern "C"
+
+namespace pcaa::pbqp_storage {
+pbqp_status_t Clone(pbqp_problem_t &destination, const pbqp_problem_t &source,
+                    pbqp_allocator_t allocator, bool fast) {
+  if (!source.storage || !allocator.allocate || !allocator.deallocate)
+    return PBQP_ARGUMENT_ERROR;
+  if (fast) {
+    destination = source;
+    destination.allocator = allocator;
+    destination.storage = allocator.allocate(allocator.context, source.storage_size);
+    if (!destination.storage) {
+      destination = {};
+      return PBQP_CAPACITY_ERROR;
+    }
+  } else {
+    const auto status = pbqp_init(&destination, allocator, source.node_capacity,
+                                  source.edge_capacity, source.domain_capacity);
+    if (status != PBQP_OK)
+      return status;
+  }
+  memcpy(destination.storage, source.storage, source.storage_size);
+  BindProblemStorage(&destination);
+  destination.node_count = source.node_count;
+  destination.edge_count = source.edge_count;
+  destination.objective_offset = source.objective_offset;
+  destination.elimination_count = source.elimination_count;
+  CopyStatistics(&destination.statistics, source.statistics, source.node_capacity,
+                 source.domain_capacity);
+  return PBQP_OK;
+}
+}  // namespace pcaa::pbqp_storage

@@ -13,6 +13,7 @@ ruby scripts/verify_report_data.rb
 
 | Report | Measurement scope | Recheck |
 | --- | --- | --- |
+| [Exact PBQP CPU/L2 breakdown](exact-pbqp-cpu-l2-breakdown.md) | Bounded exact branch-and-reduce on all LLVM inputs plus synthetic/stress families | `ruby scripts/exact_pbqp_report.rb --verify` checks statuses, witnesses, matched trees/streams, cycle/byte/lane accounting and regenerated tables |
 | [Native CPU versus L2](cpu-baseline-l2-comparison.md) | Same-policy native scalar/dense/structured solves and matched current L1/L2 streams on all 491 LLVM graphs | `ruby scripts/cpu_baseline_report.rb --verify` checks samples, answers, stream correspondence, model partitions, source/input archives and generated tables |
 | [Solver comparison](solver-characterization.md) | Scalar solver at `e80c21c` | All 880 result rows match |
 | [HW/SW boundary](hw-sw-boundary-characterization.md) | Hypothetical epoch boundaries at `dd1402b` | All 49,522 epoch rows match; 210 source traces retained |
