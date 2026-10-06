@@ -1,0 +1,123 @@
+{
+  "graphs": 491,
+  "strong_variant": "dense",
+  "totals": {
+    "current_original": {
+      "ns": 5161658863.0,
+      "kernel_ns": 33882427.0,
+      "median_ns": 43016.0,
+      "p90_ns": 473803.0,
+      "p99_ns": 234702191.0,
+      "max_ns": 2001516887.0,
+      "median_p90_p10_ratio": 1.1453526531024385
+    },
+    "scalar": {
+      "ns": 98928965.0,
+      "kernel_ns": 28881457.0,
+      "median_ns": 36125.0,
+      "p90_ns": 156827.0,
+      "p99_ns": 6454316.0,
+      "max_ns": 18344866.0,
+      "median_p90_p10_ratio": 1.1439332833845097
+    },
+    "dense": {
+      "ns": 89098721.0,
+      "kernel_ns": 18539589.0,
+      "median_ns": 21409.0,
+      "p90_ns": 112666.0,
+      "p99_ns": 6146645.0,
+      "max_ns": 19549999.0,
+      "median_p90_p10_ratio": 1.2010700485484989
+    },
+    "structured": {
+      "ns": 93655749.0,
+      "kernel_ns": 23125073.0,
+      "median_ns": 21033.0,
+      "p90_ns": 133785.0,
+      "p99_ns": 6450395.0,
+      "max_ns": 20094903.0,
+      "median_p90_p10_ratio": 1.1826102740969322
+    }
+  },
+  "l1_cycles": 5435397,
+  "l2_cycles": 43019109,
+  "host_prepare_ns": 57409957.0,
+  "submissions": 15363,
+  "primitives": 175531,
+  "kernel_ns": 18539589.0,
+  "l2_break_even_mhz": 2320.391730366838,
+  "l1_break_even_mhz": 293.1778584735616,
+  "projection_elements": 13177227,
+  "projection_cost_additions": 4659,
+  "preadd_elements": 357122,
+  "predicate_elements": 9531561,
+  "negative_control_residual_graphs": 3,
+  "clock_floor_median_ns": 17.0,
+  "threshold_estimates": {
+    "map3_project_batch": {
+      "cpu_ns": [
+        596.5041276505304,
+        0.9826890937727479
+      ],
+      "l2_cycles": [
+        199.36211506199604,
+        2.5190181157569644
+      ],
+      "l2_host_ns": [
+        2549.6177575604793,
+        1.3306728297026436
+      ]
+    },
+    "min2_batch": {
+      "cpu_ns": [
+        73.84314109395595,
+        0.7760023162764332
+      ],
+      "l2_cycles": [
+        68.25543519929874,
+        3.657277255291389
+      ],
+      "l2_host_ns": [
+        1342.6812497773358,
+        11.572427007744981
+      ]
+    },
+    "project_add_batch": {
+      "cpu_ns": [
+        283.59858390954065,
+        0.9265417089730011
+      ],
+      "l2_cycles": [
+        491.4938891415606,
+        2.544491874405487
+      ],
+      "l2_host_ns": [
+        1759.345131162482,
+        1.6944443727266074
+      ]
+    }
+  },
+  "l2_l1_difference": {
+    "descriptor service": 1569644,
+    "operand requests/reuse": 11468097,
+    "ADD/tree/merge": 10769801,
+    "result acknowledgements": 5853169,
+    "decode/protection/control": 4228433,
+    "removed L1 read/compute overlap": 3694568
+  },
+  "phase_cycles": {
+    "descriptor_cycles": 1378750,
+    "decode_cycles": 381788,
+    "protection_cycles": 2156204,
+    "operand_cycles": 10437188,
+    "add1_cycles": 2877811,
+    "add2_cycles": 1049958,
+    "tree_cycles": 7082866,
+    "merge_cycles": 3541433,
+    "writeback_cycles": 4343134,
+    "drain_cycles": 206257,
+    "memory_wait_cycles": 8079536,
+    "control_cycles": 1484184
+  },
+  "top_ten_cpu_share": 0.7101813391911652
+}

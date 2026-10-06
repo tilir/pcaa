@@ -1,0 +1,7 @@
+Test project /tmp/pcaa-cpu-portable
+    Start 42: cpu_kernel_unit
+1/1 Test #42: cpu_kernel_unit ..................   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.03 sec

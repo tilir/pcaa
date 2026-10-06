@@ -31,6 +31,18 @@ in an explicit diagnostic field and expose it to the caller.
 
 `.clang-format` is authoritative for C, C++, and SystemC source. Keep new code compatible with C++17, use 2-space indentation, keep lines within 100 columns where practical, and avoid dense multi-statement lines. In each C/C++ file, include project headers first, then standard-library headers, then external-library headers; every header must remain self-sufficient. Do not hand-format around the configuration: run `cmake --build build --target format` after editing C/C++ sources. The target runs both `clang-format` and Include-What-You-Use against the CMake compilation database; it requires `clang-format`, `include-what-you-use`, and `iwyu_tool`.
 
+Write idiomatic, modern C++ within the project's C++17 settings. Use references
+for required borrowed objects, including output containers and streams; reserve
+pointers for optional objects, contiguous data, explicit ownership boundaries,
+and C callbacks/APIs. Do not pass a required `std::vector` or other C++ object
+through a pointer merely to modify it. Use `std::filesystem::path` for hosted
+filesystem paths and RAII for owned resources. Put ordinary non-inline function
+definitions in `.cpp` files: a header must not introduce externally linked
+non-inline definitions into every translation unit. Keep short class methods
+in class definitions and templates/explicitly inline helpers in headers where
+appropriate. Preserve the stable C ABI and freestanding toolchain constraints;
+hosted standard-library facilities belong in hosted code.
+
 Keep CMake ownership local: a subsystem's `CMakeLists.txt` defines its targets and appends
 its format and bare-metal inputs through the project collection helpers. Top-level and
 shared CMake modules consume those collections; do not restore centralized long source lists.
@@ -87,6 +99,18 @@ Document public ABI structs directly where they are declared: state their purpos
 
 Keep measurement reports in `doc/reports/`, with their raw inputs/results in
 `doc/reports/data/`, checksums, reproduction commands, and verification scope.
+Native CPU performance experiments use Release builds, warm-up and raw repeated
+samples, with parsing, graph cloning and serialization outside solve timing.
+Keep diagnostic instrumented profiles separate from uninstrumented solve
+samples and disclose timer overhead. Host-only CPU optimizations and clocks
+belong in the isolated `tools/cpu_baseline` target; preserve solver policy,
+tie order, the production solver and freestanding storage. Share the graph
+reader with the runners, keep C++ helpers in `tools/pbqp_input`, and test reader,
+kernel, solver-policy, CLI and measurement boundaries. Compare corresponding
+CPU callbacks with L2 service cycles, never simulation wall time or total
+solver time when topology remains on the CPU. Pin source/input hashes and
+configuration before measurement; regenerate tables from retained samples and
+reject revision mixing or failed rows.
 Keep historical measurement reports explicit about their solver/encoding
 revision. Do not relabel old descriptor counts or cycle tables as current,
 or resume an old characterization CSV with a different implementation revision.

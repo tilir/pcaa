@@ -3,6 +3,7 @@
 // Loads a small PBQP text graph and solves it through the SystemC PCAA model.
 
 #include "pbqp_model_kernel.h"
+#include "pbqp_input.h"
 #include "accel_protocol.h"
 #include "pbqp/pbqp.h"
 #include "pcaa.h"
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstdint>
+#include <filesystem>
 #include <exception>
 #include <fstream>
 #include <iostream>
@@ -28,27 +30,15 @@
 #include <sysc/kernel/sc_time.h>
 
 namespace {
+using pcaa::tools::build_problem;
+using pcaa::tools::InputProblem;
+using pcaa::tools::load_problem;
+using pcaa::tools::ProblemOwner;
 
-constexpr size_t kMaximumHostDomain = 64 * 1024;
 constexpr unsigned kTimedRunnerLanes = 4;
 constexpr unsigned kTimedRunnerBytesPerCycle = 16;
 constexpr int kTimedRunnerCyclePeriodNanoseconds = 1;
 constexpr size_t kLegacyDescriptorBytes = 80;
-
-struct InputNode {
-  std::vector<int32_t> unary;
-};
-
-struct InputEdge {
-  size_t first;
-  size_t second;
-  std::vector<int32_t> costs;
-};
-
-struct InputProblem {
-  std::vector<InputNode> nodes;
-  std::vector<InputEdge> edges;
-};
 
 struct RunnerSolution {
   int32_t optimum = ACCEL_INF;
@@ -103,7 +93,7 @@ struct TraceWriter {
   }
 };
 
-enum class SolverMode { kBareMetal, kLocal };
+using pcaa::tools::SolverMode;
 
 void print_usage(std::ostream &output) {
   output << "Usage: pcaa_graph_run [OPTIONS] GRAPH.pbqp\n\n"
@@ -119,6 +109,7 @@ void print_usage(std::ostream &output) {
             "                              Use vector RN/R2 jobs or retain scalar reference jobs.\n"
             "  --maximum-search-nodes N   Bound an exact search; zero leaves the limit unset.\n"
             "  --verbose                   Trace model activity to standard error.\n"
+            "  --kernel-profile FILE       Record batch cycles and host preparation as JSONL.\n"
             "  --trace FILE                Write stable JSONL solver events to FILE.\n"
             "  --help                      Show this help text.\n"
             "  --version                   Show the runner version.\n";
@@ -150,165 +141,6 @@ const char *strategy_name(pbqp_solver_strategy_t strategy) {
   return "UNKNOWN";
 }
 
-bool parse_costs(std::istringstream *line, size_t count, std::vector<int32_t> *costs) {
-  costs->clear();
-  costs->reserve(count);
-  for (size_t index = 0; index < count; ++index) {
-    std::string token;
-    if (!(*line >> token)) {
-      return false;
-    }
-    try {
-      if (token == "INF") {
-        costs->push_back(ACCEL_INF);
-        continue;
-      }
-      size_t parsed = 0;
-      const long long value = std::stoll(token, &parsed, 10);
-      if (parsed != token.size() || value < std::numeric_limits<int32_t>::min() ||
-          value > std::numeric_limits<int32_t>::max()) {
-        return false;
-      }
-      costs->push_back(static_cast<int32_t>(value));
-    } catch (const std::exception &) {
-      return false;
-    }
-  }
-  std::string extra;
-  return !(*line >> extra);
-}
-
-bool is_valid_input_cost(int32_t cost) {
-  return cost <= ACCEL_INF;
-}
-
-bool load_problem(const std::string &path, InputProblem *problem) {
-  std::ifstream input(path);
-  if (!input) {
-    return false;
-  }
-  bool saw_nodes = false;
-  size_t declared_nodes = 0;
-  std::string text;
-  while (std::getline(input, text)) {
-    const size_t comment = text.find('#');
-    std::istringstream line(text.substr(0, comment));
-    std::string kind;
-    if (!(line >> kind)) {
-      continue;
-    }
-    if (kind == "nodes") {
-      size_t count = 0;
-      std::string extra;
-      if (saw_nodes || !(line >> count) || line >> extra || count == 0 || !problem->nodes.empty()) {
-        return false;
-      }
-      saw_nodes = true;
-      declared_nodes = count;
-    } else if (kind == "node") {
-      size_t domain = 0;
-      if (!saw_nodes || problem->nodes.size() == declared_nodes || !(line >> domain) ||
-          domain == 0 || domain > kMaximumHostDomain) {
-        return false;
-      }
-      std::vector<int32_t> costs;
-      if (!parse_costs(&line, domain, &costs) ||
-          !std::all_of(costs.begin(), costs.end(), is_valid_input_cost)) {
-        return false;
-      }
-      problem->nodes.push_back({std::move(costs)});
-    } else if (kind == "edge") {
-      size_t first = 0;
-      size_t second = 0;
-      if (!saw_nodes || !(line >> first >> second) || first >= problem->nodes.size() ||
-          second >= problem->nodes.size() || first == second) {
-        return false;
-      }
-      const size_t count = problem->nodes[first].unary.size() * problem->nodes[second].unary.size();
-      std::vector<int32_t> costs;
-      if (!parse_costs(&line, count, &costs) ||
-          !std::all_of(costs.begin(), costs.end(), is_valid_input_cost)) {
-        return false;
-      }
-      problem->edges.push_back({first, second, std::move(costs)});
-    } else {
-      return false;
-    }
-  }
-  return saw_nodes && problem->nodes.size() == declared_nodes;
-}
-
-bool build_problem(const InputProblem &input, bool fixed_capacity, pbqp_problem_t *problem) {
-  if (fixed_capacity &&
-      (input.nodes.size() > PBQP_MAX_NODES || input.edges.size() > PBQP_MAX_EDGES)) {
-    return false;
-  }
-  if (input.nodes.size() > std::numeric_limits<unsigned>::max() ||
-      input.edges.size() >= std::numeric_limits<unsigned>::max()) {
-    return false;
-  }
-  // Bare-metal mode must accept exactly what the RV64 configuration accepts:
-  // pbqp_max_finite_cost depends on the capacities, so use the fixed ones.
-  const unsigned node_capacity =
-      fixed_capacity ? PBQP_MAX_NODES : static_cast<unsigned>(input.nodes.size());
-  size_t maximum_domain = 0;
-  for (const InputNode &node : input.nodes)
-    maximum_domain = std::max(maximum_domain, node.unary.size());
-  if (maximum_domain > std::numeric_limits<unsigned>::max())
-    return false;
-  const unsigned domain_capacity =
-      fixed_capacity ? PBQP_MAX_DOMAIN : static_cast<unsigned>(maximum_domain);
-  // R2 may need one fill slot before it retires its two incident edges; the
-  // fixed configuration already reserves every simple edge.
-  const unsigned edge_capacity =
-      fixed_capacity ? PBQP_MAX_EDGES : static_cast<unsigned>(input.edges.size()) + 1;
-  if (pbqp_init(problem, pbqp_heap_allocator(), node_capacity, edge_capacity, domain_capacity) !=
-      PBQP_OK) {
-    return false;
-  }
-  for (const InputNode &node : input.nodes) {
-    if (pbqp_add_node(problem, static_cast<unsigned>(node.unary.size()), node.unary.data()) !=
-        PBQP_OK) {
-      pbqp_destroy(problem);
-      return false;
-    }
-  }
-  for (const InputEdge &edge : input.edges) {
-    if (pbqp_add_edge(problem, static_cast<unsigned>(edge.first),
-                      static_cast<unsigned>(edge.second), edge.costs.data()) != PBQP_OK) {
-      pbqp_destroy(problem);
-      return false;
-    }
-  }
-  return true;
-}
-
-struct ProblemOwner {
-  pbqp_problem_t value{};
-
-  ProblemOwner() = default;
-
-  ~ProblemOwner() {
-    pbqp_destroy(&value);
-  }
-
-  ProblemOwner(const ProblemOwner &) = delete;
-  ProblemOwner &operator=(const ProblemOwner &) = delete;
-
-  ProblemOwner(ProblemOwner &&other) noexcept : value(other.value) {
-    other.value = {};
-  }
-
-  ProblemOwner &operator=(ProblemOwner &&other) noexcept {
-    if (this != &other) {
-      pbqp_destroy(&value);
-      value = other.value;
-      other.value = {};
-    }
-    return *this;
-  }
-};
-
 }  // namespace
 
 AccelTimingConfig runner_timing_config() {
@@ -328,6 +160,7 @@ AccelTimingConfig runner_timing_config() {
 
 int sc_main(int argc, char **argv) {
   bool verbose = false;
+  std::string kernel_profile;
 #if defined(PCAA_GRAPH_RUN_L2)
   L2Config l2;
 #endif
@@ -345,6 +178,8 @@ int sc_main(int argc, char **argv) {
     } else if (argument == "--version") {
       std::cout << "pcaa_graph_run " << PCAA_VERSION << '\n';
       return 0;
+    } else if (argument == "--kernel-profile" && kernel_profile.empty() && index + 1 < argc) {
+      kernel_profile = argv[++index];
     } else if (argument == "--verbose" && !verbose) {
       verbose = true;
 #if defined(PCAA_GRAPH_RUN_L2)
@@ -464,7 +299,7 @@ int sc_main(int argc, char **argv) {
   // SystemC 3 emits this banner on kernel startup unless explicitly disabled.
   setenv("SYSTEMC_DISABLE_COPYRIGHT_MESSAGE", "1", 0);
   InputProblem input;
-  if (!load_problem(path, &input)) {
+  if (!load_problem(path, input)) {
     std::cerr << "invalid PBQP input: " << path << '\n';
     return 2;
   }
@@ -475,7 +310,9 @@ int sc_main(int argc, char **argv) {
 #endif
   sc_core::sc_start(sc_core::SC_ZERO_TIME);
   pbqp_cost_kernel_t kernel;
-  model.make_kernel(&kernel);
+  model.make_kernel(kernel);
+  if (!kernel_profile.empty())
+    model.enable_measurements();
   TraceWriter trace_writer;
   pbqp_trace_sink_t trace_sink{};
   if (trace_path != nullptr) {
@@ -494,8 +331,10 @@ int sc_main(int argc, char **argv) {
   const pbqp_statistics_t *statistics = nullptr;
   const bool uses_shared_solver = true;
   if (uses_shared_solver) {
-    if (!build_problem(input, solver_mode == SolverMode::kBareMetal, &problem.value)) {
-      std::cerr << "graph does not fit the shared PBQP solver in the selected mode\n";
+    const auto built = build_problem(input, solver_mode, problem.value);
+    if (built != PBQP_OK) {
+      std::cerr << "graph does not fit the shared PBQP solver in the selected mode: status "
+                << built << "\n";
       return 2;
     }
     if (pbqp_problem_clone(&original_problem.value, &problem.value, pbqp_heap_allocator()) !=
@@ -539,6 +378,25 @@ int sc_main(int argc, char **argv) {
     solution.exact = solver_config.strategy == PBQP_STRATEGY_EXACT_CORE_ENUMERATION ||
                      solver_config.strategy == PBQP_STRATEGY_EXACT_BRANCH_REDUCE;
     statistics = &problem.value.statistics;
+  }
+  if (!kernel_profile.empty()) {
+    std::ofstream output(kernel_profile);
+    if (!output) {
+      std::cerr << "cannot open kernel profile\n";
+      return 2;
+    }
+    for (const auto &row : model.measurements()) {
+      output << "{\"kind\":\"" << row.kind << "\",\"count\":" << row.count
+             << ",\"cycles\":" << row.cycles << ",\"host_ns\":" << row.host_ns
+             << ",\"staging_ns\":" << row.staging_ns
+             << ",\"submission_build_ns\":" << row.submission_build_ns
+             << ",\"readback_ns\":" << row.readback_ns << "}\n";
+    }
+    output.flush();
+    if (!output) {
+      std::cerr << "cannot write kernel profile\n";
+      return 2;
+    }
   }
   std::cout << "optimum " << solution.optimum << "\nassignment";
   for (unsigned value : solution.assignment) {

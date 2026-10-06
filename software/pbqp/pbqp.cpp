@@ -6,6 +6,14 @@
 #include "cost_math.h"
 #include "pbqp_storage.h"
 
+#if defined(PCAA_CPU_EXPERIMENT)
+#include "profile.h"
+#include <vector>
+#define CPU_SCOPE(category) cpu_baseline::Scope cpu_scope(cpu_baseline::category)
+#else
+#define CPU_SCOPE(category)
+#endif
+
 #if defined(__riscv)
 /* The freestanding RV64 toolchain has no <assert.h>; preserve assertion semantics. */
 #define assert(expression) ((expression) ? static_cast<void>(0) : __builtin_trap())
@@ -38,7 +46,32 @@ bool IsValidCost(const pbqp_problem_t &problem, int32_t cost) {
 
 class Graph {
  public:
-  explicit Graph(pbqp_problem_t &state) : state_(state) {}
+  explicit Graph(pbqp_problem_t &state) : state_(state) {
+#if defined(PCAA_CPU_EXPERIMENT)
+    if (cpu_baseline::profile && cpu_baseline::profile->degrees) {
+      CPU_SCOPE(Topology);
+      degrees_.resize(state.node_count);
+      for (unsigned index = 0; index < state.edge_capacity; ++index) {
+        const auto &edge = state.edges[index];
+        if (edge.active) {
+          ++degrees_[edge.first];
+          ++degrees_[edge.second];
+        }
+      }
+    }
+#endif
+  }
+
+  void RetireEdge(pbqp_edge_t &edge) {
+#if defined(PCAA_CPU_EXPERIMENT)
+    CPU_SCOPE(Topology);
+    if (!degrees_.empty()) {
+      --degrees_[edge.first];
+      --degrees_[edge.second];
+    }
+#endif
+    edge.active = 0;
+  }
 
   pbqp_problem_t &State() {
     return state_;
@@ -48,6 +81,7 @@ class Graph {
   }
 
   int FindEdge(unsigned first, unsigned second) const {
+    CPU_SCOPE(Topology);
     for (unsigned index = 0; index < state_.edge_capacity; ++index) {
       const pbqp_edge_t &edge = state_.edges[index];
       if (edge.active && ((edge.first == first && edge.second == second) ||
@@ -59,6 +93,11 @@ class Graph {
   }
 
   unsigned NeighborCount(unsigned node, int *edge_indices) const {
+    CPU_SCOPE(Topology);
+#if defined(PCAA_CPU_EXPERIMENT)
+    if (!degrees_.empty() && (edge_indices == nullptr || degrees_[node] > 2))
+      return degrees_[node];
+#endif
     unsigned count = 0;
     for (unsigned index = 0; index < state_.edge_capacity; ++index) {
       const pbqp_edge_t &edge = state_.edges[index];
@@ -74,6 +113,7 @@ class Graph {
   }
 
   int FindReducibleNode(int *edge_indices) const {
+    CPU_SCOPE(Selection);
     for (unsigned node = 0; node < state_.node_count; ++node) {
       if (state_.nodes[node].active && NeighborCount(node, edge_indices) <= 2) {
         return static_cast<int>(node);
@@ -133,6 +173,7 @@ class Graph {
   }
 
   int SelectRnNode(pbqp_rn_policy_t policy) const {
+    CPU_SCOPE(Selection);
     int selected = -1;
     unsigned selected_degree = 0;
     uint64_t selected_work = 0;
@@ -176,6 +217,7 @@ class Graph {
   }
 
   int AddFillEdge(unsigned first, unsigned second) {
+    CPU_SCOPE(Topology);
     assert(first < state_.node_count);
     assert(second < state_.node_count);
     assert(first != second);
@@ -194,6 +236,13 @@ class Graph {
       edge.first = first;
       edge.second = second;
       ++state_.edge_count;
+#if defined(PCAA_CPU_EXPERIMENT)
+      if (!degrees_.empty()) {
+        ++degrees_[first];
+        ++degrees_[second];
+      }
+      cpu_baseline::MatrixChanged(edge.cost);
+#endif
       return static_cast<int>(index);
     }
     return -1;
@@ -201,6 +250,9 @@ class Graph {
 
  private:
   pbqp_problem_t &state_;
+#if defined(PCAA_CPU_EXPERIMENT)
+  std::vector<unsigned> degrees_;
+#endif
 };
 
 class CostKernel {
@@ -697,6 +749,7 @@ class Solver {
 
   pbqp_status_t ConditionNode(Graph &graph, unsigned node_index, unsigned choice,
                               ReductionKind kind) const {
+    CPU_SCOPE(Reduction);
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
     if (!node.active || choice >= node.domain) {
@@ -733,7 +786,7 @@ class Solver {
         problem.statistics.commit_unary_write_bytes += neighbor.domain * sizeof(int32_t);
         problem.statistics.rn_commit_bytes += 3 * neighbor.domain * sizeof(int32_t);
       }
-      edge.active = 0;
+      graph.RetireEdge(edge);
       --problem.edge_count;
     }
     Reconstruction(problem, node_index)[0] = choice;
@@ -744,6 +797,7 @@ class Solver {
   }
 
   pbqp_status_t ReduceRN(Graph &graph, unsigned node_index) const {
+    CPU_SCOPE(Reduction);
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
     const unsigned degree = graph.NeighborCount(node_index, nullptr);
@@ -912,6 +966,7 @@ class Solver {
   }
 
   pbqp_status_t ReduceR0(Graph &graph, unsigned node_index) const {
+    CPU_SCOPE(Reduction);
     pbqp_problem_t &problem = graph.State();
     pbqp_node_t &node = problem.nodes[node_index];
     int32_t best = ACCEL_INF;
@@ -934,6 +989,7 @@ class Solver {
   }
 
   pbqp_status_t ReduceR1(Graph &graph, unsigned node_index, int edge_index) const {
+    CPU_SCOPE(Reduction);
     pbqp_problem_t &problem = graph.State();
     pbqp_edge_t &edge = problem.edges[edge_index];
     const unsigned neighbor_index = graph.OtherNode(edge, node_index);
@@ -957,8 +1013,17 @@ class Solver {
       ++problem.statistics.scalar_project_descriptors;
       jobs[neighbor_value] = {unary, edge_cost, &results[neighbor_value]};
     }
+#if defined(PCAA_CPU_EXPERIMENT)
+    cpu_baseline::R1Projection(EdgeMatrix(edge, node_index, neighbor.domain, node.domain),
+                               {node.unary, node.domain, 1}, results);
+    const int executed = kernel_.Min2Batch(jobs, neighbor.domain);
+    cpu_baseline::R1Projection({}, {}, nullptr);
+    if (executed != 0)
+      return PBQP_KERNEL_ERROR;
+#else
     if (kernel_.Min2Batch(jobs, neighbor.domain) != 0)
       return PBQP_KERNEL_ERROR;
+#endif
     for (unsigned neighbor_value = 0; neighbor_value < neighbor.domain; ++neighbor_value) {
       const accel_min_argmin_result_t result = results[neighbor_value];
       if (result.index >= node.domain) {
@@ -969,7 +1034,7 @@ class Solver {
       Reconstruction(problem, node_index)[neighbor_value] = result.index;
     }
 
-    edge.active = 0;
+    graph.RetireEdge(edge);
     --problem.edge_count;
     node.first_neighbor = static_cast<int>(neighbor_index);
     node.reduction_kind = kReductionR1;
@@ -985,6 +1050,7 @@ class Solver {
 
   pbqp_status_t ReduceR2(Graph &graph, unsigned node_index, int first_edge_index,
                          int second_edge_index) const {
+    CPU_SCOPE(Reduction);
     pbqp_problem_t &problem = graph.State();
     pbqp_edge_t &first_edge = problem.edges[first_edge_index];
     pbqp_edge_t &second_edge = problem.edges[second_edge_index];
@@ -1087,8 +1153,11 @@ class Solver {
       }
     }
 
-    first_edge.active = 0;
-    second_edge.active = 0;
+#if defined(PCAA_CPU_EXPERIMENT)
+    cpu_baseline::MatrixChanged(fill_edge.cost);
+#endif
+    graph.RetireEdge(first_edge);
+    graph.RetireEdge(second_edge);
     problem.edge_count -= 2;
     node.first_neighbor = static_cast<int>(first_neighbor);
     node.second_neighbor = static_cast<int>(second_neighbor);
@@ -1446,6 +1515,7 @@ class Solver {
   }
 
   static void ReconstructSolution(const pbqp_problem_t &problem, pbqp_solution_t *solution) {
+    CPU_SCOPE(Reconstruction);
     for (unsigned position = problem.elimination_count; position > 0; --position) {
       const unsigned node_index = problem.elimination_order[position - 1];
       const pbqp_node_t &node = problem.nodes[node_index];

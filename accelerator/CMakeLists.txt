@@ -19,6 +19,7 @@ target_link_libraries(pcaa_core PUBLIC pcaa_cost_math pcaa_timing pcaalib ${SYST
 pcaa_add_format_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/accel_protocol.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/accelerator.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/cost_math_impl.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/cost_math.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/memory_interface.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/timing_model.h

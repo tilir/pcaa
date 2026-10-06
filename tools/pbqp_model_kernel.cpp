@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <chrono>
 #include <cstring>
 #include <exception>
 #include <functional>
@@ -125,20 +126,20 @@ class ModelKernel::Impl {
                                                   *initiator_.socket.operator->());
   }
 
-  void make_kernel(pbqp_cost_kernel_t *kernel) {
-    kernel->context = this;
-    kernel->min2_argmin = min2;
-    kernel->min3_argmin = min3;
-    kernel->min2_argmin_batch = min2_batch;
-    kernel->min3_argmin_batch = min3_batch;
-    kernel->min2_value = min2_value;
-    kernel->min2_value_batch = min2_value_batch;
-    kernel->cost_add_vector = cost_add_vector;
-    kernel->minplus_project = minplus_project;
-    kernel->minplus_map3_project = map3_project;
-    kernel->project_add_batch = project_add_batch;
-    kernel->map3_project_batch = map3_project_batch;
-    kernel->set_statistics = set_statistics;
+  void make_kernel(pbqp_cost_kernel_t &kernel) {
+    kernel.context = this;
+    kernel.min2_argmin = min2;
+    kernel.min3_argmin = min3;
+    kernel.min2_argmin_batch = min2_batch;
+    kernel.min3_argmin_batch = min3_batch;
+    kernel.min2_value = min2_value;
+    kernel.min2_value_batch = min2_value_batch;
+    kernel.cost_add_vector = cost_add_vector;
+    kernel.minplus_project = minplus_project;
+    kernel.minplus_map3_project = map3_project;
+    kernel.project_add_batch = project_add_batch;
+    kernel.map3_project_batch = map3_project_batch;
+    kernel.set_statistics = set_statistics;
   }
 
   const AccelTimingStatistics &timing_statistics() const {
@@ -154,6 +155,52 @@ class ModelKernel::Impl {
   }
 
  private:
+  static uint64_t now() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+  }
+  uint64_t cycles() const {
+    return l2_ ? l2_->statistics().cycles : timing_statistics().total_service_cycles;
+  }
+  class HostTimer {
+   public:
+    explicit HostTimer(uint64_t *total) : total_(total), start_(total ? now() : 0) {}
+    ~HostTimer() {
+      if (total_)
+        *total_ += now() - start_;
+    }
+
+   private:
+    uint64_t *total_;
+    uint64_t start_;
+  };
+  class Measurement {
+   public:
+    Measurement(Impl &owner, const char *kind, size_t count)
+        : owner_(owner), kind_(kind), count_(count) {
+      if (owner_.measure_) {
+        owner_.staging_ns_ = owner_.wait_ns_ = owner_.submission_ns_ = owner_.readback_start_ = 0;
+        cycles_ = owner_.cycles();
+        start_ = now();
+      }
+    }
+    ~Measurement() {
+      if (owner_.measure_) {
+        const auto end = now();
+        owner_.measurements_.push_back({kind_, count_, owner_.cycles() - cycles_,
+                                        end - start_ - owner_.wait_ns_, owner_.staging_ns_,
+                                        owner_.submission_ns_,
+                                        owner_.readback_start_ ? end - owner_.readback_start_ : 0});
+      }
+    }
+
+   private:
+    Impl &owner_;
+    const char *kind_;
+    size_t count_;
+    uint64_t start_ = 0, cycles_ = 0;
+  };
   static pcaa_guest_address_t allocate_device_storage(void *context, size_t size) {
     return static_cast<GuestMemory *>(context)->allocate(size);
   }
@@ -316,6 +363,7 @@ class ModelKernel::Impl {
 
   static int min2_value_batch(void *opaque, const pbqp_min2_value_job_t *jobs, size_t count) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "min2_value_batch", count);
     kernel->record_project_cycle_projection(jobs, count);
     kernel->begin_batch();
     std::vector<pcaa_command_t> commands;
@@ -350,6 +398,7 @@ class ModelKernel::Impl {
 
   static int min2_batch(void *opaque, const pbqp_min2_job_t *jobs, size_t count) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "min2_batch", count);
     kernel->begin_batch();
     std::vector<pcaa_command_t> commands;
     std::vector<pcaa_guest_address_t> result_addresses;
@@ -386,6 +435,7 @@ class ModelKernel::Impl {
 
   static int min3_batch(void *opaque, const pbqp_min3_job_t *jobs, size_t count) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "min3_batch", count);
     kernel->record_map3_cycle_projection(jobs, count);
     kernel->begin_batch();
     std::vector<pcaa_command_t> commands;
@@ -425,6 +475,7 @@ class ModelKernel::Impl {
 
   static int project_add_batch(void *opaque, const pbqp_project_add_job_t *jobs, size_t count) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "project_add_batch", count);
     if (count == 0)
       return 0;
     kernel->record_vector_project_projection(jobs, count);
@@ -474,6 +525,7 @@ class ModelKernel::Impl {
 
   static int map3_project_batch(void *opaque, const pbqp_map3_project_job_t *jobs, size_t count) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "map3_project_batch", count);
     if (count == 0)
       return 0;
     kernel->record_vector_map3_projection(jobs, count);
@@ -517,6 +569,7 @@ class ModelKernel::Impl {
   static int cost_add_vector(void *opaque, pbqp_vector_view_t first, pbqp_vector_view_t second,
                              int32_t *result) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "add", 1);
     kernel->begin_batch();
     const pcaa_guest_address_t first_address = kernel->copy_view(first);
     const pcaa_guest_address_t second_address = kernel->copy_view(second);
@@ -542,6 +595,7 @@ class ModelKernel::Impl {
   static int minplus_project(void *opaque, pbqp_matrix_view_t matrix, pbqp_vector_view_t unary,
                              int32_t *result) {
     Impl *kernel = static_cast<Impl *>(opaque);
+    Measurement measurement(*kernel, "project", 1);
     kernel->begin_batch();
     const pcaa_guest_address_t matrix_address = kernel->copy_matrix(matrix);
     const pcaa_guest_address_t unary_address = kernel->copy_view(unary);
@@ -582,6 +636,7 @@ class ModelKernel::Impl {
   // D^2 primitives that repeat one unary and 2*D matrix slices, so copying
   // each operand separately would exhaust the staging area at moderate D.
   pcaa_guest_address_t copy_view(pbqp_vector_view_t view) {
+    HostTimer timer(measure_ ? &staging_ns_ : nullptr);
     const ViewKey key{view.base, view.length, view.stride};
     const auto cached = view_cache_.find(key);
     if (cached != view_cache_.end()) {
@@ -607,6 +662,7 @@ class ModelKernel::Impl {
   }
 
   pcaa_guest_address_t copy_matrix(pbqp_matrix_view_t matrix) {
+    HostTimer timer(measure_ ? &staging_ns_ : nullptr);
     const pcaa_guest_address_t address =
         allocate_storage(matrix.rows * matrix.columns * sizeof(int32_t));
     if (address == 0)
@@ -636,6 +692,7 @@ class ModelKernel::Impl {
   }
 
   pcaa_status_t submit_batch(const std::vector<pcaa_command_t> &commands) {
+    const uint64_t submit_start = measure_ ? now() : 0;
     size_t child_bytes = 0;
     const pcaa_status_t measured =
         pcaa_encoded_stream_size(commands.data(), commands.size(), &child_bytes);
@@ -649,7 +706,10 @@ class ModelKernel::Impl {
       pcaa_perror("pcaa submit", submitted);
       return submitted;
     }
+    if (measure_)
+      submission_ns_ += now() - submit_start;
     record_batch_submission(commands, child_bytes);
+    const uint64_t wait_start = measure_ ? now() : 0;
     pcaa_completion_t completion{};
     pcaa_status_t completed = pcaa_device_wait(device_->device(), &completion);
     while (l2_ && completed == PCAA_STATUS_BUSY) {
@@ -668,6 +728,10 @@ class ModelKernel::Impl {
       if (completion.has_batch_result && completion.failed_index != UINT32_MAX)
         std::cerr << "pcaa: failed child=" << completion.failed_index << '\n';
       return completed;
+    }
+    if (measure_) {
+      wait_ns_ += now() - wait_start;
+      readback_start_ = now();
     }
     return PCAA_STATUS_OK;
   }
@@ -701,7 +765,20 @@ class ModelKernel::Impl {
     }
   }
 
+ public:
+  void enable_measurements() {
+    measure_ = true;
+  }
+  const std::vector<HostKernelMeasurement> &measurements() const {
+    return measurements_;
+  }
+
+ private:
+  bool measure_ = false;
+  uint64_t staging_ns_ = 0, wait_ns_ = 0, submission_ns_ = 0, readback_start_ = 0;
+  std::vector<HostKernelMeasurement> measurements_;
   pcaa_status_t staging_status_ = PCAA_STATUS_OK;
+
   GuestMemory memory_;
   std::map<ViewKey, pcaa_guest_address_t, ViewKeyLess> view_cache_;
   VectorCycleProjection vector_cycle_projection_;
@@ -717,7 +794,7 @@ ModelKernel::ModelKernel(bool verbose, AccelTimingConfig timing, size_t staging_
                          const L2Config *l2)
     : impl_(std::make_unique<Impl>(verbose, timing, staging_limit, l2)) {}
 ModelKernel::~ModelKernel() = default;
-void ModelKernel::make_kernel(pbqp_cost_kernel_t *kernel) {
+void ModelKernel::make_kernel(pbqp_cost_kernel_t &kernel) {
   impl_->make_kernel(kernel);
 }
 const AccelTimingStatistics &ModelKernel::timing_statistics() const {
@@ -729,4 +806,10 @@ const VectorCycleProjection &ModelKernel::vector_cycle_projection() const {
 
 const L2Statistics &ModelKernel::l2_statistics() const {
   return impl_->l2_statistics();
+}
+void ModelKernel::enable_measurements() {
+  impl_->enable_measurements();
+}
+const std::vector<HostKernelMeasurement> &ModelKernel::measurements() const {
+  return impl_->measurements();
 }

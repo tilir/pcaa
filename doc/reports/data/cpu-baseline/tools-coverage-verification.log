@@ -1,0 +1,63 @@
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 6 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 6 tests from GraphInput
+[ RUN      ] GraphInput.ReadsCommentsInfRectanglesAndReversedOrientation
+[       OK ] GraphInput.ReadsCommentsInfRectanglesAndReversedOrientation (0 ms)
+[ RUN      ] GraphInput.RejectsMalformedSyntaxAndOutOfRangeNumbers
+[       OK ] GraphInput.RejectsMalformedSyntaxAndOutOfRangeNumbers (0 ms)
+[ RUN      ] GraphInput.ReportsMissingFileAndTruncatedOrExtraMatrix
+[       OK ] GraphInput.ReportsMissingFileAndTruncatedOrExtraMatrix (0 ms)
+[ RUN      ] GraphInput.FixedCapacitiesAndTypedCostRangeFailure
+[       OK ] GraphInput.FixedCapacitiesAndTypedCostRangeFailure (0 ms)
+[ RUN      ] GraphInput.DomainAndDuplicateEdgeFailuresRemainTyped
+[       OK ] GraphInput.DomainAndDuplicateEdgeFailuresRemainTyped (0 ms)
+[ RUN      ] GraphInput.MoveTransfersSingleOwnedBlock
+[       OK ] GraphInput.MoveTransfersSingleOwnedBlock (0 ms)
+[----------] 6 tests from GraphInput (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 6 tests from 1 test suite ran. (1 ms total)
+[  PASSED  ] 6 tests.
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 6 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 6 tests from CpuKernels
+[ RUN      ] CpuKernels.RandomStructuredAndDenseDifferential
+[       OK ] CpuKernels.RandomStructuredAndDenseDifferential (23 ms)
+[ RUN      ] CpuKernels.ForbiddenFirstSecondTiesAndInvalidation
+[       OK ] CpuKernels.ForbiddenFirstSecondTiesAndInvalidation (0 ms)
+[ RUN      ] CpuKernels.SimdAddErrorsAliasesAndAdd3Order
+[       OK ] CpuKernels.SimdAddErrorsAliasesAndAdd3Order (0 ms)
+[ RUN      ] CpuKernels.AllInfAndSaturatedTieChoosesZero
+[       OK ] CpuKernels.AllInfAndSaturatedTieChoosesZero (0 ms)
+[ RUN      ] CpuKernels.IrreducibleSolvePreservesRnDecisionsAcrossBackends
+[       OK ] CpuKernels.IrreducibleSolvePreservesRnDecisionsAcrossBackends (0 ms)
+[ RUN      ] CpuKernels.IndependentMin2JobsDoNotImplySharedMatrixStorage
+[       OK ] CpuKernels.IndependentMin2JobsDoNotImplySharedMatrixStorage (0 ms)
+[----------] 6 tests from CpuKernels (24 ms total)
+
+[----------] Global test environment tear-down
+[==========] 6 tests from 1 test suite ran. (24 ms total)
+[  PASSED  ] 6 tests.
+
+        SystemC 3.0.2-Accellera --- Nov  5 2025 12:44:46
+        Copyright (c) 1996-2025 by all Contributors,
+        ALL RIGHTS RESERVED
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from ModelProfile
+[ RUN      ] ModelProfile.DisabledMeasurementRecordsNothing
+[       OK ] ModelProfile.DisabledMeasurementRecordsNothing (0 ms)
+[ RUN      ] ModelProfile.BatchCyclesPartitionServiceAndPreparationStages
+[       OK ] ModelProfile.BatchCyclesPartitionServiceAndPreparationStages (0 ms)
+[ RUN      ] ModelProfile.OrderedScoreChainsPreserveAliasesAndReportOneBatch
+[       OK ] ModelProfile.OrderedScoreChainsPreserveAliasesAndReportOneBatch (0 ms)
+[ RUN      ] ModelProfile.BuilderFailureHasNoDeviceCyclesAndNextCallRecovers
+[       OK ] ModelProfile.BuilderFailureHasNoDeviceCyclesAndNextCallRecovers (0 ms)
+[----------] 4 tests from ModelProfile (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 4 tests.
+56 CLI, optional-recording and configuration checks passed

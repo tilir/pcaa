@@ -1,0 +1,57 @@
+[
+  {
+    "command": [
+      "spike",
+      "--extlib=build-cpu-release/libpcaa_spike_device.so",
+      "--device=pcaa,0x10002000,0x1000",
+      "build-cpu-release/basic.elf"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "spike",
+      "--extlib=build-cpu-release/libpcaa_spike_device.so",
+      "--device=pcaa,0x10002000,0x1000",
+      "build-cpu-release/randomized.elf"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "spike",
+      "--extlib=build-cpu-release/libpcaa_spike_device.so",
+      "--device=pcaa,0x10002000,0x1000",
+      "build-cpu-release/pbqp_basic.elf"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "spike",
+      "--extlib=build-cpu-release/libpcaa_spike_device.so",
+      "--device=pcaa,0x10002000,0x1000",
+      "build-cpu-release/pbqp_randomized.elf"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "spike",
+      "--extlib=build-cpu-release/libpcaa_spike_device.so",
+      "--device=pcaa,0x10002000,0x1000",
+      "build-cpu-release/pbqp_rn.elf"
+    ],
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

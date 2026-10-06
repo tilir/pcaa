@@ -1,0 +1,39 @@
+{
+  "host_debug": {
+    "command": "ctest --test-dir build-cpu-debug --output-on-failure",
+    "passed": 46,
+    "failed": 0
+  },
+  "host_release": {
+    "command": "ctest --test-dir build-cpu-release --output-on-failure",
+    "passed": 46,
+    "failed": 0
+  },
+  "portable_kernel": {
+    "configure": "cmake -S . -B /tmp/pcaa-cpu-portable -DSPIKE_SOURCE_DIR=/home/tilir/riscv-isa-sim -DCMAKE_BUILD_TYPE=Release -DPCAA_CPU_AVX2=OFF",
+    "command": "ctest --test-dir /tmp/pcaa-cpu-portable -R ^cpu_kernel_unit$ --output-on-failure",
+    "passed": 1,
+    "failed": 0
+  },
+  "spike": {
+    "results": "spike-verification.json",
+    "passed": 5,
+    "failed": 0
+  },
+  "format": {
+    "target": "format (clang-format and IWYU)",
+    "returncode": 0,
+    "log": "format-verification.log"
+  },
+  "historical_l2_archive": {
+    "command": "ruby scripts/l2_report.rb --verify",
+    "returncode": 0
+  },
+  "new_archive_scope": "491 inputs; raw repetition coverage; native and model assignments/objectives; reduction counts; corresponding callback batches; repeated deterministic L2 statistics and cycle partitions; pinned source/input members; checksums; byte-identical regenerated CSV/JSON/tables. Does not reproduce CPU wall times or validate silicon clock.",
+  "analysis_revision": "analysis.tar.gz preserves final generator after CSV namespace correction and correspondence checks; measurement-start generator remains in implementation.tar.gz",
+  "new_archive": {
+    "command": "ruby scripts/cpu_baseline_report.rb --verify",
+    "returncode": 0,
+    "log": "archive-verification.log"
+  }
+}

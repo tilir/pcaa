@@ -2,6 +2,16 @@
 # Copyright (C) 2026 PCAA contributors
 # Defines host graph-runner, generator, and reproducible characterization targets.
 
+add_library(pcaa_graph_input STATIC pbqp_input.cpp)
+target_include_directories(pcaa_graph_input PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/software ${PROJECT_SOURCE_DIR}/accelerator/include)
+add_executable(pbqp_input_unit tests/pbqp_input_unit.cpp)
+target_link_libraries(pbqp_input_unit PRIVATE pcaa_graph_input pcaa_pbqp GTest::gtest_main)
+add_test(NAME pbqp_input_unit COMMAND pbqp_input_unit)
+pcaa_add_format_sources(${CMAKE_CURRENT_SOURCE_DIR}/pbqp_input.h
+                        ${CMAKE_CURRENT_SOURCE_DIR}/pbqp_input.cpp
+                        ${CMAKE_CURRENT_SOURCE_DIR}/tests/pbqp_input_unit.cpp)
+
 add_library(pcaa_runner_kernel STATIC pbqp_model_kernel.cpp)
 target_link_libraries(pcaa_runner_kernel PUBLIC pcaa_core pcaa_l2 pcaa_pbqp pcaalib_systemc)
 target_include_directories(pcaa_runner_kernel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -15,7 +25,7 @@ target_link_libraries(pbqp_graph_generate PRIVATE pcaa_graph_generator)
 
 add_executable(pcaa_graph_run_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_model PRIVATE PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_runner_kernel)
+target_link_libraries(pcaa_graph_run_model PRIVATE pcaa_runner_kernel pcaa_graph_input)
 
 add_executable(pcaa_graph_run pbqp_run_launcher.cpp)
 add_dependencies(pcaa_graph_run pcaa_graph_run_model)
@@ -24,7 +34,7 @@ add_executable(pcaa_graph_run_timed_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_timed_model PRIVATE
   PCAA_GRAPH_RUN_TIMED
   PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_runner_kernel)
+target_link_libraries(pcaa_graph_run_timed_model PRIVATE pcaa_runner_kernel pcaa_graph_input)
 
 add_executable(pcaa_graph_run_timed pbqp_run_launcher.cpp)
 target_compile_definitions(pcaa_graph_run_timed PRIVATE
@@ -96,7 +106,7 @@ pcaa_add_format_sources(
 add_executable(pcaa_graph_run_l2_model pbqp_run.cpp)
 target_compile_definitions(pcaa_graph_run_l2_model PRIVATE PCAA_GRAPH_RUN_L2
                           PCAA_VERSION="${PROJECT_VERSION}")
-target_link_libraries(pcaa_graph_run_l2_model PRIVATE pcaa_runner_kernel)
+target_link_libraries(pcaa_graph_run_l2_model PRIVATE pcaa_runner_kernel pcaa_graph_input)
 add_executable(pcaa_graph_run_l2 pbqp_run_launcher.cpp)
 target_compile_definitions(pcaa_graph_run_l2 PRIVATE PCAA_GRAPH_RUN_MODEL_NAME="pcaa_graph_run_l2_model")
 add_dependencies(pcaa_graph_run_l2 pcaa_graph_run_l2_model)
@@ -115,3 +125,12 @@ set_tests_properties(pcaa_graph_run_l2_triangle PROPERTIES PASS_REGULAR_EXPRESSI
 add_test(NAME pcaa_graph_run_l2_invalid_config
   COMMAND pcaa_graph_run_l2 --solver local --l2-lanes 0 ${PROJECT_SOURCE_DIR}/examples/triangle.pbqp)
 set_tests_properties(pcaa_graph_run_l2_invalid_config PROPERTIES WILL_FAIL TRUE)
+
+add_subdirectory(cpu_baseline)
+
+add_executable(pbqp_model_profile_unit tests/pbqp_model_profile_unit.cpp)
+target_link_libraries(pbqp_model_profile_unit PRIVATE pcaa_runner_kernel GTest::gtest)
+add_test(NAME pbqp_model_profile_unit COMMAND pbqp_model_profile_unit)
+pcaa_add_format_sources(${CMAKE_CURRENT_SOURCE_DIR}/tests/pbqp_model_profile_unit.cpp)
+add_test(NAME tools_cli_regression
+  COMMAND ${RUBY_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_regression.rb ${PROJECT_BINARY_DIR})

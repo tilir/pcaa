@@ -122,8 +122,8 @@ int sc_main(int argc, char **argv) {
   // Smaller than the first guest allocation address: deterministic exhaustion.
   constexpr size_t kExhaustedStagingBytes = 128;
   ModelKernel exhausted(false, timing, kExhaustedStagingBytes);
-  model.make_kernel(&kernel);
-  exhausted.make_kernel(&exhausted_kernel);
+  model.make_kernel(kernel);
+  exhausted.make_kernel(exhausted_kernel);
   sc_core::sc_start(sc_core::SC_ZERO_TIME);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

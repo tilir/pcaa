@@ -1,5 +1,12 @@
 # Report evidence
 
+The [native CPU/L2 archive](cpu-baseline/README.md) is a separate measurement
+revision collected on 6 October 2026. It retains raw native samples and current
+L1/L2 command streams, with its own metadata, source overlay and checksums.
+Regenerate it with `ruby scripts/cpu_baseline_report.rb`; verify it with
+`ruby scripts/cpu_baseline_report.rb --verify`. The historical verification
+command below does not validate this new archive.
+
 Collected/rechecked on **2026-10-01**. [metadata.json](metadata.json) records
 source revisions, builds, binary hashes, tools, commands, and verification
 scope. [SHA256SUMS](SHA256SUMS) covers every retained evidence file except

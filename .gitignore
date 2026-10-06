@@ -1,2 +1,4 @@
 /build/
 /build-ci/
+/build-cpu-debug/
+/build-cpu-release/

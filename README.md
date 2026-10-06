@@ -99,6 +99,24 @@ More inputs are in [`examples`](examples), including
 [LLVM RegAllocPBQP graphs](examples/regalloc). These are software workloads;
 their graph-size limits are not accelerator ISA limits.
 
+## Compare native CPU execution
+
+The [host tools guide](tools/README.md) covers graph generation, runners, and
+native CPU benchmarks. Measure CPU performance with a Release build:
+
+```sh
+cmake -S . -B build-cpu-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-cpu-release --parallel 8
+build-cpu-release/pcaa_cpu_current current examples/triangle.pbqp
+build-cpu-release/pcaa_cpu_bench structured examples/triangle.pbqp
+```
+
+On an AVX2-capable x86 CPU, add `-DPCAA_CPU_AVX2=ON` when configuring the
+dense CPU baseline. The benchmarks report native solve samples without
+SystemC. The [CPU/L2 comparison](doc/reports/cpu-baseline-l2-comparison.md)
+uses the retained LLVM corpus and separates CPU kernel time, graph control,
+host preparation, and modeled accelerator service cycles.
+
 ## Beyond PBQP: Bellman–Ford
 
 The host-only [Bellman–Ford probe](doc/generality-probe.md) runs
